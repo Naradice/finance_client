@@ -1,0 +1,15 @@
+*.csv
+#Python env
+bin/
+lib/
+lib64
+include/
+share/
+pyvenv.cfg
+.ipynb_checkpoints/
+#git
+.git/
+#IgnoreFolders
+.env
+__pycache__/
+/dist
