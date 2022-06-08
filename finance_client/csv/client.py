@@ -5,10 +5,12 @@ import random
 import os
 import uuid
 import datetime
-from finance_client.frames import Frame
 import json
+from finance_client.frames import Frame
+from finance_client.client_base import ClientBase
 
-class CSVClient():
+
+class CSVClient(ClientBase):
     kinds = 'csv'
 
     def __read_csv__(self, columns, date_col=None):
