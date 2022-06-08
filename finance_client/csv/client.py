@@ -1,12 +1,15 @@
+from tkinter.ttk import Separator
 import numpy
 import pandas as pd
 import random
 import os
 import uuid
 import datetime
-from finance_client import Frame, ClientBase
+from stocknet.envs.utils import standalization
+from stocknet.envs.market_clients.frames import Frame
+import json
 
-class CSVClient(ClientBase):
+class CSVClient():
     kinds = 'csv'
 
     def __read_csv__(self, columns, date_col=None):
@@ -141,7 +144,6 @@ class CSVClient(ClientBase):
             columns (list, optional): ohlc columns name. Defaults to ['High', 'Low','Open','Close'].
             date_column (str, optional): If specified, time is parsed. Otherwise ignored. Defaults to Timestamp
         """
-        super()
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
         if type(file) == str:
@@ -152,22 +154,18 @@ class CSVClient(ClientBase):
             print(e)
         self.ask_positions = {}
         if file == None:
-            if provider == "bitflayer":
-                self.files = {
-                    1:'',
-                    5:'/home/cow/python/torch/Stock/Data/bitcoin_5_2017T0710-2021T103022.csv',
-                    'provider': provider
-                }
-                self.base_point = 0.01
+            file_name = 'files.json'
+            with open(file_name, 'r', encoding='utf-8') as f:
+                self.files = json.load(f)
         elif type(file) == str:
             self.files = {
                 self.frame: file,
                 'provider': provider
             }
-            if provider == "bitflayer":
-                self.base_point = 0.01
         else:
             raise Exception(f"unexpected file type is specified. {type(file)}")
+        #if provider == "bitflayer":
+        self.base_point = 0.01
         self.__read_csv__(columns, date_column)
         self.date_column = date_column
         
@@ -237,6 +235,7 @@ class CSVClient(ClientBase):
         tick = self.data.iloc[self.__step_index]
         mean = (tick.High + tick.Low)/2
         return random.uniform(mean, tick.High)
+        
 
     def get_current_bid(self):
         tick = self.data.iloc[self.__step_index]
@@ -330,6 +329,7 @@ class CSVClient(ClientBase):
                 print("Warning: data client reset with {mode} mode retried over 10. index was not correctly reset.")
                 return False
         return True
+                                
 
     def get_holding_steps(self, position="ask"):
         steps_diff = []
@@ -441,7 +441,7 @@ class CSVClient(ClientBase):
         
         return param
 
-class MultiFrameCSVClient(CSVClient):
+class MultiFrameClient(CSVClient):
     
     kinds = "multi_csv"
     
