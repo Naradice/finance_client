@@ -1,4 +1,4 @@
-from coincheck.apis.servicebase import ServiceBase
+from finance_client.coincheck.apis.servicebase import ServiceBase
 
 class OrderBook():
     def __init__(self) -> None:

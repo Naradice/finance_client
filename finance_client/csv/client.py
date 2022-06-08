@@ -5,8 +5,7 @@ import random
 import os
 import uuid
 import datetime
-from stocknet.envs.utils import standalization
-from stocknet.envs.market_clients.frames import Frame
+from finance_client.frames import Frame
 import json
 
 class CSVClient():
