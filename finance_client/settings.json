@@ -1,0 +1,8 @@
+{
+    "Default":{
+        "trade_unit":1000
+    },
+    "OANDA":{
+        "trade_unit":1000
+    }
+}
