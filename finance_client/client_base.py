@@ -1,9 +1,10 @@
 import pandas as pd
+import finance_client.market as market
 
 class ClientBase:
     
-    def __init__(self):
-        pass
+    def __init__(self, budget=100000.0):
+        self.market = market.Manager()
 
     def get_rates(self, interval) -> pd.DataFrame:
         raise Exception("Need to implement get_rates")
@@ -12,27 +13,44 @@ class ClientBase:
         pass
     
     def get_current_ask(self):
-        raise Exception("Need to implement get_current_ask")
+        print("Need to implement get_current_ask on your client")
     
     def get_current_bid(self):
-        raise Exception("Need to implement get_current_bid")
+        print("Need to implement get_current_bid on your client")
     
-    def market_buy(self, amount):
-        raise Exception("Need to implement market_buy")
+    def open_trade(self, is_buy,  amount, stop, trailing_step, order_type, symbol=None, option_info=None):
+        if order_type == "Market":
+            if is_buy:
+                self.__market_buy(amount, option_info)
+            else:
+                self.__market_sell(amount, option_info)
+        else:
+            Exception(f"{order_type} is not defined.")
+            
+    def close_position(position=None, id=None):
+        if position != None:
+            id = position.id
+        elif id != None:
+            id = id
+        else:
+            Exception("either position or id should be specified.")
+            
+        pass
+            
+    def close_all_positions():
+        pass
+    
+    def __market_buy(self, amount, option_info=None):
+        boughtRate = self.get_current_ask()
+        position = self.market.open_position("ask", boughtRate, amount, option_info)
+        return position
 
-    def market_sell(self, order):
-        raise Exception("Need to implement market_sell")
+    def __market_sell(self, amount, option_info=None):
+        soldRate = self.get_current_bid()
+        position = self.market.open_position("ask", soldRate, amount, option_info)
+        return position
     
-    def buy_settlement(self, position, point: int=None):
-        print("Need to implement buy_settlement.")
-    
-    def sell_settlement(self, position:dict, point: int=None):
-        print("Need to implement buy_settlement.")
-    
-    def sell_all_settlement(self):
-        raise Exception("Need to implement sell_all_setlement")
-
-    def close(self):
+    def close_client(self):
         pass
     
     def get_next_tick(self, frame=5):
@@ -40,7 +58,6 @@ class ClientBase:
 
     def reset(self, mode=None):
         raise Exception("Need to implement reset")
-    
     
     def get_min_max(column, data_length = 0):
         pass
