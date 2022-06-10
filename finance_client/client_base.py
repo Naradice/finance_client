@@ -35,10 +35,17 @@ class ClientBase:
         else:
             Exception("either position or id should be specified.")
             
-        pass
+        if position.order_type == "ask":
+            pass
+        elif position.order_type == "bid":
+            pass
+        else:
+            Exception(f"unkown order_type {position.order_type} is specified on close_position.")
             
     def close_all_positions():
-        pass
+        positions = self.market.get_open_positions()
+        for position in positions:
+            self.close_position(position)
     
     def __market_buy(self, amount, option_info=None):
         boughtRate = self.get_current_ask()
