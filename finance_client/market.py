@@ -93,6 +93,7 @@ class Manager:
             else:
                 position.amount = position.amount - amount
                 self.poitions[position.order_type][position.id] = position
+            return price, position.price, price_diff, profit
                 
     def check_order_in_tick(ask:float, bid:float):
         pass

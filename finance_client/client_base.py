@@ -1,6 +1,7 @@
 import pandas as pd
 import finance_client.market as market
 from finance_client.frames import Frame
+from finance_client.utils import standalization
 
 class ClientBase:
     
@@ -26,11 +27,11 @@ class ClientBase:
         if order_type == "Market":
             if is_buy:
                 ask_rate = self.get_current_ask()
-                self.market_buy(symbol, ask_rate, amount, option_info)
+                self.__market_buy(symbol, ask_rate, amount, option_info)
                 return self.__open_long_position(symbol, ask_rate, amount, option_info)
             else:
                 bid_rate = self.get_current_bid()
-                self.market_sell(symbol, bid_rate, amount, option_info)
+                self.__market_sell(symbol, bid_rate, amount, option_info)
                 return self.__open_short_position(symbol, amount, option_info)
         else:
             Exception(f"{order_type} is not defined.")
@@ -53,27 +54,30 @@ class ClientBase:
             Exception("either position or id should be specified.")
             
         if position.order_type == "ask":
-            self.sell_for_settlment(position.symbol , price, amount, position.option)
+            self.__sell_for_settlment(position.symbol , price, amount, position.option)
         elif position.order_type == "bid":
-            self.buy_for_settlement(position.symbol, price, amount, position.option)
+            self.__buy_for_settlement(position.symbol, price, amount, position.option)
         else:
             Exception(f"unkown order_type {position.order_type} is specified on close_position.")
-        self.market.close_position(position, price, amount)
+        return self.market.close_position(position, price, amount)
     
     def close_all_positions(self):
         """close open_position.
         sell_for_settlement or buy_for_settlement is calleds for each position
         """
         positions = self.market.get_open_positions()
+        results = []
         for position in positions:
-            self.close_position(position)
+            result = self.close_position(position)
+            results.append(result)
+        return results
     
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
     ## Need to implement in the actual client ##
 
-    def get_rates(self, frame:int) -> pd.DataFrame:
+    def get_rates(self, interval:int, frame:int =None) -> pd.DataFrame:
         raise Exception("Need to implement get_rates")
     
     def get_future_rates(self, interval) -> pd.DataFrame:
@@ -85,16 +89,16 @@ class ClientBase:
     def get_current_bid(self) -> float:
         print("Need to implement get_current_bid on your client")
             
-    def market_buy(self, symbol, ask_rate, amount, option_info):
+    def __market_buy(self, symbol, ask_rate, amount, option_info):
         pass
     
-    def market_sell(self, symbol, bid_rate, amount, option_info):
+    def __market_sell(self, symbol, bid_rate, amount, option_info):
         pass
     
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info):
+    def __buy_for_settlement(self, symbol, ask_rate, amount, option_info):
         pass
     
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info):
+    def __sell_for_settlment(self, symbol, bid_rate, amount, option_info):
         pass
     
     def get_params(self) -> dict:
@@ -120,6 +124,7 @@ class ClientBase:
     @property
     def min(self):
         raise Exception("Need to implement min")
+
     
     @property
     def frame(self):
@@ -135,11 +140,60 @@ class ClientBase:
     def __getitem__(self, ndx):
         return None
     
-    def get_diffs_with_minmax(self, position='ask')-> list:
-        pass
+    def __get_long_position_diffs(self, standalization="minimax"):
+        positions = self.market.poitions["ask"]
+        if len(positions) > 0:
+            diffs = []
+            current_bid = self.get_current_bid()
+            if standalization == "minimax":
+                current_bid = standalization.mini_max(current_bid, self.min, self.max, (0, 1))
+                for key, position in positions.items():
+                    price = standalization.mini_max(position.price, self.min, self.max, (0, 1))
+                    diffs.append(current_bid - price)
+            else:
+                for key, position in positions.items():
+                    diffs.append(current_bid - position.price)
+            return diffs
+        else:
+            return []
     
-    def get_holding_steps(self, position="ask")-> list:
-        pass
+    def __get_short_position_diffs(self, standalization="minimax"):
+        positions = self.market.poitions["bid"]
+        if len(positions) > 0:
+            diffs = []
+            current_ask = self.get_current_ask()
+            if standalization == "minimax":
+                current_ask = standalization.mini_max(current_ask, self.min, self.max, (0, 1))
+                for key, position in positions.items():
+                    price = standalization.mini_max(position.price, self.min, self.max, (0, 1))
+                    diffs.append(price - current_ask)
+            else:
+                for key, position in positions.items():
+                    diffs.append(position.price - current_ask)
+            return diffs
+        else:
+            return []
+
+    def get_diffs(self, position_type='ask') -> list:
+        if position_type == 'ask' or position_type == 'long':
+            return self.__get_long_position_diffs()
+        elif position_type == "bid" or position_type == 'short':
+            return self.__get_short_position_diffs()
+        else:
+            diffs = self.__get_long_position_diffs()
+            diffs.append(self.__get_short_position_diffs())
+            return diffs
+        
+    
+    def get_diffs_with_minmax(self, position_type='ask')-> list:
+        if position_type == 'ask' or position_type == 'long':
+            return self.__get_long_position_diffs(standalization="minimax")
+        elif position_type == "bid" or position_type == 'short':
+            return self.__get_short_position_diffs(standalization="minimax")
+        else:
+            diffs = self.__get_long_position_diffs(standalization="minimax")
+            diffs.append(self.__get_short_position_diffs(standalization="minimax"))
+            return diffs
     
     def __open_long_position(self, symbol, boughtRate, amount, option_info=None):
         position = self.market.open_position("ask", boughtRate, amount, option_info)

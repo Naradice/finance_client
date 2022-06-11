@@ -145,6 +145,7 @@ class CSVClient(ClientBase):
             columns (list, optional): ohlc columns name. Defaults to ['High', 'Low','Open','Close'].
             date_column (str, optional): If specified, time is parsed. Otherwise ignored. Defaults to Timestamp
         """
+        super()
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
         if type(file) == str:
@@ -242,67 +243,7 @@ class CSVClient(ClientBase):
         tick = self.data.iloc[self.__step_index]
         mean = (tick.High + tick.Low)/2
         return random.uniform(tick.Low, mean)
-    
-    def buy(self, stop_loss, stop_profit, amount):
-        boughtCoinRate = self.get_current_ask()
-        id = str(uuid.uuid4())
-        position = {"price":boughtCoinRate, "step":self.__step_index, "amount":amount, "id":id, "sl": stop_loss, "sp": stop_profit}
-        self.ask_positions[id] = position
-        return position
-
-    def market_buy(self, amount) -> dict:
-        boughtCoinRate = self.get_current_ask()
-        id = str(uuid.uuid4())
-        position = {"price":boughtCoinRate, "step":self.__step_index, "amount":amount, "id":id}
-        self.ask_positions[id] = position
-        return position
-
-    def market_sell(self, order) -> dict:
-        print("market_sell is not implemented.")
-        return None
-
-    def sell_settlement(self, position:dict, point: int=None):
-        if position["id"] in self.ask_positions:
-            bid = self.get_current_bid()
-            bought_rate = position["price"]
-            amount = position["amount"]
-            if point == None or point >= amount:##sell all amounts
-                rate_diff = (bid - position["price"])
-                self.ask_positions.pop(position["id"])
-            elif point < amount:
-                rate_diff = (bid - position["price"])
-                id = position["id"]
-                remaining_amount = amount - point
-                position["amount"] = remaining_amount
-                self.ask_positions[id] = position
-            else:
-                raise Exception("amount should be int")
-            
-            pl = rate_diff * point * self.base_point
-            
-            return bid, bought_rate, rate_diff, pl
-        else:
-            return None, None, None
         
-    def buy_settlement(self, position):
-        print("buy_settlement is not implemented.")
-        pass
-
-    def sell_all_settlement(self):
-        results = []
-        bid = self.get_current_bid()
-        for key, position in self.ask_positions.items():
-            rate_diff = (bid - position["price"])
-            pl = rate_diff * position["amount"] * self.base_point
-            results.append(
-                (bid, position["price"], rate_diff, pl)
-                )
-        self.ask_positions = {}
-        return results
-        
-    def close(self):
-        pass
-
     def reset(self, mode:str = None, retry=0)-> bool:
         self.ask_positions = {}#ignore if there is position
         self.__step_index = random.randint(0, len(self.data))
@@ -349,17 +290,10 @@ class CSVClient(ClientBase):
             return tick, True
         
     def max(self, column):
-        if column in self.data.columns:
-            return self.data[column].max()
-        else:
-            raise ValueError(f"{column} is not defined in {self.data.columns}")
-            return None
+        return self.__high_max
         
     def min(self, column):
-        if column in self.data.columns:
-            return self.data[column].min()
-        else:
-            raise ValueError(f"{column} is not defined in {self.data.columns}")
+        return self.__low_min
         
     def __getitem__(self, ndx):
         return self.data.iloc[ndx]
@@ -393,44 +327,6 @@ class CSVClient(ClientBase):
             elif column_ == 'close':
                 columns['Close'] = column
         return columns
-    
-    def get_diffs(self, position='ask') -> list:
-        if position == 'ask':
-            if len(self.ask_positions) > 0:
-                amounts = []
-                current_bid = self.get_current_bid()
-                for key, position in self.ask_positions.items():
-                    amounts.append(current_bid - position['price'])
-                return amounts
-            else:
-                return [0.0]
-        else:
-            print(f'this is not implemented in get_diff_amount with position: {position}')
-        
-    ##minimux should be done in this class?
-    def get_diffs_with_minmax(self, position='ask')-> list:
-        if position == 'ask':
-            if len(self.ask_positions) > 0:
-                amounts = []
-                current_bid = self.get_current_bid()
-                current_normalized_bid = standalization.mini_max(current_bid, self.__low_min, self.__high_max, (0, 1))
-                for key, position in self.ask_positions.items():
-                    normalized_price = standalization.mini_max(position['price'], self.__low_min, self.__high_max, (0, 1))
-                    amounts.append((current_normalized_bid - normalized_price) * position["amount"])
-                return amounts
-            else:
-                return [0.0]
-        else:
-            print(f'this is not implemented in get_diff_amount with position: {position}')
-            
-    def get_positions(self, kinds=None):
-        positions = []
-        if kinds == None:
-            pass
-        elif kinds == 'ask':
-            #for key, position in self.ask_positions.items():
-            #    positions.append(position)
-            return self.ask_positions
     
     def get_params(self) -> dict:
         param = {
