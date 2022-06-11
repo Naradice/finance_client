@@ -5,19 +5,20 @@ import json
 class Position:
     id = uuid.uuid4()
     
-    def __init__(self, order_type:str, price:float, amount: float, option):
+    def __init__(self, order_type:str, symbol:str, price:float, amount: float, option):
         self.order_type = order_type
         self.price = price
         self.amount = amount
         self.option = option
+        self.symbol = symbol
         self.timestamp = datetime.datetime.now()
     
 
 class Manager:
     
     poitions = {
-        "ask": [],
-        "bid": []
+        "ask": {},
+        "bid": {}
     }
     
     def __init__(self, budget, provider="Default"):
@@ -47,24 +48,51 @@ class Manager:
         else:
             raise Exception(f"order_type should be specified: {order_type}")
     
-    def open_position(self, order_type:str, price:float, amount: float, option):
+    def open_position(self, order_type:str, symbol:str, price:float, amount: float, option):
         order_type = self.__check_order_type(order_type)
         ## check if budget has enough amount
         required_budget = self.trade_unit * amount * price
         ## if enough, add position
         if required_budget <= self.budget:
-            position = Position(order_type=order_type, price=price, amount=amount, option=option)
-            self.positions[order_type].append(position)
+            position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, option=option)
+            self.positions[order_type][position.id] = position
             ## then reduce budget
             self.budget = self.budget - required_budget
             return position
         else:
             print(f"current budget {self.budget} is less than required {required_budget}")
+            
+    def get_position(self, id):
+        if id in self.poitions["ask"]:
+            return self.poitions["ask"][id]
+        elif id in self.positions["bid"]:
+            return self.positions["bid"][id]
+        return None
+            
     
     def get_open_positions(self, order_type:str) -> list:
         order_type = self.__check_order_type()
-        return self.poitions[order_type]
+        positions = []
+        for key, position_type in self.poitions.items():
+            for key, position in position_type.items():
+                positions.append(position)
+        return positions
     
-    def close_position(self, position, price: float, amount: float = None):
+    def close_position(self, position:Position, price: float, amount: float = None):
+        if position.amount <= amount:
+            if position.order_type == "ask":
+                price_diff = (price - position.price)
+            elif position.order_type == "bid":
+                price_diff = position.price - price
+            
+            profit = self.trade_unit * amount * price_diff
+            self.budget += profit
+            
+            if position.amount == amount:
+                self.poitions[position.order_type].pop(position.id)
+            else:
+                position.amount = position.amount - amount
+                self.poitions[position.order_type][position.id] = position
+                
+    def check_order_in_tick(ask:float, bid:float):
         pass
-    
