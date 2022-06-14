@@ -5,6 +5,9 @@ from finance_client.utils import standalization
 
 class ClientBase:
     
+    frame = None
+    columns = None
+    
     def __init__(self, budget=100000.0):
         self.market = market.Manager()
         
@@ -75,6 +78,56 @@ class ClientBase:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
+    def __run_preprocess(self):
+        """
+        Ex. you can define MACD as process. The results of the process are stored as dataframe[key] = values
+        """
+        self.data = self.__rowdata__.copy()
+        
+        if len(self.__preprocesess) > 0:
+            processes = self.__preprocesess
+        else:
+            raise Exception("Need to register preprocess before running processes")
+        
+        for process in processes:
+            values_dict = process.run(self.data)
+            for column, values in values_dict.items():
+                self.data[column] = values
+        self.data = self.data.dropna(how = 'any')
+        self.__init_indicies()
+                
+    def add_indicater(self, process: ProcessBase):
+        values_dict = process.run(self.__rowdata__)
+        for column, values in values_dict.items():
+            self.__rowdata__[column] = values
+            if process.is_input:
+                self.columns.append(column)
+            if process.is_output:
+                self.out_columns.append(column)
+            
+    def add_indicaters(self, processes: list):
+        for process in processes:
+            self.add_indicater(process)
+    
+    def register_preprocess(self, process: ProcessBase):
+        """ register preprocess for data.
+
+        Args:
+            process (ProcessBase): any process you define
+            option (_type_): option for a process
+        """
+        self.__preprocesess.append(process)
+    
+    def register_preprocesses(self, processes: list):
+        """ register preprocess for data.
+
+        Args:
+            processes (list[processBase]): any process you define
+            options: option for a processes[key] (key is column name of additional data)
+        """
+        
+        for process in processes:
+            self.register_preprocess(process)
     ## Need to implement in the actual client ##
 
     def get_rates(self, interval:int, frame:int =None) -> pd.DataFrame:
@@ -124,15 +177,6 @@ class ClientBase:
     @property
     def min(self):
         raise Exception("Need to implement min")
-
-    
-    @property
-    def frame(self):
-        raise Exception("Need to implement frame")
-    
-    @property
-    def columns(self):
-        raise Exception("Need to implement columns")
         
     def get_ohlc_columns(self):
         raise Exception("Need to implement")

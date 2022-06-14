@@ -7,6 +7,7 @@ include/
 share/
 pyvenv.cfg
 .ipynb_checkpoints/
+finance_client.egg-info
 #git
 .git/
 #IgnoreFolders

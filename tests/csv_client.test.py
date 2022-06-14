@@ -4,11 +4,11 @@ from finance_client.frames import Frame
 
 class TestCSVClient(unittest.TestCase):
 
-    client = CSVClient(file='data_source/bitcoin_5_2017T0710-2021T103022.csv')
+    client = CSVClient(file='../data_source/bitcoin_5_2017T0710-2021T103022.csv')
     
     def test_get_rates(self):
         length = 10
-        rates = self.client.get_rates(length, frame=Frame.MIN5)
+        rates = self.client.get_rates(length)
         self.assertEqual(len(rates.Close), length)
 
     def test_get_next_tick(self):
@@ -23,7 +23,8 @@ class TestCSVClient(unittest.TestCase):
         
     def test_get_30min_rates(self):
         length = 10
-        rates = self.client.get_rates(length, frame=Frame.MIN30)
+        client  = CSVClient(file='../data_source/bitcoin_5_2017T0710-2021T103022.csv', out_frame=30)
+        rates = self.client.get_rates(length)
         self.assertEqual(len(rates.Close), length)
     
 if __name__ == '__main__':

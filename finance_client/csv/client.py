@@ -327,6 +327,7 @@ class CSVClient(ClientBase):
             elif column_ == 'close':
                 columns['Close'] = column
         return columns
+
     
     def get_params(self) -> dict:
         param = {
