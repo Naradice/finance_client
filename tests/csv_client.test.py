@@ -24,7 +24,7 @@ class TestCSVClient(unittest.TestCase):
     def test_get_30min_rates(self):
         length = 10
         client  = CSVClient(file='../data_source/bitcoin_5_2017T0710-2021T103022.csv', out_frame=30)
-        rates = self.client.get_rates(length)
+        rates = client.get_rates(length)
         self.assertEqual(len(rates.Close), length)
     
     def test_get_indicaters(self):
