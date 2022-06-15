@@ -1,10 +1,10 @@
 import MetaTrader5 as mt5
 import pandas as pd
 import random
-from finance_client.client_base import ClientBase
+from finance_client.client_base import Client
 from finance_client.frames import Frame
 
-class MT5Client(ClientBase):
+class MT5Client(Client):
     
     AVAILABLE_FRAMES = {
         Frame.MIN1: mt5.TIMEFRAME_M1,

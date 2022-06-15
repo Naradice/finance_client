@@ -4,7 +4,7 @@ from finance_client import utils
 import finance_client.market as market
 from finance_client.frames import Frame
 
-class ClientBase:
+class Client:
     
     frame = None
     columns = None

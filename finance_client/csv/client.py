@@ -7,10 +7,10 @@ import uuid
 import datetime
 import json
 from finance_client.frames import Frame
-from finance_client.client_base import ClientBase
+from finance_client.client_base import Client
 
 
-class CSVClient(ClientBase):
+class CSVClient(Client):
     kinds = 'csv'
 
     def __read_csv__(self, columns, date_col=None):

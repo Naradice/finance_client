@@ -1,10 +1,9 @@
-from multiprocessing.connection import Client
 from finance_client.coincheck.apis.servicebase import ServiceBase
 from finance_client.coincheck.apis.account import Account
 from finance_client.coincheck.apis.ticker import Ticker
-from finance_client import ClientBase
+from finance_client.client_base import Client
 
-class CoinCheckClient(ClientBase):
+class CoinCheckClient(Client):
     
     def __init__(self):
         super()
