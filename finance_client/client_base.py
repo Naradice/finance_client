@@ -1,15 +1,19 @@
 import pandas as pd
+from pkg_resources import require
+from finance_client import utils
 import finance_client.market as market
 from finance_client.frames import Frame
-from finance_client.utils import standalization
 
 class ClientBase:
     
     frame = None
     columns = None
     
-    def __init__(self, budget=100000.0):
-        self.market = market.Manager()
+    def __init__(self, budget=100000.0, indicater_processes:list = []):
+        self.market = market.Manager(budget)
+        self.__idc_processes = []
+        self.__additional_length_for_idc = 0
+        self.add_indicaters(indicater_processes)
         
     ## call from an actual client
         
@@ -78,60 +82,44 @@ class ClientBase:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def __run_preprocess(self):
+    def __run_processes(self, data:pd.DataFrame) -> pd.DataFrame:
         """
         Ex. you can define MACD as process. The results of the process are stored as dataframe[key] = values
         """
-        self.data = self.__rowdata__.copy()
+        data_cp = data.copy()
         
-        if len(self.__preprocesess) > 0:
-            processes = self.__preprocesess
+        if len(self.__idc_processes) > 0:
+            processes = self.__idc_processes
         else:
-            raise Exception("Need to register preprocess before running processes")
+            return None
         
         for process in processes:
-            values_dict = process.run(self.data)
+            values_dict = process.run(data_cp)
             for column, values in values_dict.items():
-                self.data[column] = values
-        self.data = self.data.dropna(how = 'any')
-        self.__init_indicies()
+                data_cp[column] = values
+        data_cp = data_cp.dropna(how = 'any')
+        return data_cp
                 
-    def add_indicater(self, process: ProcessBase):
-        values_dict = process.run(self.__rowdata__)
-        for column, values in values_dict.items():
-            self.__rowdata__[column] = values
-            if process.is_input:
-                self.columns.append(column)
-            if process.is_output:
-                self.out_columns.append(column)
+    def add_indicater(self, process: utils.ProcessBase):
+        self.__idc_processes.append(process)
+        required_length = process.get_minimum_required_length()
+        if self.__additional_length_for_idc < required_length:
+            self.__additional_length_for_idc = required_length
             
     def add_indicaters(self, processes: list):
         for process in processes:
             self.add_indicater(process)
-    
-    def register_preprocess(self, process: ProcessBase):
-        """ register preprocess for data.
 
-        Args:
-            process (ProcessBase): any process you define
-            option (_type_): option for a process
-        """
-        self.__preprocesess.append(process)
-    
-    def register_preprocesses(self, processes: list):
-        """ register preprocess for data.
-
-        Args:
-            processes (list[processBase]): any process you define
-            options: option for a processes[key] (key is column name of additional data)
-        """
-        
-        for process in processes:
-            self.register_preprocess(process)
     ## Need to implement in the actual client ##
 
     def get_rates(self, interval:int, frame:int =None) -> pd.DataFrame:
         raise Exception("Need to implement get_rates")
+    
+    def get_rate_with_indicaters(self, interval, frame:int = None) -> pd.DataFrame:
+        required_length = interval + self.__additional_length_for_idc
+        ohlc = self.get_rates(required_length)
+        data = self.__run_processes(ohlc)
+        return data.iloc[-interval:]
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass
@@ -190,7 +178,7 @@ class ClientBase:
             diffs = []
             current_bid = self.get_current_bid()
             if standalization == "minimax":
-                current_bid = standalization.mini_max(current_bid, self.min, self.max, (0, 1))
+                current_bid = utils.mini_max(current_bid, self.min, self.max, (0, 1))
                 for key, position in positions.items():
                     price = standalization.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(current_bid - price)

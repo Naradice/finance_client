@@ -133,7 +133,7 @@ class CSVClient(ClientBase):
             return rolled_file_name
         raise Exception(f"{org_file_name} isn't csv.")
 
-    def __init__(self, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", seed=1017):
+    def __init__(self, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", seed=1017, idc_processes = []):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
@@ -145,7 +145,7 @@ class CSVClient(ClientBase):
             columns (list, optional): ohlc columns name. Defaults to ['High', 'Low','Open','Close'].
             date_column (str, optional): If specified, time is parsed. Otherwise ignored. Defaults to Timestamp
         """
-        super()
+        super().__init__(indicater_processes=idc_processes)
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
         if type(file) == str:

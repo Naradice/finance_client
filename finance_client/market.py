@@ -1,6 +1,7 @@
 import uuid
 import datetime
 import json
+import os
 
 class Position:
     id = uuid.uuid4()
@@ -24,8 +25,9 @@ class Manager:
     def __init__(self, budget, provider="Default"):
         self.budget = budget
         self.__start_budget = budget
+        dir = os.path.dirname(__file__)
         try:
-            with open("./settings.json", "r", encoding="utf-8") as f:
+            with open(f"{dir}/settings.json", "r", encoding="utf-8") as f:
                 contents = json.load(f)
         except Exception as e:
             print(f"couldn't load symbol file. {e}")

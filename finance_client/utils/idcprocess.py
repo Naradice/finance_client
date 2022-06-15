@@ -1,5 +1,5 @@
 import numpy
-from finance_client.utils import standalization, indicaters
+from finance_client.utils import indicaters
 import pandas as pd
 from finance_client.utils.process import ProcessBase
 
