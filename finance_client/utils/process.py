@@ -34,7 +34,7 @@ class ProcessBase:
         raise Exception("Need to implement")
     
     def get_minimum_required_length(self) -> int:
-        raise Exception("Need to implement")
+        return 0
     
     def concat(self, data:pd.DataFrame, new_data: pd.Series):
         return pd.concat([data, pd.DataFrame.from_records([new_data])], ignore_index=True)
@@ -52,3 +52,6 @@ class ProcessBase:
     
     def init_params(self, data: pd.DataFrame):
         pass
+    
+    def __eq__(self, __o: object) -> bool:
+        return self.key == __o.key

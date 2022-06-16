@@ -1,7 +1,7 @@
 from finance_client.csv.client import CSVClient, MultiFrameClient
 import finance_client.coincheck
 from finance_client.frames import Frame
-from finance_client.client_base import ClientBase
+from finance_client.client_base import Client
 
 
 available_clients = {

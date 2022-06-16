@@ -1,5 +1,4 @@
 import pandas as pd
-from pkg_resources import require
 from finance_client import utils
 import finance_client.market as market
 from finance_client.frames import Frame
@@ -99,12 +98,19 @@ class Client:
                 data_cp[column] = values
         data_cp = data_cp.dropna(how = 'any')
         return data_cp
+    
+    def have_process(self, process: utils.ProcessBase):
+        return process in self.__idc_processes
+        
                 
     def add_indicater(self, process: utils.ProcessBase):
-        self.__idc_processes.append(process)
-        required_length = process.get_minimum_required_length()
-        if self.__additional_length_for_idc < required_length:
-            self.__additional_length_for_idc = required_length
+        if self.have_process(process) == False:
+            self.__idc_processes.append(process)
+            required_length = process.get_minimum_required_length()
+            if self.__additional_length_for_idc < required_length:
+                self.__additional_length_for_idc = required_length
+        else:
+            print(f"process {process.key} is already added. If you want to add it, please change key value.")
             
     def add_indicaters(self, processes: list):
         for process in processes:
