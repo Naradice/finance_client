@@ -39,7 +39,7 @@ class Manager:
         
         self.trade_unit = SymbolInfo["trade_unit"]
     
-    def __check_order_type(order_type:str):
+    def __check_order_type(self, order_type:str):
         if order_type and type(order_type) == str:
             order_type = str.lower(order_type)
             #if order_type == "ask" or order_type == "buy" or order_type == "long" or order_type == "bid" or order_type == "sell" or order_type == "short":
@@ -50,7 +50,7 @@ class Manager:
         else:
             raise Exception(f"order_type should be specified: {order_type}")
     
-    def open_position(self, order_type:str, symbol:str, price:float, amount: float, option):
+    def open_position(self, order_type:str, symbol:str, price:float, amount: float, option = None):
         order_type = self.__check_order_type(order_type)
         ## check if budget has enough amount
         required_budget = self.trade_unit * amount * price

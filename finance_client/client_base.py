@@ -16,7 +16,7 @@ class Client:
         
     ## call from an actual client
         
-    def open_trade(self, is_buy,  amount:float, stop, order_type:str, symbol:str, option_info=None):
+    def open_trade(self, is_buy,  amount:float, order_type:str, symbol:str, option_info=None):
         """ by calling this in your client, order function is called and position is stored
 
         Args:
