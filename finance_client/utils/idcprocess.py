@@ -3,6 +3,10 @@ from finance_client.utils import indicaters
 import pandas as pd
 from finance_client.utils.process import ProcessBase
 
+""" process class to add indicater for data_client, dataset, env etc
+    is_input, is_output are used for machine learning
+"""
+
 def get_available_processes() -> dict:
     processes = {
         'MACD': MACDpreProcess,

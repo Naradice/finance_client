@@ -1,5 +1,7 @@
 import pandas as pd
 
+#TODO: create option class so that user can know what parameter can be specified as option
+
 class ProcessBase:
    
     columns = []

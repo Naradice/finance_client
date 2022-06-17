@@ -133,19 +133,24 @@ class CSVClient(Client):
             return rolled_file_name
         raise Exception(f"{org_file_name} isn't csv.")
 
-    def __init__(self, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", seed=1017, idc_processes = []):
+    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = []):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
         Args:
+            auto_index (bool, options): If true, get_rate function returns data with index advance. Otherwise data index advance by get_next_tick
             file (str, optional): You can directly specify the file name. Defaults to None.
             file_frame (int, optional): You can specify the frame of data. CSV need to exist. Defaults to 5.
             provider (str, optional): Provider of data to load csv file. Defaults to "bitflayer".
             out_frame (int, optional): output frame. Ex F_5MIN can convert to F_30MIN. Defaults to None.
             columns (list, optional): ohlc columns name. Defaults to ['High', 'Low','Open','Close'].
             date_column (str, optional): If specified, time is parsed. Otherwise ignored. Defaults to Timestamp
+            start_index (int, options): specify start index. If not specified, randm index is used. Defauls to None.
+            seed (int, options): specify random seed. Defaults to 1017
+            idc_processes (Process, options) : list of indicater process. Dafaults to []
         """
         super().__init__(indicater_processes=idc_processes)
+        self.__auto_index = auto_index
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
         if type(file) == str:
@@ -194,23 +199,34 @@ class CSVClient(Client):
             self.out_frames = to_frame
         else:
             self.out_frames = self.frame
-        self.__step_index = random.randint(0, len(self.data))
+        if start_index:
+            self.__step_index = start_index
+            self.__auto_refresh = False
+        else:
+            self.__step_index = random.randint(0, len(self.data))
+            self.__auto_refresh = True
         self.__high_max = self.get_min_max(self.columns[0])[1]
         self.__low_min = self.get_min_max(self.columns[1])[0]
 
     def get_rates(self, interval=1):
-        if interval > 1:
+        if interval >= 1:
             rates = None
             if self.__step_index >= interval-1:
                 try:
                     #return data which have interval length
                     rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1].copy()
+                    if self.__auto_index:
+                        self.__step_index = self.__step_index + 1
                     return rates
                 except Exception as e:
                     print(e)
             else:
-                self.__step_index = random.randint(0, len(self.data))
-                return self.get_rates(interval)
+                if self.__auto_refresh:
+                    self.__step_index = random.randint(0, len(self.data))
+                    return self.get_rates(interval)
+                else:
+                    print(f"not more data on index {self.__step_index}")
+                    return pd.DataFrame()
         elif interval == -1:
             rates = self.data.copy()
             return rates
@@ -279,6 +295,7 @@ class CSVClient(Client):
             steps_diff.append(self.__step_index - ask_position["step"])
         return steps_diff
 
+    ## TODO: need to check if timedelta is equal to frame
     def get_next_tick(self):
         if self.__step_index < len(self.data)-2:
             self.__step_index += 1

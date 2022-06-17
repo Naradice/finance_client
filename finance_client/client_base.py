@@ -118,14 +118,17 @@ class Client:
 
     ## Need to implement in the actual client ##
 
-    def get_rates(self, interval:int, frame:int =None) -> pd.DataFrame:
-        raise Exception("Need to implement get_rates")
+    def get_rates(self, interval:int) -> pd.DataFrame:
+        print("Overwrite get_rates in your client")
     
-    def get_rate_with_indicaters(self, interval, frame:int = None) -> pd.DataFrame:
+    def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
         required_length = interval + self.__additional_length_for_idc
         ohlc = self.get_rates(required_length)
-        data = self.__run_processes(ohlc)
-        return data.iloc[-interval:]
+        if len(ohlc) != 0:
+            data = self.__run_processes(ohlc)
+            return data.iloc[-interval:]
+        else:
+            return ohlc
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass

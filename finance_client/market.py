@@ -27,7 +27,7 @@ class Manager:
         self.__start_budget = budget
         dir = os.path.dirname(__file__)
         try:
-            with open(f"{dir}/settings.json", "r", encoding="utf-8") as f:
+            with open(os.path.join(dir, "settings.json"), "r", encoding="utf-8") as f:
                 contents = json.load(f)
         except Exception as e:
             print(f"couldn't load symbol file. {e}")
