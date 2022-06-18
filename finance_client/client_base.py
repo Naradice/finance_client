@@ -48,12 +48,13 @@ class Client:
         else:
             Exception(f"{order_type} is not defined.")
             
-    def close_position(self, price:float, position:market.Position=None, id=None, amount=None):
+    def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
         sell_for_settlement or buy_for_settlement is calleds
 
         Args:
+            price (float, optional): price for settlement. If not specified, current value is used.
             position (Position, optional): Position returned by open_trade. Defaults to None.
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
@@ -66,18 +67,44 @@ class Client:
             Exception("either position or id should be specified.")
             
         if position.order_type == "ask":
+            if (price == None):
+                price = self.get_current_bid()
             self.__sell_for_settlment(position.symbol , price, amount, position.option)
         elif position.order_type == "bid":
+            if (price == None):
+                price = self.get_current_ask()
             self.__buy_for_settlement(position.symbol, price, amount, position.option)
         else:
             Exception(f"unkown order_type {position.order_type} is specified on close_position.")
         return self.market.close_position(position, price, amount)
     
     def close_all_positions(self):
-        """close open_position.
+        """close all open_position.
         sell_for_settlement or buy_for_settlement is calleds for each position
         """
         positions = self.market.get_open_positions()
+        results = []
+        for position in positions:
+            result = self.close_position(position=position)
+            results.append(result)
+        return results
+
+    def close_long_positions(self):
+        """close all open_long_position.
+        sell_for_settlement is calleds for each position
+        """
+        positions = self.market.get_open_positions(order_type="ask")
+        results = []
+        for position in positions:
+            result = self.close_position(position=position)
+            results.append(result)
+        return results
+
+    def close_short_positions(self):
+        """close all open_long_position.
+        sell_for_settlement is calleds for each position
+        """
+        positions = self.market.get_open_positions(order_type="bid")
         results = []
         for position in positions:
             result = self.close_position(position)
