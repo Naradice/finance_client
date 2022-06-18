@@ -14,3 +14,4 @@ finance_client.egg-info
 .env
 __pycache__/
 /dist
+*/finance_client*.logs

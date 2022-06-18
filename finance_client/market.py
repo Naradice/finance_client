@@ -1,7 +1,11 @@
+from asyncio.log import logger
+from time import sleep
 import uuid
 import datetime
 import json
 import os
+from logging import getLogger, config
+import json
 
 class Position:
     id = uuid.uuid4()
@@ -22,22 +26,60 @@ class Manager:
         "bid": {}
     }
     
-    def __init__(self, budget, provider="Default"):
-        self.budget = budget
-        self.__start_budget = budget
+    __locked = False
+    
+    def __init__(self, budget, provider="Default", logger = None):
         dir = os.path.dirname(__file__)
         try:
-            with open(os.path.join(dir, "settings.json"), "r", encoding="utf-8") as f:
-                contents = json.load(f)
+            with open(os.path.join(dir, './settings.json'), 'r') as f:
+                settings = json.load(f)
         except Exception as e:
-            print(f"couldn't load symbol file. {e}")
+            self.logger.error(f"fail to load settings file: {e}")
+            raise e
         
-        if provider in contents:
-            SymbolInfo = contents[provider]
+        if logger == None:
+            logger_config = settings["log"]
+        
+            try:
+                log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
+                log_folder = os.path.join(os.path.dirname(__file__), 'logs')
+                if os.path.exists(log_folder) == False:
+                    os.makedirs(log_folder)
+                logger_config["handlers"]["fileHandler"]["filename"] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
+                config.dictConfig(logger_config)
+            except Exception as e:
+                self.logger.error(f"fail to set configure file: {e}")
+                raise e
+            self.logger = getLogger(__name__)
         else:
-            raise Exception(f"provider {provider} is not defined in settings.json")
+            self.logger = logger
+            
+        self.budget = budget
+        self.__start_budget = budget
+        
+        providers = settings["providers"]
+        if provider in providers:
+            SymbolInfo = providers[provider]
+        else:
+            error_txt = f"provider {provider} is not defined in settings.json"
+            self.logger.error(error_txt)
+            raise Exception(error_txt)
         
         self.trade_unit = SymbolInfo["trade_unit"]
+        self.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
+    
+    def initialize_budget(self, budget=None):
+        if budget == None:
+            budget = self.__start_budget
+        self.budget = budget
+        self.__start_budget = budget
+        self.logger.info(f"MarketManager updated budget to {budget}")
+        
+
+    def __wait_lock(self):
+        while self.__locked:
+            sleep(0.3)
+        return True
     
     def __check_order_type(self, order_type:str):
         if order_type and type(order_type) == str:
@@ -62,26 +104,35 @@ class Manager:
             self.budget = self.budget - required_budget
             return position
         else:
-            print(f"current budget {self.budget} is less than required {required_budget}")
+            logger.info(f"current budget {self.budget} is less than required {required_budget}")
             
     def get_position(self, id):
-        if id in self.poitions["ask"]:
-            return self.poitions["ask"][id]
+        if id in self.positions["ask"]:
+            return self.positions["ask"][id]
         elif id in self.positions["bid"]:
             return self.positions["bid"][id]
         return None
             
     
-    def get_open_positions(self, order_type:str) -> list:
-        order_type = self.__check_order_type()
+    def get_open_positions(self, order_type:str = None) -> list:
         positions = []
-        for key, position_type in self.poitions.items():
-            for key, position in position_type.items():
+        if order_type:
+            order_type = self.__check_order_type(order_type=order_type)
+            for id, position in self.positions[order_type].items():
                 positions.append(position)
+        else:
+            for trend, position_type in self.positions.items():
+                for id, position in position_type.items():
+                    positions.append(position)
         return positions
     
     def close_position(self, position:Position, price: float, amount: float = None):
-        if position.amount <= amount:
+        if type(position) == Position and type(position.amount) == float or type(position.amount) == int:
+            if amount == None:
+                amount = position.amount
+            if position.amount < amount:
+                logger.info(f"specified amount is greater than position. use position value. {position.amount} < {amount}")
+                amount = position.amount
             if position.order_type == "ask":
                 price_diff = (price - position.price)
             elif position.order_type == "bid":
@@ -90,12 +141,21 @@ class Manager:
             profit = self.trade_unit * amount * price_diff
             self.budget += profit
             
-            if position.amount == amount:
-                self.poitions[position.order_type].pop(position.id)
-            else:
-                position.amount = position.amount - amount
-                self.poitions[position.order_type][position.id] = position
-            return price, position.price, price_diff, profit
+            if(self.__wait_lock()):
+                self.__locked = True
+                if position.id in self.positions[position.order_type]:
+                    if position.amount == amount:
+                        self.positions[position.order_type].pop(position.id)
+                    else:
+                        position.amount = position.amount - amount
+                        self.positions[position.order_type][position.id] = position
+                    self.__locked = False
+                    return price, position.price, price_diff, profit
+                else:
+                    self.__locked = False
+                    logger.info("info: positionis already removed.")
+        else:
+            logger.warn(f"position amount is invalid: {position.amount}")
                 
     def check_order_in_tick(ask:float, bid:float):
         pass

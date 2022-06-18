@@ -20,21 +20,25 @@ class MT5Client(Client):
         Frame.MO1: mt5.TIMEFRAME_MN1
     }
 
-    def __init__(self,id, password, server, simulation=True, frame = 5, symbol = 'USDJPY'):
-        super()
+    def __init__(self,id, password, server, simulation=True, frame = 5, symbol = 'USDJPY', budget=1000000, logger_config = None):
+        super().__init__(logger_name=__name__, logger_config=logger_config)
         self.simulation = simulation
         self.debug = False
         self.isWorking = mt5.initialize()
         if not self.isWorking:
-            print(f"initialize() failed, error code = {mt5.last_error()}")
-        print(f"MetaTrader5 package version {mt5.__version__}")
+            err_txt = f"initialize() failed, error code = {mt5.last_error()}"
+            self.logger.error(err_txt)
+            raise Exception(err_txt)
+        self.logger.info(f"MetaTrader5 package version {mt5.__version__}")
         authorized = mt5.login(
             id,
             password=password,
             server=server,
         )
         if not authorized:
-            raise Exception(f"User Authorization Failed")
+            err_txt = f"User Authorization Failed"
+            self.logger.error(err_txt)
+            raise Exception(err_txt)
         self.SYMBOL = symbol
         self.frame = frame
         try:
@@ -51,12 +55,14 @@ class MT5Client(Client):
         
         account_info = mt5.account_info()
         if account_info is None:
-            print(f"Retreiving account information failed")
-        print(f"Balance: {account_info}")
+            self.logger.warn(f"Retreiving account information failed. Please check your internet connection.")
+        self.logger.info(f"Balance: {account_info}")
 
         symbol_info = mt5.symbol_info(self.SYMBOL)
         if symbol_info is None:
-            raise Exception("Symbol not found")
+            err_txt = "Symbol not found"
+            self.logger.error(err_txt)
+            raise Exception(err_txt)
         self.point = symbol_info.point
         self.orders = {"ask":[], "bid":[]}        
     
@@ -137,7 +143,7 @@ class MT5Client(Client):
         if self.simulation is False:
             if tp != None:
                 if rate <= tp:
-                    print("tp should be lower than value")
+                    self.logger.warn("tp should be lower than value")
                 else:
                     _tp = tp
                     offset = rate - tp
@@ -174,7 +180,7 @@ class MT5Client(Client):
             
             if tp != None:
                 if rate >= tp:
-                    print("tp should be greater than value")
+                    self.logger.warn("tp should be greater than value")
                 else:
                     _tp = tp
                     offset = tp - rate

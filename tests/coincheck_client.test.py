@@ -1,4 +1,7 @@
-import unittest
+import unittest, os, json, sys, datetime
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+print(module_path)
+sys.path.append(module_path)
 from finance_client.coincheck.client import CoinCheckClient
 
 class TestCCClient(unittest.TestCase):

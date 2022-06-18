@@ -2,17 +2,51 @@ import pandas as pd
 from finance_client import utils
 import finance_client.market as market
 from finance_client.frames import Frame
+from logging import getLogger, config
+import os, json, datetime
+
 
 class Client:
     
     frame = None
     columns = None
     
-    def __init__(self, budget=1000000.0, indicater_processes:list = []):
-        self.market = market.Manager(budget)
+    def __init__(self, budget=1000000.0, indicater_processes:list = [], logger_name=None, logger=None):
+        dir = os.path.dirname(__file__)
+        try:
+            with open(os.path.join(dir, './settings.json'), 'r') as f:
+                    settings = json.load(f)
+        except Exception as e:
+            self.logger.error(f"fail to load settings file: {e}")
+            raise e
+        
+        if logger == None:
+            logger_config = settings["log"]
+        
+            try:
+                log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
+                log_folder = os.path.join(os.path.dirname(__file__), 'logs')
+                if os.path.exists(log_folder) == False:
+                    os.makedirs(log_folder)
+                logger_config["handlers"]["fileHandler"]["filename"] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
+                config.dictConfig(logger_config)
+            except Exception as e:
+                self.logger.error(f"fail to set configure file: {e}")
+                raise e
+            if logger_name == None:
+                logger_name == __name__
+            self.logger = getLogger(logger_name)
+            self.market = market.Manager(budget)
+        else:
+            self.logger = logger
+            self.market = market.Manager(budget, logger=logger)
+        
         self.__idc_processes = []
         self.__additional_length_for_idc = 0
         self.add_indicaters(indicater_processes)
+        
+    def initialize_budget(self, budget):
+        self.market(budget)
         
     ## call from an actual client
         
@@ -46,7 +80,7 @@ class Client:
                 self.__market_sell(symbol, bid_rate, amount, option_info)
                 return self.__open_short_position(symbol, bid_rate, amount, option_info)
         else:
-            Exception(f"{order_type} is not defined.")
+            logger.debug(f"{order_type} is not defined.")
             
     def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
@@ -64,7 +98,8 @@ class Client:
         elif id != None:
             position = self.market.get_position(id)
         else:
-            Exception("either position or id should be specified.")
+            self.logger.error("Either position or id should be specified.")
+            return None
             
         if position.order_type == "ask":
             if (price == None):
@@ -75,7 +110,7 @@ class Client:
                 price = self.get_current_ask()
             self.__buy_for_settlement(position.symbol, price, amount, position.option)
         else:
-            Exception(f"unkown order_type {position.order_type} is specified on close_position.")
+            self.logger.warn(f"Unkown order_type {position.order_type} is specified on close_position.")
         return self.market.close_position(position, price, amount)
     
     def close_all_positions(self):
@@ -143,7 +178,7 @@ class Client:
             if self.__additional_length_for_idc < required_length:
                 self.__additional_length_for_idc = required_length
         else:
-            print(f"process {process.key} is already added. If you want to add it, please change key value.")
+            logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
             
     def add_indicaters(self, processes: list):
         for process in processes:
@@ -157,7 +192,7 @@ class Client:
     def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
         required_length = interval + self.__additional_length_for_idc
         ohlc = self.get_rates(required_length)
-        if len(ohlc) != 0:
+        if type(ohlc) == pd.DataFrame and len(ohlc) == required_length:
             data = self.__run_processes(ohlc)
             return data.iloc[-interval:]
         else:
@@ -185,31 +220,31 @@ class Client:
         pass
     
     def get_params(self) -> dict:
-        raise Exception("Need to implement")
+        print("Need to implement get_params")
     
     ## defined by the actual client for dataset or env
     def close_client(self):
         pass
     
     def get_next_tick(self, frame=5):
-        raise Exception("Need to implement get_next_tick")
+        print("Need to implement get_next_tick")
 
     def reset(self, mode=None):
-        raise Exception("Need to implement reset")
+        print("Need to implement reset")
     
     def get_min_max(column, data_length = 0):
         pass
     
     @property
     def max(self):
-        raise Exception("Need to implement max")
+        print("Need to implement max")
         
     @property
     def min(self):
-        raise Exception("Need to implement min")
+        print("Need to implement min")
         
     def get_ohlc_columns(self) -> dict:
-        print("Need to implement")
+        print("Need to implement get_ohlc_columns")
     
     def __getitem__(self, ndx):
         return None

@@ -8,7 +8,7 @@ import datetime
 import json
 from finance_client.frames import Frame
 from finance_client.client_base import Client
-
+from logging import getLogger
 
 class CSVClient(Client):
     kinds = 'csv'
@@ -79,7 +79,7 @@ class CSVClient(Client):
             window_ = window
             while next_date != expected_date:
                 if  next_date > expected_date:
-                    print(f"{pre_index} to {next_index} has insufficient data")
+                    self.logger.warn(f"{pre_index} to {next_index} has insufficient data. rolling data anyway.")
                     #when next tick doen't start with expected_date, reduce missing count from window
                     NEXT_INDEX_PAD = -1
                     temp_next_date = data[self.date_column].iloc[next_index + NEXT_INDEX_PAD]
@@ -99,7 +99,7 @@ class CSVClient(Client):
                     next_date = data[self.date_column].iloc[next_index]
                     
             if pre_index == next_index and addNan:
-                print(f"{pre_index} has no data")
+                self.logger.info(f"{pre_index} has no data. Put NaN on this datetime")
                 expected_date = expected_date - delta
                 next_index = pre_index - window_
                 Highs.append(numpy.Nan)
@@ -133,7 +133,7 @@ class CSVClient(Client):
             return rolled_file_name
         raise Exception(f"{org_file_name} isn't csv.")
 
-    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = []):
+    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = [],budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
@@ -149,7 +149,7 @@ class CSVClient(Client):
             seed (int, options): specify random seed. Defaults to 1017
             idc_processes (Process, options) : list of indicater process. Dafaults to []
         """
-        super().__init__(indicater_processes=idc_processes)
+        super().__init__(budget=budget, indicater_processes=idc_processes, logger_name=__name__, logger=logger)
         self.__auto_index = auto_index
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
@@ -158,7 +158,7 @@ class CSVClient(Client):
         try:
             self.frame = frame
         except Exception as e:
-            print(e)
+            self.logger.error(e)
         self.ask_positions = {}
         if file == None:
             file_name = 'files.json'
@@ -180,7 +180,7 @@ class CSVClient(Client):
             try:
                 to_frame = int(out_frame)
             except Exception as e:
-                print(e)
+                self.logger.error(e)
             if frame < to_frame:
                 source_file = self.files[self.frame]
                 rolled_file_name = self.__get_rolled_file_name(source_file, frame, to_frame)
@@ -193,7 +193,7 @@ class CSVClient(Client):
                     self.data = rolled_data
                     self.frame = to_frame
             elif to_frame == frame:
-                print("file_frame and frame are same value. row file_frame is used.")
+                self.logger.info("file_frame and frame are same value. row file_frame is used.")
             else:
                 raise Exception("frame should be greater than file_frame as we can't decrease the frame.")
             self.out_frames = to_frame
@@ -219,13 +219,13 @@ class CSVClient(Client):
                         self.__step_index = self.__step_index + 1
                     return rates
                 except Exception as e:
-                    print(e)
+                    self.logger.error(e)
             else:
                 if self.__auto_refresh:
                     self.__step_index = random.randint(0, len(self.data))
                     return self.get_rates(interval)
                 else:
-                    print(f"not more data on index {self.__step_index}")
+                    self.logger.warn(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
         elif interval == -1:
             rates = self.data.copy()
@@ -242,7 +242,7 @@ class CSVClient(Client):
                     rates = self.data.iloc[self.__step_index - back_interval:self.__step_index+interval+1].copy()
                     return rates
                 except Exception as e:
-                    print(e)
+                    self.logger.error(e)
             else:
                 self.__step_index = random.randint(0, len(self.data))
                 return self.get_rates(interval)
@@ -284,7 +284,7 @@ class CSVClient(Client):
                             if total_minutes != 0:#otherwise, this day may have 1day data
                                 self.reset(mode, retry+1)
             else:
-                print("Warning: data client reset with {mode} mode retried over 10. index was not correctly reset.")
+                self.logger.warn("Data client reset with {mode} mode retried over 10. index was not correctly reset.")
                 return False
         return True
                                 
