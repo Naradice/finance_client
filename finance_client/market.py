@@ -17,7 +17,7 @@ class Position:
 
 class Manager:
     
-    poitions = {
+    positions = {
         "ask": {},
         "bid": {}
     }
