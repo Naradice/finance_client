@@ -331,7 +331,7 @@ class CSVClient(Client):
     def get_current_index(self):
         return self.__step_index
     
-    def get_ohlc_columns(self):
+    def get_ohlc_columns(self) -> dict:
         columns = {}
         for column in self.data.columns.values:
             column_ = str(column).lower()

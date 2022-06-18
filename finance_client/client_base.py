@@ -8,7 +8,7 @@ class Client:
     frame = None
     columns = None
     
-    def __init__(self, budget=100000.0, indicater_processes:list = []):
+    def __init__(self, budget=1000000.0, indicater_processes:list = []):
         self.market = market.Manager(budget)
         self.__idc_processes = []
         self.__additional_length_for_idc = 0
@@ -16,7 +16,7 @@ class Client:
         
     ## call from an actual client
         
-    def open_trade(self, is_buy,  amount:float, order_type:str, symbol:str, option_info=None):
+    def open_trade(self, is_buy, amount:float, order_type:str, symbol:str, price:float=None, option_info=None):
         """ by calling this in your client, order function is called and position is stored
 
         Args:
@@ -32,13 +32,19 @@ class Client:
         """
         if order_type == "Market":
             if is_buy:
-                ask_rate = self.get_current_ask()
+                if price == None:
+                    ask_rate = self.get_current_ask()
+                else:
+                    ask_rate = price
                 self.__market_buy(symbol, ask_rate, amount, option_info)
                 return self.__open_long_position(symbol, ask_rate, amount, option_info)
             else:
-                bid_rate = self.get_current_bid()
+                if price == None:
+                    bid_rate = self.get_current_bid()
+                else:
+                    bid_rate = price
                 self.__market_sell(symbol, bid_rate, amount, option_info)
-                return self.__open_short_position(symbol, amount, option_info)
+                return self.__open_short_position(symbol, bid_rate, amount, option_info)
         else:
             Exception(f"{order_type} is not defined.")
             
@@ -175,8 +181,8 @@ class Client:
     def min(self):
         raise Exception("Need to implement min")
         
-    def get_ohlc_columns(self):
-        raise Exception("Need to implement")
+    def get_ohlc_columns(self) -> dict:
+        print("Need to implement")
     
     def __getitem__(self, ndx):
         return None
@@ -237,9 +243,9 @@ class Client:
             return diffs
     
     def __open_long_position(self, symbol, boughtRate, amount, option_info=None):
-        position = self.market.open_position("ask", boughtRate, amount, option_info)
+        position = self.market.open_position("ask", symbol, boughtRate, amount, option_info)
         return position
 
-    def __open_short_position(self, soldRate, amount, option_info=None):
-        position = self.market.open_position("bid", soldRate, amount, option_info)
+    def __open_short_position(self, symbol, soldRate, amount, option_info=None):
+        position = self.market.open_position("bid",symbol,  soldRate, amount, option_info)
         return position
