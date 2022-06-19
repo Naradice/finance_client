@@ -17,7 +17,7 @@ class Client:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
                     settings = json.load(f)
         except Exception as e:
-            self.logger.error(f"fail to load settings file: {e}")
+            self.logger.error(f"fail to load settings file on client: {e}")
             raise e
         
         if logger == None:
@@ -65,6 +65,7 @@ class Client:
             Position: you can specify position or position.id to close the position
         """
         if order_type == "Market":
+            self.logger.debug("market order is requested.")
             if is_buy:
                 if price == None:
                     ask_rate = self.get_current_ask()
@@ -80,7 +81,7 @@ class Client:
                 self.__market_sell(symbol, bid_rate, amount, option_info)
                 return self.__open_short_position(symbol, bid_rate, amount, option_info)
         else:
-            logger.debug(f"{order_type} is not defined.")
+            self.logger.debug(f"{order_type} is not defined.")
             
     def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
@@ -142,7 +143,7 @@ class Client:
         positions = self.market.get_open_positions(order_type="bid")
         results = []
         for position in positions:
-            result = self.close_position(position)
+            result = self.close_position(position=position)
             results.append(result)
         return results
     
@@ -178,7 +179,7 @@ class Client:
             if self.__additional_length_for_idc < required_length:
                 self.__additional_length_for_idc = required_length
         else:
-            logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
+            self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
             
     def add_indicaters(self, processes: list):
         for process in processes:
@@ -305,9 +306,11 @@ class Client:
             return diffs
     
     def __open_long_position(self, symbol, boughtRate, amount, option_info=None):
+        self.logger.debug("open long position is created.")
         position = self.market.open_position("ask", symbol, boughtRate, amount, option_info)
         return position
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None):
-        position = self.market.open_position("bid",symbol,  soldRate, amount, option_info)
+        self.logger.debug("open short position is created.")
+        position = self.market.open_position("bid", symbol,  soldRate, amount, option_info)
         return position

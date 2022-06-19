@@ -33,12 +33,12 @@
 
         "loggers": {
             "finance_client.csv.client": {
-                "level": "DEBUG",
+                "level": "WARN",
                 "handlers": ["consoleHandler", "fileHandler"],
                 "propagate": false
             },
             "finance_client.market": {
-                "level": "DEBUG",
+                "level": "WARN",
                 "handlers": ["consoleHandler", "fileHandler"],
                 "propagate": false
             },

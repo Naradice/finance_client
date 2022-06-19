@@ -17,6 +17,9 @@ class Position:
         self.option = option
         self.symbol = symbol
         self.timestamp = datetime.datetime.now()
+        
+    def __str__(self) -> str:
+        return f'(order_type:{self.order_type}, price:{self.price}, amount:{self.amount}, symbol:{self.symbol})'
     
 
 class Manager:
@@ -139,7 +142,9 @@ class Manager:
                 price_diff = position.price - price
             
             profit = self.trade_unit * amount * price_diff
-            self.budget += profit
+            return_budget = self.trade_unit * amount * position.price + profit
+            
+            self.budget += return_budget
             
             if(self.__wait_lock()):
                 self.__locked = True
@@ -154,6 +159,8 @@ class Manager:
                 else:
                     self.__locked = False
                     logger.info("info: positionis already removed.")
+            else:
+                logger.debug("lock returned false somehow.")
         else:
             logger.warn(f"position amount is invalid: {position.amount}")
                 
