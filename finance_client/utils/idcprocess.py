@@ -16,7 +16,9 @@ def get_available_processes() -> dict:
         'BBAND': BBANDpreProcess,
         'ATR': ATRpreProcess,
         'RSI': RSIpreProcess,
-        'Roll': RollingProcess
+        #'Roll': RollingProcess,
+        'Renko': RenkoProcess,
+        'Slope': SlopeProcess
     }
     return processes
 
@@ -430,7 +432,6 @@ class RenkoProcess(ProcessBase):
         "ohlc_column": ('Open', 'High', 'Low', 'Close'),
         "window": 10
     }
-    available_columns = ["bar_num"]
     
     def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True):
         super().__init__(key)
@@ -439,6 +440,9 @@ class RenkoProcess(ProcessBase):
         self.option["window"] = window
         self.is_input = is_input
         self.is_output = is_output
+        self.columns = {
+            'NUM': f'{key}_block_num'
+        }
         
     @classmethod
     def load(self, key:str, params:dict):
@@ -454,10 +458,11 @@ class RenkoProcess(ProcessBase):
         date_column = option["date_column"]
         ohlc_column = option["ohlc_column"]
         window = option['window']
-        renko_block_num = "bar_num"
+        idc_column = "bar_num"
+        renko_block_num = self.columns["NUM"]
         
         renko_df = indicaters.renko_time_scale(data, date_column=date_column, ohlc_columns=ohlc_column, window=window)
-        return {"renko_block_num":renko_df[renko_block_num].values}
+        return {renko_block_num:renko_df[idc_column].values}
         
     def update(self, tick:pd.Series):
         raise Exception("update is not implemented yet on renko process")
@@ -476,7 +481,6 @@ class SlopeProcess(ProcessBase):
         "target_column": "Close",
         "window": 10
     }
-    available_columns = ["slope"]
     
     def __init__(self, key: str = "slope", target_column = "Close", window = 10, is_input = True, is_output = True):
         super().__init__(key)
@@ -484,6 +488,9 @@ class SlopeProcess(ProcessBase):
         self.option["window"] = window
         self.is_input = is_input
         self.is_output = is_output
+        self.columns = {
+            'Slope': f'{key}_slope'
+        }
         
     @classmethod
     def load(self, key:str, params:dict):
@@ -497,10 +504,11 @@ class SlopeProcess(ProcessBase):
         option = self.option
         column = option["target_column"]
         window = option['window']
-        out_column = "slope"
+        idc_out_column = "slope"
+        out_column = self.columns["Slope"]
         
         slope_df = indicaters.slope(data[column], window=window)
-        return {out_column: slope_df[out_column].values}
+        return {out_column: slope_df[idc_out_column].values}
         
     def update(self, tick:pd.Series):
         raise Exception("update is not implemented yet on slope process")

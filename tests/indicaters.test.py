@@ -32,24 +32,26 @@ class TestIndicaters(unittest.TestCase):
     def test_renko_process(self):
         client = CSVClient(file=file_path, logger=logger)
         prc = utils.RenkoProcess(window=120)
+        column = prc.columns["NUM"]
         client.add_indicater(prc)
         start_time = datetime.datetime.now()
         data = client.get_rate_with_indicaters(300)
         end_time = datetime.datetime.now()
         logger.debug(f"renko process took {end_time - start_time}")
-        self.assertEqual("renko_block_num" in data.columns, True)
-        self.assertEqual(len(data["renko_block_num"]), 300)
+        self.assertEqual(column in data.columns, True)
+        self.assertEqual(len(data[column]), 300)
     
     def test_slope_process(self):
         client = CSVClient(file=file_path, logger=logger)
         prc = utils.SlopeProcess(window=5)
+        slp_column = prc.columns["Slope"]
         client.add_indicater(prc)
         start_time = datetime.datetime.now()
         data = client.get_rate_with_indicaters(100)
         end_time = datetime.datetime.now()
         logger.debug(f"slope process took {end_time - start_time}")
-        self.assertEqual("slope" in data.columns, True)
-        self.assertEqual(len(data["slope"]), 100)
+        self.assertEqual(slp_column in data.columns, True)
+        self.assertEqual(len(data[slp_column]), 100)
         
     
 if __name__ == '__main__':
