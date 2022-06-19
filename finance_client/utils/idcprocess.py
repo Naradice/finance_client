@@ -1,3 +1,4 @@
+from matplotlib.style import available
 import numpy
 from finance_client.utils import indicaters
 import pandas as pd
@@ -7,6 +8,7 @@ from finance_client.utils.process import ProcessBase
     is_input, is_output are used for machine learning
 """
 
+#TODO: make output DataFrame
 def get_available_processes() -> dict:
     processes = {
         'MACD': MACDpreProcess,
@@ -419,6 +421,97 @@ class RSIpreProcess(ProcessBase):
     def revert(self, data_set:tuple):
         #pass
         return True, None
+
+class RenkoProcess(ProcessBase):
+    
+    kinds = "Renko"
+    option = {
+        "date_column": "Timestamp",
+        "ohlc_column": ('Open', 'High', 'Low', 'Close'),
+        "window": 10
+    }
+    available_columns = ["bar_num"]
+    
+    def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True):
+        super().__init__(key)
+        self.option["date_column"] = date_column
+        self.option["ohlc_column"] = ohlc_column
+        self.option["window"] = window
+        self.is_input = is_input
+        self.is_output = is_output
+        
+    @classmethod
+    def load(self, key:str, params:dict):
+        window = params["window"]
+        date_column = tuple(params["date_column"])
+        columns = tuple(params["ohlc_column"])
+        is_input = params["input"]
+        is_out = params["output"]
+        return RenkoProcess(key, date_column, columns, window, is_input, is_out)
+
+    def run(self, data: pd.DataFrame):
+        option = self.option
+        date_column = option["date_column"]
+        ohlc_column = option["ohlc_column"]
+        window = option['window']
+        renko_block_num = "bar_num"
+        
+        renko_df = indicaters.renko_time_scale(data, date_column=date_column, ohlc_columns=ohlc_column, window=window)
+        return {"renko_block_num":renko_df[renko_block_num].values}
+        
+    def update(self, tick:pd.Series):
+        raise Exception("update is not implemented yet on renko process")
+        
+    def get_minimum_required_length(self):
+        return self.option['window']
+    
+    def revert(self, data_set:tuple):
+        #pass
+        return True, None
+
+class SlopeProcess(ProcessBase):
+    
+    kinds = "Slope"
+    option = {
+        "target_column": "Close",
+        "window": 10
+    }
+    available_columns = ["slope"]
+    
+    def __init__(self, key: str = "slope", target_column = "Close", window = 10, is_input = True, is_output = True):
+        super().__init__(key)
+        self.option["target_column"] = target_column
+        self.option["window"] = window
+        self.is_input = is_input
+        self.is_output = is_output
+        
+    @classmethod
+    def load(self, key:str, params:dict):
+        window = params["window"]
+        column = tuple(params["target_column"])
+        is_input = params["input"]
+        is_out = params["output"]
+        return SlopeProcess(key, target_column=column, window=window, is_input=is_input, is_output=is_out)
+
+    def run(self, data: pd.DataFrame):
+        option = self.option
+        column = option["target_column"]
+        window = option['window']
+        out_column = "slope"
+        
+        slope_df = indicaters.slope(data[column], window=window)
+        return {out_column: slope_df[out_column].values}
+        
+    def update(self, tick:pd.Series):
+        raise Exception("update is not implemented yet on slope process")
+        
+    def get_minimum_required_length(self):
+        return self.option['window']
+    
+    def revert(self, data_set:tuple):
+        #pass
+        return True, None
+
 
 ####
 # Not implemented as I can't caliculate required length

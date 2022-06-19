@@ -2,7 +2,9 @@ from setuptools import setup, find_packages
 
 install_requires = [
     'numpy',
-    'pandas'
+    'pandas',
+    'stocktrends',
+    'statsmodels'
 ]
 
 setup(name='finance_client',

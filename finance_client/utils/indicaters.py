@@ -1,5 +1,10 @@
 import numpy as np
 import pandas as pd
+from stocktrends import Renko
+import statsmodels.api as sm
+import copy
+
+#TODO: unify output format
 
 def sum(data):
     amount = 0
@@ -49,7 +54,7 @@ def EMA(data, interval, a=None):
     return list of EMA. remove interval -1 length from the data
     if data length is less than interval, return EMA with length of data as interval
     '''
-    if len(data) > interval:
+    if len(data) >= interval:
         if type(data) == pd.DataFrame or type(data) == pd.Series:
             data_cp = data.copy()
             return data_cp.ewm(span=interval, adjust=False).mean()
@@ -292,3 +297,67 @@ def update_RSI(pre_data:pd.Series, new_data:pd.Series, columns = ("avgGain", "av
     rsi = 100 - (100/(1+rs))
     return avgGain, avgLoss, rsi
     
+def renko_from_ohlc(ohlc: pd.DataFrame, atr_length:int = 120, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close')):
+    "function to convert ohlc data into renko bricks. please note that length is depends on results of renko"
+    if len(ohlc[ohlc_columns[3]]) < atr_length:
+        raise Exception("Can't caliculate block size by atr as ohlc data length is less than atr_length.")
+    df = ohlc.copy()
+    df.reset_index(inplace=True)
+    #df = df.iloc[:,[0,1,2,3,4,5]]
+    #df.columns = ["date","open","close","high","low","volume"]
+    ohlc_columns = list(ohlc_columns)
+    required_columns = ohlc_columns
+    required_columns.insert(0, date_column)
+    df = df[required_columns]
+    ohlc_column_4_renko = ["open", "high", "low", "close"]
+    date_column_4_renko = "date"
+    columns_4_renko = ohlc_column_4_renko
+    columns_4_renko.insert(0, date_column_4_renko)
+    df.columns = columns_4_renko
+    df2 = Renko(df)
+    atr = ATR_from_ohlc(ohlc, ohlc_columns, atr_length).iloc[-1]
+    df2.brick_size = round(atr,4)
+    renko_df = df2.get_ohlc_data()
+    #renko_df["bar_num"] = np.where(renko_df["uptrend"]==True,1,np.where(renko_df["uptrend"]==False,-1,0))
+    bar_num = np.where(renko_df["uptrend"]==True,1,np.where(renko_df["uptrend"]==False,-1,0))
+    for i in range(1,len(bar_num)):
+        if bar_num[i]>0 and bar_num[i-1]>0:
+            bar_num[i]+=bar_num[i-1]
+        elif bar_num[i]<0 and bar_num[i-1]<0:
+            bar_num[i]+=bar_num[i-1]
+    renko_df["bar_num"] = bar_num
+    #when value rise up/down multiple bricks, renko (ohlc value as brick) is stored on same date. so we need to drop duplicates and keep last item only.
+    renko_df.drop_duplicates(subset="date",keep="last",inplace=True)
+    renko_df = renko_df[[date_column_4_renko,"uptrend", "bar_num"]]
+    renko_df.columns = [date_column, "uptrend", "bar_num"]
+    return renko_df
+
+def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close'), is_date_index=False, window=120):
+    "function to merging renko df with original ohlc df"
+    df = copy.deepcopy(DF)
+    if is_date_index:
+        if type(date_column) != str:
+            date_column = "date"
+        df[date_column] = df.index
+    else:
+        if type(date_column) != str or date_column not in DF:
+            raise Exception("datetime index or columns is required to scale renko result to the datetime.")
+    renko = renko_from_ohlc(df, ohlc_columns=ohlc_columns, date_column=date_column, atr_length=window)
+    merged_df = df.merge(renko.loc[:,[date_column,"bar_num"]],how="outer",on=date_column)
+    merged_df["bar_num"].fillna(method='ffill',inplace=True)
+    return merged_df
+
+def slope(ser: pd.Series, window):
+    "function to calculate the slope of n consecutive points on a plot"
+    slopes = [0 for i in range(window-1)]
+    for i in range(window, len(ser)+1):
+        y = ser.iloc[i-window:i]
+        x = np.array(range(window))
+        y_scaled = (y - y.min())/(y.max() - y.min())
+        x_scaled = (x - x.min())/(x.max() - x.min())
+        x_scaled = sm.add_constant(x_scaled)
+        model = sm.OLS(y_scaled,x_scaled)
+        results = model.fit()
+        slopes.append(results.params[-1])
+    slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
+    return pd.DataFrame({"slope":np.array(slope_angle)})
