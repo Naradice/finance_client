@@ -1,3 +1,4 @@
+from time import sleep
 import unittest, os, json, sys, datetime
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 print(module_path)
@@ -33,7 +34,6 @@ id = int(mt5_settings["id"])
 client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"], frame=Frame.MIN5, logger=logger)
 
 class TestMT5Client(unittest.TestCase):
-    
     def test_get_rates(self):
         data = client.get_rates(100)
         columns = client.get_ohlc_columns()
@@ -55,7 +55,40 @@ class TestMT5Client(unittest.TestCase):
         data = client.get_rate_with_indicaters(100)
         self.assertEqual(macd_column in data.columns, True)
         self.assertEqual(len(data[macd_column]), 100)
+    
+    def test_auto_index_5min(self):
+        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger)
         
+        count = 0
+        previouse_time = None
+        while count < 6:
+            data = client.get_rates(30)
+            if previouse_time != None:
+                current_time = data['time'].iloc[0]
+                delta = current_time - previouse_time
+                self.assertEqual(int(delta.total_seconds()), 60*Frame.MIN5)
+                previouse_time = current_time
+            else:
+                previouse_time = data['time'].iloc[0]
+            sleep(60)
+            count += 1
+        
+    def test_auto_index_1min(self):
+        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN1, logger=logger)
+        
+        count = 0
+        previouse_time = None
+        while count < 3:
+            data = client.get_rates(30)
+            if previouse_time != None:
+                current_time = data['time'].iloc[0]
+                delta = current_time - previouse_time
+                self.assertEqual(int(delta.total_seconds()), 60*Frame.MIN1)
+                previouse_time = current_time
+            else:
+                previouse_time = data['time'].iloc[0]
+            sleep(120)
+            count += 1
     
 if __name__ == '__main__':
     unittest.main()

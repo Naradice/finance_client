@@ -1,3 +1,4 @@
+import datetime
 import MetaTrader5 as mt5
 import pandas as pd
 import random
@@ -20,7 +21,7 @@ class MT5Client(Client):
         Frame.MO1: mt5.TIMEFRAME_MN1
     }
 
-    def __init__(self,id, password, server, simulation=True, frame = 5, symbol = 'USDJPY', budget=1000000, logger = None):
+    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', budget=1000000, logger = None):
         super().__init__(logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
@@ -46,13 +47,6 @@ class MT5Client(Client):
         except Exception as e:
             raise e
         
-        if self.simulation:
-            if frame != Frame.MIN5:
-                raise Exception("simulation mode is available only for MIN5 for now")
-            random.seed(1017)
-            self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
-            self.sim_initial_index = self.sim_index
-        
         account_info = mt5.account_info()
         if account_info is None:
             self.logger.warn(f"Retreiving account information failed. Please check your internet connection.")
@@ -65,6 +59,17 @@ class MT5Client(Client):
             raise Exception(err_txt)
         self.point = symbol_info.point
         self.orders = {"ask":[], "bid":[]}
+        
+        if self.simulation:
+            if frame != Frame.MIN5:
+                self.logger.warn("simulation mode is available only for MIN5 for now")
+            random.seed(1017)
+            #self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
+            self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*345) ##only for M5
+            self.sim_initial_index = self.sim_index
+            self.__auto_index = auto_index
+            if auto_index:
+                self.__start_time = None
     
     def __post_market_order(self, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
@@ -251,6 +256,30 @@ class MT5Client(Client):
         df_rates = pd.DataFrame(rates)
         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
         #df_rates = df_rates.set_index('time')
+        if self.simulation and self.__auto_index:
+            if self.__start_time == None:
+                self.__start_time = df_rates['time'].iloc[0]
+                self.logger.debug(f"auto index: initialized with {self.__start_time}")
+                self.sim_index = self.sim_index - 1
+            else:
+                current_time = df_rates['time'].iloc[0]
+                delta = current_time - self.__start_time
+                past_index_by_time = int(delta.total_seconds()/(self.frame*60))
+                past_index = self.sim_initial_index - self.sim_index
+                if past_index_by_time == past_index:
+                    self.sim_index = self.sim_index - 1
+                    self.logger.debug(f"auto index: added index on {current_time}")
+                elif past_index_by_time > past_index:# frame time passed
+                    self.logger.debug(f"auto index: {past_index_by_time} > {past_index} on {current_time}")
+                    diff_index = (past_index_by_time - past_index)
+                    self.sim_index = self.sim_index + diff_index
+                    self.sim_initial_index = self.sim_initial_index + diff_index
+                    rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, self.sim_index, interval)
+                    df_rates = pd.DataFrame(rates)
+                    df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
+                    self.logger.debug(f"auto index: fixed to {df_rates['time'].iloc[0]}")
+                    #to avoid infinite loop, don't call oneself
+                    self.sim_index = self.sim_index - 1
         return df_rates
     
     def cancel_order(self, order):
