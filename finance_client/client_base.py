@@ -12,6 +12,7 @@ class Client:
     columns = None
     
     def __init__(self, budget=1000000.0, indicater_processes:list = [], logger_name=None, logger=None):
+        self.auto_index = None
         dir = os.path.dirname(__file__)
         try:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
@@ -316,7 +317,10 @@ class Client:
     def get_ohlc_columns(self) -> dict:
         if self.ohlc_columns == None:
             columns = {}
+            temp = self.auto_index
+            self.auto_index = False
             data = self.get_rates(1)
+            self.auto_index = temp
             for column in data.columns.values:
                 column_ = str(column).lower()
                 if column_ == 'open':

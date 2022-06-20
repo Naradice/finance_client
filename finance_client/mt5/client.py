@@ -21,7 +21,7 @@ class MT5Client(Client):
         Frame.MO1: mt5.TIMEFRAME_MN1
     }
 
-    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', budget=1000000, logger = None):
+    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', budget=1000000, logger = None, simulation_seed = 1017):
         super().__init__(logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
@@ -63,13 +63,16 @@ class MT5Client(Client):
         if self.simulation:
             if frame != Frame.MIN5:
                 self.logger.warn("simulation mode is available only for MIN5 for now")
-            random.seed(1017)
+            if type(simulation_seed) == int:
+                random.seed(simulation_seed)
+            else:
+                random.seed(1017)
             #self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
             self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*345) ##only for M5
             self.sim_initial_index = self.sim_index
-            self.__auto_index = auto_index
+            self.auto_index = auto_index
             if auto_index:
-                self.__start_time = None
+                self.__next_time = None
     
     def __post_market_order(self, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
@@ -119,20 +122,23 @@ class MT5Client(Client):
 
     def get_current_ask(self):
         if self.simulation:
-            next_data = self.get_rates(self.span, 1, self.sim_index-1)
-            #value = random.uniform(next_data["Open"].iloc[0], next_data["High"].iloc[0])
-            value = next_data["Open"].iloc[0] + next_data["spread"].iloc[0]*self.point
-            return value
-            
+            next_data = self.__get_rates(1, self.sim_index-1)
+            open_column = self.get_ohlc_columns()["Open"]
+            high_column = self.get_ohlc_columns()["High"]
+            value = random.uniform(next_data[open_column].iloc[0], next_data[high_column].iloc[0])
+            #value = next_data[open_column].iloc[0] + next_data["spread"].iloc[0]*self.point
+            return float(value)
         else:
             return mt5.symbol_info_tick(self.SYMBOL).ask
     
     def get_current_bid(self):
         if self.simulation:
-            next_data = self.get_rates(self.span, 1, self.sim_index-1)
-            #value = random.uniform(next_data["Low"].iloc[0], next_data["Open"].iloc[0])
-            value = next_data["Open"].iloc[0] - next_data["spread"].iloc[0]*self.point
-            return value
+            next_data = self.__get_rates(1, self.sim_index-1)
+            open_column = self.get_ohlc_columns()["Open"]
+            low_column = self.get_ohlc_columns()["Low"]
+            value = random.uniform(next_data[low_column].iloc[0], next_data[open_column].iloc[0])
+            #value = next_data[open_column].iloc[0] - next_data["spread"].iloc[0]*self.point
+            return float(value)
         else:
             return mt5.symbol_info_tick(self.SYMBOL).bid
     
@@ -243,43 +249,71 @@ class MT5Client(Client):
                 position=position,
             )
             return result
-        
-    def get_rates(self, interval, start = 0):
+    
+    def __get_rates(self, interval, start = 0):
         start_index = 0
+        _interval = None
         if start != 0:
             start_index = start
-        else:
-            if self.simulation:
-                start_index = self.sim_index
+        elif self.simulation:
+            start_index = self.sim_index
+            if self.auto_index and interval == 1:
+                _interval  = interval
+                interval += 1
                 
         rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
         df_rates = pd.DataFrame(rates)
         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
         #df_rates = df_rates.set_index('time')
-        if self.simulation and self.__auto_index:
-            if self.__start_time == None:
-                self.__start_time = df_rates['time'].iloc[0]
-                self.logger.debug(f"auto index: initialized with {self.__start_time}")
-                self.sim_index = self.sim_index - 1
+        
+        if self.simulation and self.auto_index:
+            if self.__next_time == None:
+                self.__next_time = df_rates['time'].iloc[1]
+                self.logger.debug(f"auto index: initialized with {df_rates['time'].iloc[0]}")
             else:
                 current_time = df_rates['time'].iloc[0]
-                delta = current_time - self.__start_time
-                past_index_by_time = int(delta.total_seconds()/(self.frame*60))
-                past_index = self.sim_initial_index - self.sim_index
-                if past_index_by_time == past_index:
-                    self.sim_index = self.sim_index - 1
-                    self.logger.debug(f"auto index: added index on {current_time}")
-                elif past_index_by_time > past_index:# frame time passed
-                    self.logger.debug(f"auto index: {past_index_by_time} > {past_index} on {current_time}")
-                    diff_index = (past_index_by_time - past_index)
-                    self.sim_index = self.sim_index + diff_index
-                    self.sim_initial_index = self.sim_initial_index + diff_index
-                    rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, self.sim_index, interval)
-                    df_rates = pd.DataFrame(rates)
-                    df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
-                    self.logger.debug(f"auto index: fixed to {df_rates['time'].iloc[0]}")
+                if current_time == self.__next_time:
+                    self.logger.debug(f"auto index: index is ongoing on {current_time}")
+                    self.__next_time = df_rates['time'].iloc[1]
+                elif current_time > self.__next_time:
+                    self.logger.debug(f"auto index: {current_time} > {self.__next_time}. may time past.")
+                    candidate = self.sim_index
+                    while current_time != self.__next_time:
+                        candidate += 1
+                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, interval)
+                        df_rates = pd.DataFrame(rates)
+                        df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
+                        current_time = df_rates['time'].iloc[0]
+                    self.sim_index = candidate
+                    
+                    self.logger.debug(f"auto index: fixed to {current_time}")
+                    self.__next_time = df_rates['time'].iloc[1]
                     #to avoid infinite loop, don't call oneself
-                    self.sim_index = self.sim_index - 1
+                else:
+                    self.logger.warn(f"auto index: {current_time} < {self.__next_time} somehow.")
+                    candidate = self.sim_index
+                    while current_time != self.__next_time:
+                        candidate = candidate - 1
+                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, interval)
+                        df_rates = pd.DataFrame(rates)
+                        df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
+                        current_time = df_rates['time'].iloc[0]
+                    self.sim_index = candidate
+                    
+                    self.logger.debug(f"auto index: fixed to {current_time}")
+                    self.__next_time = df_rates['time'].iloc[1]
+                    
+        if self.auto_index and _interval:
+            df_rates.iloc[:interval]
+        else:
+            return df_rates
+        
+    def get_rates(self, interval, start = 0):
+        
+        df_rates = self.__get_rates(interval=interval, start=start)
+        if self.auto_index:
+            self.sim_index = self.sim_index - 1
+
         return df_rates
     
     def cancel_order(self, order):

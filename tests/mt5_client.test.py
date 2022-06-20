@@ -1,5 +1,7 @@
 from time import sleep
 import unittest, os, json, sys, datetime
+
+import numpy
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 print(module_path)
 sys.path.append(module_path)
@@ -31,9 +33,19 @@ except Exception as e:
 
 mt5_settings = env['mt5']
 id = int(mt5_settings["id"])
-client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"], frame=Frame.MIN5, logger=logger)
+simulation = True
+client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=simulation, frame=Frame.MIN5, logger=logger)
 
 class TestMT5Client(unittest.TestCase):
+    
+    def test_get_current_ask(self):
+        ask_value = client.get_current_ask()
+        self.assertEqual(type(ask_value), float)
+        
+    def test_get_current_bid(self):
+        bid_value = client.get_current_bid()
+        self.assertEqual(type(bid_value), float)
+        
     def test_get_rates(self):
         data = client.get_rates(100)
         columns = client.get_ohlc_columns()
@@ -57,6 +69,56 @@ class TestMT5Client(unittest.TestCase):
         self.assertEqual(len(data[macd_column]), 100)
     
     def test_auto_index_5min(self):
+        """check when frame time past during run
+        """
+        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger, simulation_seed=1111)
+        
+        count = 0
+        next_time = None
+        while count < 6:
+            data = client.get_rates(30)
+            if next_time != None:
+                current_time = data['time'].iloc[0]
+                self.assertEqual(current_time, next_time)
+            next_time = data['time'].iloc[1]
+            sleep(60)
+            count += 1
+    
+        
+    def test_auto_index_1min(self):
+        """check when wait time is longer than frame
+        """
+        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN1, logger=logger)
+        
+        count = 0
+        next_time = None
+        while count < 3:
+            data = client.get_rates(30)
+            if next_time != None:
+                current_time = data['time'].iloc[0]
+                self.assertEqual(current_time, next_time)
+            next_time = data['time'].iloc[1]
+            sleep(120)
+            count += 1
+    
+    def test_auto_index_H2(self):
+        """check when week change
+        """
+        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.H2, logger=logger, simulation_seed=1111)
+        
+        count = 0
+        next_time = None
+        while count < 12*7:
+            data = client.get_rates(30)
+            if next_time != None:
+                current_time = data['time'].iloc[0]
+                self.assertEqual(current_time, next_time)
+            next_time = data['time'].iloc[1]
+            sleep(1)
+            count += 1
+    """
+    
+    def test_auto_index_5min_with_indicaters(self):
         client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger)
         
         count = 0
@@ -72,23 +134,7 @@ class TestMT5Client(unittest.TestCase):
                 previouse_time = data['time'].iloc[0]
             sleep(60)
             count += 1
-        
-    def test_auto_index_1min(self):
-        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN1, logger=logger)
-        
-        count = 0
-        previouse_time = None
-        while count < 3:
-            data = client.get_rates(30)
-            if previouse_time != None:
-                current_time = data['time'].iloc[0]
-                delta = current_time - previouse_time
-                self.assertEqual(int(delta.total_seconds()), 60*Frame.MIN1)
-                previouse_time = current_time
-            else:
-                previouse_time = data['time'].iloc[0]
-            sleep(120)
-            count += 1
+    """
     
 if __name__ == '__main__':
     unittest.main()

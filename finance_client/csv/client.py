@@ -150,7 +150,7 @@ class CSVClient(Client):
             idc_processes (Process, options) : list of indicater process. Dafaults to []
         """
         super().__init__(budget=budget, indicater_processes=idc_processes, logger_name=__name__, logger=logger)
-        self.__auto_index = auto_index
+        self.auto_index = auto_index
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
         if type(file) == str:
@@ -215,7 +215,7 @@ class CSVClient(Client):
                 try:
                     #return data which have interval length
                     rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1].copy()
-                    if self.__auto_index:
+                    if self.auto_index:
                         self.__step_index = self.__step_index + 1
                     return rates
                 except Exception as e:
