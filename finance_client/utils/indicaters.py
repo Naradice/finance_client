@@ -360,4 +360,4 @@ def slope(ser: pd.Series, window):
         results = model.fit()
         slopes.append(results.params[-1])
     slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
-    return pd.DataFrame({"slope":np.array(slope_angle)})
+    return pd.Series({"slope":np.array(slope_angle)})

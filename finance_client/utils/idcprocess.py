@@ -477,13 +477,10 @@ class RenkoProcess(ProcessBase):
 class SlopeProcess(ProcessBase):
     
     kinds = "Slope"
-    option = {
-        "target_column": "Close",
-        "window": 10
-    }
     
     def __init__(self, key: str = "slope", target_column = "Close", window = 10, is_input = True, is_output = True):
         super().__init__(key)
+        self.option = {}
         self.option["target_column"] = target_column
         self.option["window"] = window
         self.is_input = is_input
@@ -508,7 +505,8 @@ class SlopeProcess(ProcessBase):
         out_column = self.columns["Slope"]
         
         slope_df = indicaters.slope(data[column], window=window)
-        return {out_column: slope_df[idc_out_column].values}
+        slopes = slope_df[idc_out_column]
+        return {out_column: slopes}
         
     def update(self, tick:pd.Series):
         raise Exception("update is not implemented yet on slope process")
