@@ -257,9 +257,9 @@ class MT5Client(Client):
             start_index = start
         elif self.simulation:
             start_index = self.sim_index
-            if self.auto_index and interval == 1:
-                _interval  = interval
-                interval += 1
+        if self.auto_index and interval == 1:
+            _interval  = interval
+            interval += 1
                 
         rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
         df_rates = pd.DataFrame(rates)
@@ -304,7 +304,7 @@ class MT5Client(Client):
                     self.__next_time = df_rates['time'].iloc[1]
                     
         if self.auto_index and _interval:
-            df_rates.iloc[:interval]
+            return df_rates.iloc[:interval]
         else:
             return df_rates
         
