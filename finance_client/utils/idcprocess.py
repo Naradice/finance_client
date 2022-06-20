@@ -1,3 +1,4 @@
+from signal import signal
 from matplotlib.style import available
 import numpy
 from finance_client.utils import indicaters
@@ -54,17 +55,17 @@ def load_indicaters(params:dict) -> list:
 class MACDpreProcess(ProcessBase):
     
     kinds = 'MACD'
-    option = {
-        "column": "Close",
-        "short_window": 12,
-        "long_window": 26,
-        "signal_window":9
-    }
-    
     last_data = None
     
-    def __init__(self, key='macd', option=None, is_input=True, is_output=True):
+    def __init__(self, key='macd', target_column = "Close", short_window=12, long_window=26, signal_window = 9, option=None, is_input=True, is_output=True):
         super().__init__(key)
+        self.option = {
+            "column": target_column,
+            "short_window": short_window,
+            "long_window": long_window,
+            "signal_window": signal_window
+        }
+        
         if option != None:
             self.option.update(option)
         self.columns = {
@@ -83,7 +84,8 @@ class MACDpreProcess(ProcessBase):
         }
         is_input = params["input"]
         is_out = params["output"]
-        macd = MACDpreProcess(key, option, is_input, is_out)
+        macd = MACDpreProcess(key, option=option, is_input=is_input, is_output=is_out)
+        return macd
         
 
     def run(self, data: pd.DataFrame):
@@ -145,17 +147,14 @@ class MACDpreProcess(ProcessBase):
 class EMApreProcess(ProcessBase):
     
     kinds = 'EMA'
-    option = {
-        "column": "Close",
-        "window": 12
-    }
-    
     last_data = None
     
     def __init__(self, key='ema', window = 12, column = 'Close', is_input=True, is_output=True):
         super().__init__(key)
-        self.option['window'] = window
-        self.option['column'] = column
+        self.option = {
+            "column": column,
+            "window": window
+        }
         self.columns = {
             "EMA":f'{key}_EMA'
         }
@@ -210,20 +209,15 @@ class EMApreProcess(ProcessBase):
 class BBANDpreProcess(ProcessBase):
     
     kinds = 'BBAND'
-    option = {
-        "column": "Close",
-        "window": 14,
-        'alpha':2
-    }
-    
     last_data = None
     
     def __init__(self, key='bolinger', window = 14, alpha=2, target_column = 'Close', is_input=True, is_output=True):
         super().__init__(key)
-        self.option['column'] = target_column
-        self.option['window'] = window
-        self.option['alpha'] = alpha
-        
+        self.option = {
+            "column": target_column,
+            "window": window,
+            'alpha': alpha
+        }        
         self.columns = {
             "MB": f"{key}_MB",
             "UB": f"{key}_UB",
@@ -294,20 +288,16 @@ class BBANDpreProcess(ProcessBase):
 class ATRpreProcess(ProcessBase):
     
     kinds = 'ATR'
-    option = {
-        "ohlc_column": ('Open', 'High', 'Low', 'Close'),
-        "window": 14
-    }
-    
     last_data = None
     
     available_columns = ["ATR"]
-    columns = available_columns
     
     def __init__(self, key='atr', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True):
         super().__init__(key)
-        self.option['column'] = ohlc_column_name
-        self.option['window'] = window
+        self.option = {
+            "ohlc_column": ohlc_column_name,
+            "window": window
+        }
         self.columns = {'ATR': f'{key}_ATR'}
         self.is_input = is_input
         self.is_output = is_output
@@ -356,20 +346,15 @@ class ATRpreProcess(ProcessBase):
 class RSIpreProcess(ProcessBase):
     
     kinds = 'RSI'
-    option = {
-        "ohlc_column": ('Open', 'High', 'Low', 'Close'),
-        "window": 14
-    }
-    
     last_data = None
-    
     available_columns = ["RSI", "AVG_GAIN", "AVG_LOSS"]
-    columns = available_columns
     
     def __init__(self, key='rsi', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True):
         super().__init__(key)
-        self.option['column'] = ohlc_column_name
-        self.option['window'] = window
+        self.option = {
+            "ohlc_column": ohlc_column_name,
+            "window": window
+        }
         self.columns = {
             "RSI": f'{key}_RSI',
             "GAIN": f'{key}_AVG_GAIN',
@@ -427,17 +412,14 @@ class RSIpreProcess(ProcessBase):
 class RenkoProcess(ProcessBase):
     
     kinds = "Renko"
-    option = {
-        "date_column": "Timestamp",
-        "ohlc_column": ('Open', 'High', 'Low', 'Close'),
-        "window": 10
-    }
     
     def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True):
         super().__init__(key)
-        self.option["date_column"] = date_column
-        self.option["ohlc_column"] = ohlc_column
-        self.option["window"] = window
+        self.option = {
+            "date_column": date_column,
+            "ohlc_column": ohlc_column,
+            "window": window
+        }
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
@@ -517,7 +499,6 @@ class SlopeProcess(ProcessBase):
     def revert(self, data_set:tuple):
         #pass
         return True, None
-
 
 ####
 # Not implemented as I can't caliculate required length

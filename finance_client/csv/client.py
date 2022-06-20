@@ -331,21 +331,6 @@ class CSVClient(Client):
     def get_current_index(self):
         return self.__step_index
     
-    def get_ohlc_columns(self) -> dict:
-        columns = {}
-        for column in self.data.columns.values:
-            column_ = str(column).lower()
-            if column_ == 'open':
-                columns['Open'] = column
-            elif column_ == 'high':
-                columns['High'] = column
-            elif column_ == 'low':
-                columns['Low'] = column
-            elif column_ == 'close':
-                columns['Close'] = column
-        return columns
-
-    
     def get_params(self) -> dict:
         param = {
             'type':self.kinds,

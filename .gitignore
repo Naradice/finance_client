@@ -15,3 +15,4 @@ finance_client.egg-info
 __pycache__/
 /dist
 *finance_client*.logs
+tests/env.test.json

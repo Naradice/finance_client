@@ -20,8 +20,8 @@ class MT5Client(Client):
         Frame.MO1: mt5.TIMEFRAME_MN1
     }
 
-    def __init__(self,id, password, server, simulation=True, frame = 5, symbol = 'USDJPY', budget=1000000, logger_config = None):
-        super().__init__(logger_name=__name__, logger_config=logger_config)
+    def __init__(self,id, password, server, simulation=True, frame = 5, symbol = 'USDJPY', budget=1000000, logger = None):
+        super().__init__(logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
         self.isWorking = mt5.initialize()
@@ -64,7 +64,7 @@ class MT5Client(Client):
             self.logger.error(err_txt)
             raise Exception(err_txt)
         self.point = symbol_info.point
-        self.orders = {"ask":[], "bid":[]}        
+        self.orders = {"ask":[], "bid":[]}
     
     def __post_market_order(self, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
@@ -250,10 +250,7 @@ class MT5Client(Client):
         rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
         df_rates = pd.DataFrame(rates)
         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
-        df_rates = df_rates.set_index('time')
-        df_rates.columns = [
-            'Open', 'High', 'Low', 'Close', 'tick_volume', 'spread', 'real_volume',
-        ]
+        #df_rates = df_rates.set_index('time')
         return df_rates
     
     def cancel_order(self, order):

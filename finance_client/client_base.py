@@ -19,6 +19,7 @@ class Client:
         except Exception as e:
             self.logger.error(f"fail to load settings file on client: {e}")
             raise e
+        self.ohlc_columns = None
         
         if logger == None:
             logger_config = settings["log"]
@@ -243,9 +244,6 @@ class Client:
     @property
     def min(self):
         print("Need to implement min")
-        
-    def get_ohlc_columns(self) -> dict:
-        print("Need to implement get_ohlc_columns")
     
     def __getitem__(self, ndx):
         return None
@@ -314,3 +312,22 @@ class Client:
         self.logger.debug("open short position is created.")
         position = self.market.open_position("bid", symbol,  soldRate, amount, option_info)
         return position
+    
+    def get_ohlc_columns(self) -> dict:
+        if self.ohlc_columns == None:
+            columns = {}
+            data = self.get_rates(1)
+            for column in data.columns.values:
+                column_ = str(column).lower()
+                if column_ == 'open':
+                    columns['Open'] = column
+                elif column_ == 'high':
+                    columns['High'] = column
+                elif column_ == 'low':
+                    columns['Low'] = column
+                elif column_ == 'close':
+                    columns['Close'] = column
+                elif "time" in column_:#assume time, timestamp or datetime
+                    columns["Time"] = column
+            self.ohlc_columns = columns
+        return self.ohlc_columns
