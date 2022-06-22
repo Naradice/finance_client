@@ -162,7 +162,7 @@ class Manager:
             else:
                 logger.debug("lock returned false somehow.")
         else:
-            logger.warn(f"position amount is invalid: {position.amount}")
+            logger.warning(f"position amount is invalid: {position.amount}")
                 
     def check_order_in_tick(ask:float, bid:float):
         pass

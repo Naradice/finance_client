@@ -1,19 +1,21 @@
+import queue
+import threading
 import pandas as pd
 from finance_client import utils
 import finance_client.market as market
 from finance_client.frames import Frame
 from logging import getLogger, config
 import os, json, datetime
-
+import time
 
 class Client:
     
-    frame = None
-    columns = None
-    
-    def __init__(self, budget=1000000.0, indicater_processes:list = [], logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, indicater_processes:list = [], post_processes: list = [], frame:int = Frame.MIN5, provider = "Default", logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
+        self.__data_queue = None
+        self.__timer_thread = None
+        self.__data_queue_length = None
         try:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
                     settings = json.load(f)
@@ -41,11 +43,18 @@ class Client:
             self.market = market.Manager(budget)
         else:
             self.logger = logger
-            self.market = market.Manager(budget, logger=logger)
+            self.market = market.Manager(budget, logger=logger, provider=provider)
+            
+        try:
+            self.frame = int(frame)
+        except Exception as e:
+            self.logger.error(e)
         
         self.__idc_processes = []
-        self.__additional_length_for_idc = 0
+        self.__additional_length_for_prc = 0
         self.add_indicaters(indicater_processes)
+        self.__postprocesses = []
+        self.add_postprocesses(post_processes)
         
     def initialize_budget(self, budget):
         self.market(budget)
@@ -113,7 +122,7 @@ class Client:
                 price = self.get_current_ask()
             self.__buy_for_settlement(position.symbol, price, amount, position.option)
         else:
-            self.logger.warn(f"Unkown order_type {position.order_type} is specified on close_position.")
+            self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
         return self.market.close_position(position, price, amount)
     
     def close_all_positions(self):
@@ -157,16 +166,23 @@ class Client:
         Ex. you can define MACD as process. The results of the process are stored as dataframe[key] = values
         """
         data_cp = data.copy()
+        columns_dict = self.get_ohlc_columns()
+        date_data = None
+        if "Time" in columns_dict and columns_dict["Time"] != None:
+            date_column = columns_dict["Time"]
+            columns = list(data_cp.columns.copy())
+            date_data = data_cp[date_column].copy()
+            columns.remove(date_column)
+            data_cp = data_cp[columns]
+            
         
-        if len(self.__idc_processes) > 0:
-            processes = self.__idc_processes
-        else:
-            return None
-        
-        for process in processes:
-            values_dict = process.run(data_cp)
-            for column, values in values_dict.items():
-                data_cp[column] = values
+        for processes in [self.__idc_processes, self.__postprocesses]:
+            for process in processes:
+                values_dict = process.run(data_cp)
+                for column, values in values_dict.items():
+                    data_cp[column] = values
+        if type(date_data) != type(None):
+            data_cp[date_column] = date_data
         data_cp = data_cp.dropna(how = 'any')
         return data_cp
     
@@ -178,28 +194,82 @@ class Client:
         if self.have_process(process) == False:
             self.__idc_processes.append(process)
             required_length = process.get_minimum_required_length()
-            if self.__additional_length_for_idc < required_length:
-                self.__additional_length_for_idc = required_length
+            if self.__additional_length_for_prc < required_length:
+                self.__additional_length_for_prc = required_length
         else:
             self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
             
     def add_indicaters(self, processes: list):
         for process in processes:
             self.add_indicater(process)
-
-    ## Need to implement in the actual client ##
-
-    def get_rates(self, interval:int) -> pd.DataFrame:
-        print("Overwrite get_rates in your client")
     
+    def add_postprocess(self, process: utils.ProcessBase):
+        if self.have_process(process) == False:
+            self.__postprocesses.append(process)
+            additional_length = process.get_minimum_required_length()
+            self.__additional_length_for_prc += additional_length
+        else:
+            self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
+    
+    def add_postprocesses(self, processes: list):
+        for process in processes:
+            self.add_indicater(process)
+        
+            
     def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
-        required_length = interval + self.__additional_length_for_idc
+        required_length = interval + self.__additional_length_for_prc
         ohlc = self.get_rates(required_length)
         if type(ohlc) == pd.DataFrame and len(ohlc) == required_length:
             data = self.__run_processes(ohlc)
             return data.iloc[-interval:]
         else:
             return ohlc
+        
+    def get_data_queue(self, data_length = int):
+        if self.__data_queue == None:
+            self.__timer_thread = threading.Thread(target=self.__timer, daemon=True)
+            self.__timer_thread.start()
+            self.__data_queue = queue.Queue()
+        if data_length > 0:
+            self.__data_queue_length = data_length
+        else:
+            self.logger.warning(f"data_length must be greater than 1. change length to 1")
+            self.__data_queue_length = 1
+        return self.__data_queue
+        
+    
+    def __timer(self):
+        next_time = 0
+        interval = self.frame*60
+
+        if self.frame <= 60:
+            base_time = datetime.datetime.now()
+            target_min = datetime.timedelta(minutes=(self.frame- base_time.minute % self.frame))
+            target_time = base_time + target_min
+            sleep_time = datetime.datetime.timestamp(target_time) - datetime.datetime.timestamp(base_time) - base_time.second
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        base_time = time.time()
+        while self.__data_queue != None:
+            t = threading.Thread(target=self.__put_data_to_queue, daemon=True)
+            t.start()
+            next_time = ((base_time - time.time()) % interval) or interval
+            time.sleep(next_time)
+            
+    def stop_quing(self):
+        self.__data_queue = None
+        
+    def __put_data_to_queue(self):
+        if len(self.__idc_processes) > 0:
+            data = self.get_rate_with_indicaters(self.__data_queue_length)
+        else:
+            data = self.get_rates(self.__data_queue_length)
+        self.__data_queue.put(data)
+        
+    ## Need to implement in the actual client ##
+
+    def get_rates(self, interval:int) -> pd.DataFrame:
+        print("Overwrite get_rates in your client")
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass

@@ -34,9 +34,11 @@ except Exception as e:
 mt5_settings = env['mt5']
 id = int(mt5_settings["id"])
 simulation = True
-client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=simulation, frame=Frame.MIN5, logger=logger)
+client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=False, simulation=simulation, frame=Frame.MIN5, logger=logger)
 
 class TestMT5Client(unittest.TestCase):
+
+    """
     
     def test_get_current_ask(self):
         ask_value = client.get_current_ask()
@@ -69,8 +71,7 @@ class TestMT5Client(unittest.TestCase):
         self.assertEqual(len(data[macd_column]), 100)
     
     def test_auto_index_5min(self):
-        """check when frame time past during run
-        """
+        "check when frame time past during run"
         client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger, simulation_seed=1111)
         
         count = 0
@@ -86,8 +87,7 @@ class TestMT5Client(unittest.TestCase):
     
         
     def test_auto_index_1min(self):
-        """check when wait time is longer than frame
-        """
+        "check when wait time is longer than frame"
         client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN1, logger=logger)
         
         count = 0
@@ -102,8 +102,7 @@ class TestMT5Client(unittest.TestCase):
             count += 1
     
     def test_auto_index_H2(self):
-        """check when week change
-        """
+        "check when week change"
         client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.H2, logger=logger, simulation_seed=1111)
         
         count = 0
@@ -116,6 +115,7 @@ class TestMT5Client(unittest.TestCase):
             next_time = data['time'].iloc[1]
             sleep(1)
             count += 1
+    """
     """
     
     def test_auto_index_5min_with_indicaters(self):
@@ -135,6 +135,25 @@ class TestMT5Client(unittest.TestCase):
             sleep(60)
             count += 1
     """
+    
+    def test_get_data_by_queue(self):
+        count = 0
+        columns = client.get_ohlc_columns()
+        close_column = columns["Close"]
+        q = client.get_data_queue(10)
+        test = True
+        while test:
+            start = datetime.datetime.now()
+            data = q.get()
+            end = datetime.datetime.now()
+            self.assertEqual(len(data[close_column]), 10)
+            delta = (end - start)
+            print(delta.total_seconds())
+            count += 1
+            if count > 5:
+                test = False
+                break
+        
     
 if __name__ == '__main__':
     unittest.main()

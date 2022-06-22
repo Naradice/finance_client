@@ -3,8 +3,11 @@
         "Default":{
             "trade_unit":1
         },
-        "OANDA":{
+        "OANDA-Japan MT5 Live":{
             "trade_unit":1000
+        },
+        "bitflayer":{
+            "trade_unit":0.01
         }
     },
     "log":{

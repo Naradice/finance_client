@@ -80,7 +80,7 @@ class DiffPreProcess(ProcessBase):
         
     
     def get_minimum_required_length(self):
-        return 2
+        return 1
     
     def revert(self, data_set: tuple):
         columns = self.last_tick.columns

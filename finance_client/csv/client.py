@@ -79,7 +79,7 @@ class CSVClient(Client):
             window_ = window
             while next_date != expected_date:
                 if  next_date > expected_date:
-                    self.logger.warn(f"{pre_index} to {next_index} has insufficient data. rolling data anyway.")
+                    self.logger.warning(f"{pre_index} to {next_index} has insufficient data. rolling data anyway.")
                     #when next tick doen't start with expected_date, reduce missing count from window
                     NEXT_INDEX_PAD = -1
                     temp_next_date = data[self.date_column].iloc[next_index + NEXT_INDEX_PAD]
@@ -133,7 +133,7 @@ class CSVClient(Client):
             return rolled_file_name
         raise Exception(f"{org_file_name} isn't csv.")
 
-    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = [],budget=1000000, logger=None):
+    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
@@ -149,16 +149,12 @@ class CSVClient(Client):
             seed (int, options): specify random seed. Defaults to 1017
             idc_processes (Process, options) : list of indicater process. Dafaults to []
         """
-        super().__init__(budget=budget, indicater_processes=idc_processes, logger_name=__name__, logger=logger)
+        super().__init__(budget=budget, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
         self.auto_index = auto_index
         random.seed(seed)
         self.args = (file, frame, provider, out_frame, columns, date_column, seed)
         if type(file) == str:
             file = os.path.abspath(file)
-        try:
-            self.frame = frame
-        except Exception as e:
-            self.logger.error(e)
         self.ask_positions = {}
         if file == None:
             file_name = 'files.json'
@@ -225,7 +221,7 @@ class CSVClient(Client):
                     self.__step_index = random.randint(0, len(self.data))
                     return self.get_rates(interval)
                 else:
-                    self.logger.warn(f"not more data on index {self.__step_index}")
+                    self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
         elif interval == -1:
             rates = self.data.copy()
@@ -284,7 +280,7 @@ class CSVClient(Client):
                             if total_minutes != 0:#otherwise, this day may have 1day data
                                 self.reset(mode, retry+1)
             else:
-                self.logger.warn("Data client reset with {mode} mode retried over 10. index was not correctly reset.")
+                self.logger.warning("Data client reset with {mode} mode retried over 10. index was not correctly reset.")
                 return False
         return True
                                 

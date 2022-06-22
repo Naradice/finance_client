@@ -21,8 +21,8 @@ class MT5Client(Client):
         Frame.MO1: mt5.TIMEFRAME_MN1
     }
 
-    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', budget=1000000, logger = None, simulation_seed = 1017):
-        super().__init__(logger_name=__name__, logger=logger)
+    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
+        super().__init__( budget=budget, frame=frame, provider=server, post_processes= post_process, logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
         self.isWorking = mt5.initialize()
@@ -49,7 +49,7 @@ class MT5Client(Client):
         
         account_info = mt5.account_info()
         if account_info is None:
-            self.logger.warn(f"Retreiving account information failed. Please check your internet connection.")
+            self.logger.warning(f"Retreiving account information failed. Please check your internet connection.")
         self.logger.info(f"Balance: {account_info}")
 
         symbol_info = mt5.symbol_info(self.SYMBOL)
@@ -62,7 +62,7 @@ class MT5Client(Client):
         
         if self.simulation:
             if frame != Frame.MIN5:
-                self.logger.warn("simulation mode is available only for MIN5 for now")
+                self.logger.warning("simulation mode is available only for MIN5 for now")
             if type(simulation_seed) == int:
                 random.seed(simulation_seed)
             else:
@@ -154,7 +154,7 @@ class MT5Client(Client):
         if self.simulation is False:
             if tp != None:
                 if rate <= tp:
-                    self.logger.warn("tp should be lower than value")
+                    self.logger.warning("tp should be lower than value")
                 else:
                     _tp = tp
                     offset = rate - tp
@@ -191,7 +191,7 @@ class MT5Client(Client):
             
             if tp != None:
                 if rate >= tp:
-                    self.logger.warn("tp should be greater than value")
+                    self.logger.warning("tp should be greater than value")
                 else:
                     _tp = tp
                     offset = tp - rate
@@ -290,7 +290,7 @@ class MT5Client(Client):
                     self.__next_time = df_rates['time'].iloc[1]
                     #to avoid infinite loop, don't call oneself
                 else:
-                    self.logger.warn(f"auto index: {current_time} < {self.__next_time} somehow.")
+                    self.logger.debug(f"auto index: {current_time} < {self.__next_time} somehow.")
                     candidate = self.sim_index
                     while current_time != self.__next_time:
                         candidate = candidate - 1
