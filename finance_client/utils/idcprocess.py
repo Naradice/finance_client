@@ -149,12 +149,15 @@ class EMApreProcess(ProcessBase):
     kinds = 'EMA'
     last_data = None
     
-    def __init__(self, key='ema', window = 12, column = 'Close', is_input=True, is_output=True):
+    def __init__(self, key='ema', window = 12, column = 'Close', is_input=True, is_output=True, option = None):
         super().__init__(key)
         self.option = {
             "column": column,
             "window": window
         }
+
+        if option != None:
+            self.option.update(option)
         self.columns = {
             "EMA":f'{key}_EMA'
         }
@@ -211,13 +214,16 @@ class BBANDpreProcess(ProcessBase):
     kinds = 'BBAND'
     last_data = None
     
-    def __init__(self, key='bolinger', window = 14, alpha=2, target_column = 'Close', is_input=True, is_output=True):
+    def __init__(self, key='bolinger', window = 14, alpha=2, target_column = 'Close', is_input=True, is_output=True, option = None):
         super().__init__(key)
         self.option = {
             "column": target_column,
             "window": window,
             'alpha': alpha
-        }        
+        }
+
+        if option != None:
+            self.option.update(option)
         self.columns = {
             "MB": f"{key}_MB",
             "UB": f"{key}_UB",
@@ -292,12 +298,15 @@ class ATRpreProcess(ProcessBase):
     
     available_columns = ["ATR"]
     
-    def __init__(self, key='atr', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True):
+    def __init__(self, key='atr', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True, option = None):
         super().__init__(key)
         self.option = {
             "ohlc_column": ohlc_column_name,
             "window": window
         }
+        if option != None:
+            self.option.update(option)
+
         self.columns = {'ATR': f'{key}_ATR'}
         self.is_input = is_input
         self.is_output = is_output
@@ -349,12 +358,16 @@ class RSIpreProcess(ProcessBase):
     last_data = None
     available_columns = ["RSI", "AVG_GAIN", "AVG_LOSS"]
     
-    def __init__(self, key='rsi', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True):
+    def __init__(self, key='rsi', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True, option = None):
         super().__init__(key)
         self.option = {
             "ohlc_column": ohlc_column_name,
             "window": window
         }
+
+        if option != None:
+            self.option.update(option)
+
         self.columns = {
             "RSI": f'{key}_RSI',
             "GAIN": f'{key}_AVG_GAIN',
@@ -413,13 +426,15 @@ class RenkoProcess(ProcessBase):
     
     kinds = "Renko"
     
-    def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True):
+    def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True, option = None):
         super().__init__(key)
         self.option = {
             "date_column": date_column,
             "ohlc_column": ohlc_column,
             "window": window
         }
+        if option != None:
+            self.option.update(option)
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
@@ -460,11 +475,13 @@ class SlopeProcess(ProcessBase):
     
     kinds = "Slope"
     
-    def __init__(self, key: str = "slope", target_column = "Close", window = 10, is_input = True, is_output = True):
+    def __init__(self, key: str = "slope", target_column = "Close", window = 10, is_input = True, is_output = True, option = None):
         super().__init__(key)
         self.option = {}
         self.option["target_column"] = target_column
         self.option["window"] = window
+        if option != None:
+            self.option.update(option)
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
@@ -504,18 +521,33 @@ class CCIProcess(ProcessBase):
     
     kinds = "CCI"
     
-    def __init__(self, key: str = "cci", window=14, ohlc_column = ('Open', 'High', 'Low', 'Close'), is_input = True, is_output = False):
+    def __init__(self, key: str = "cci", window=14, ohlc_column = ('Open', 'High', 'Low', 'Close'), is_input = True, is_output = False, option = None):
         super().__init__(key)
         self.options = {
             "window": window,
             "ohlc_column": ohlc_column
         }
+
+        if option != None:
+            self.options.update(option)
         self.data = None
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
             'CCI': f'{key}_cci'
         }
+
+    @classmethod
+    def load(self, key:str, params:dict):
+        option = {
+            "window": params["window"],
+            "ohlc_column": params["ohlc_column"]
+        }
+
+        is_input = params["input"]
+        is_out = params["output"]
+        macd = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
+        return macd
         
     def run(self, data:pd.DataFrame):
         self.data = data
