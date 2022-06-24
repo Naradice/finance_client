@@ -39,7 +39,16 @@ class ProcessBase:
         return 0
     
     def concat(self, data:pd.DataFrame, new_data: pd.Series):
-        return pd.concat([data, pd.DataFrame.from_records([new_data])], ignore_index=True)
+        if type(data) == pd.DataFrame and type(new_data) == pd.Series:
+            return pd.concat([data, pd.DataFrame.from_records([new_data])], ignore_index=True)
+        elif type(data) == pd.Series and type(new_data) == pd.DataFrame:
+            return pd.concat([pd.DataFrame.from_records([data]), new_data], ignore_index=True)
+        elif type(data) == pd.DataFrame and type(new_data) == pd.DataFrame:
+            return pd.concat([data, new_data], ignore_index=True)
+        elif type(data) == pd.Series and type(new_data) == pd.Series:
+            return pd.concat([pd.DataFrame.from_records([data]), pd.DataFrame.from_records([new_data])], ignore_index=True)
+        else:
+            raise Exception("concat accepts dataframe or series")
     
     def revert(self, data_set: tuple):
         """ revert processed data to row data with option value

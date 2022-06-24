@@ -283,7 +283,7 @@ class BBANDpreProcess(ProcessBase):
     
     def revert(self, data_set:tuple):
         #pass
-        return True, None
+        return False, None
 
 class ATRpreProcess(ProcessBase):
     
@@ -341,7 +341,7 @@ class ATRpreProcess(ProcessBase):
     
     def revert(self, data_set:tuple):
         #pass
-        return True, None
+        return False, None
 
 class RSIpreProcess(ProcessBase):
     
@@ -407,7 +407,7 @@ class RSIpreProcess(ProcessBase):
     
     def revert(self, data_set:tuple):
         #pass
-        return True, None
+        return False, None
 
 class RenkoProcess(ProcessBase):
     
@@ -454,7 +454,7 @@ class RenkoProcess(ProcessBase):
     
     def revert(self, data_set:tuple):
         #pass
-        return True, None
+        return False, None
 
 class SlopeProcess(ProcessBase):
     
@@ -498,7 +498,53 @@ class SlopeProcess(ProcessBase):
     
     def revert(self, data_set:tuple):
         #pass
-        return True, None
+        return False, None
+
+class CCIProcess(ProcessBase):
+    
+    kinds = "CCI"
+    
+    def __init__(self, key: str = "cci", window=14, ohlc_column = ('Open', 'High', 'Low', 'Close'), is_input = True, is_output = False):
+        super().__init__(key)
+        self.options = {
+            "window": window,
+            "ohlc_column": ohlc_column
+        }
+        self.data = None
+        self.is_input = is_input
+        self.is_output = is_output
+        self.columns = {
+            'CCI': f'{key}_cci'
+        }
+        
+    def run(self, data:pd.DataFrame):
+        self.data = data
+        window = self.options["window"]
+        ohlc_column = self.options["ohlc_column"]
+        
+        out_column = self.columns["CCI"]
+        
+        cci = indicaters.CommodityChannelIndex(data, window, ohlc_column)
+        
+        return {out_column: cci}
+    
+    def update(self, tick: pd.Series):
+        if type(self.data) != type(None):
+            out_column = self.columns["CCI"]
+            self.data = self.concat(self.data, tick)
+            cci = self.run(self.data)
+            return cci[out_column].iloc[-1]
+        else:
+            self.data = tick
+            #cci = numpy.nan
+            return self.data
+        
+    def get_minimum_required_length(self):
+        return self.option['window']
+    
+    def revert(self, data_set:tuple):
+        #pass
+        return False, None        
 
 ####
 # Not implemented as I can't caliculate required length

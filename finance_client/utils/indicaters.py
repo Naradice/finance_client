@@ -361,3 +361,24 @@ def slope(ser: pd.Series, window):
         slopes.append(results.params[-1])
     slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
     return pd.Series({"slope":np.array(slope_angle)})
+
+def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')) -> pd.Series:
+    """ represents how much close value is far from mean value. If over 100, strong long trend for example.
+
+    Args:
+        ohlc (pd.DataFrame): Open High Low Close values
+        window (int, optional): window size to caliculate EMA. Defaults to 14.
+        ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
+
+    Returns:
+        pd.DataFrame: _description_
+    """
+    close_column = ohlc_columns[3]
+    low_column = ohlc_columns[2]
+    high_column = ohlc_columns[1]
+    
+    tp = (ohlc[high_column] + ohlc[low_column] + ohlc[close_column])/3
+    ma = EMA(ohlc[close_column], window)
+    md = (tp - ma).std()
+    cci = (tp-ma) / (0.015 * md)
+    return cci
