@@ -82,15 +82,15 @@ class Client:
                     ask_rate = self.get_current_ask()
                 else:
                     ask_rate = price
-                self.__market_buy(symbol, ask_rate, amount, option_info)
-                return self.__open_long_position(symbol, ask_rate, amount, option_info)
+                result = self.market_buy(symbol, ask_rate, amount, option_info)
+                return self.__open_long_position(symbol, ask_rate, amount, option_info, result)
             else:
                 if price == None:
                     bid_rate = self.get_current_bid()
                 else:
                     bid_rate = price
-                self.__market_sell(symbol, bid_rate, amount, option_info)
-                return self.__open_short_position(symbol, bid_rate, amount, option_info)
+                result = self.market_sell(symbol, bid_rate, amount, option_info)
+                return self.__open_short_position(symbol, bid_rate, amount, option_info, result)
         else:
             self.logger.debug(f"{order_type} is not defined.")
             
@@ -112,15 +112,17 @@ class Client:
         else:
             self.logger.error("Either position or id should be specified.")
             return None
+        if amount == None:
+            amount = position.amount
             
         if position.order_type == "ask":
             if (price == None):
                 price = self.get_current_bid()
-            self.__sell_for_settlment(position.symbol , price, amount, position.option)
+            self.sell_for_settlment(position.symbol , price, amount, position.option, position.result)
         elif position.order_type == "bid":
             if (price == None):
                 price = self.get_current_ask()
-            self.__buy_for_settlement(position.symbol, price, amount, position.option)
+            self.buy_for_settlement(position.symbol, price, amount, position.option, position.result)
         else:
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
         return self.market.close_position(position, price, amount)
@@ -168,19 +170,25 @@ class Client:
         data_cp = data.copy()
         columns_dict = self.get_ohlc_columns()
         date_data = None
+        
+        for process in self.__idc_processes:
+            values_dict = process.run(data_cp)
+            for column, values in values_dict.items():
+                data_cp[column] = values
+                
         if "Time" in columns_dict and columns_dict["Time"] != None:
             date_column = columns_dict["Time"]
             columns = list(data_cp.columns.copy())
             date_data = data_cp[date_column].copy()
+            #df = df.set_index(date_column)
             columns.remove(date_column)
             data_cp = data_cp[columns]
-            
-        
-        for processes in [self.__idc_processes, self.__postprocesses]:
-            for process in processes:
-                values_dict = process.run(data_cp)
-                for column, values in values_dict.items():
-                    data_cp[column] = values
+                    
+        for process in self.__postprocesses:
+            values_dict = process.run(data_cp)
+            for column, values in values_dict.items():
+                data_cp[column] = values
+                
         if type(date_data) != type(None):
             data_cp[date_column] = date_data
         data_cp = data_cp.dropna(how = 'any')
@@ -280,16 +288,16 @@ class Client:
     def get_current_bid(self) -> float:
         print("Need to implement get_current_bid on your client")
             
-    def __market_buy(self, symbol, ask_rate, amount, option_info):
+    def market_buy(self, symbol, ask_rate, amount, option_info):
         pass
     
-    def __market_sell(self, symbol, bid_rate, amount, option_info):
+    def market_sell(self, symbol, bid_rate, amount, option_info):
         pass
     
-    def __buy_for_settlement(self, symbol, ask_rate, amount, option_info):
+    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass
     
-    def __sell_for_settlment(self, symbol, bid_rate, amount, option_info):
+    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         pass
     
     def get_params(self) -> dict:
@@ -374,14 +382,14 @@ class Client:
             diffs.append(self.__get_short_position_diffs(standalization="minimax"))
             return diffs
     
-    def __open_long_position(self, symbol, boughtRate, amount, option_info=None):
+    def __open_long_position(self, symbol, boughtRate, amount, option_info=None, result=None):
         self.logger.debug("open long position is created.")
-        position = self.market.open_position("ask", symbol, boughtRate, amount, option_info)
+        position = self.market.open_position("ask", symbol, boughtRate, amount, option_info, result)
         return position
 
-    def __open_short_position(self, symbol, soldRate, amount, option_info=None):
+    def __open_short_position(self, symbol, soldRate, amount, option_info=None, result = None):
         self.logger.debug("open short position is created.")
-        position = self.market.open_position("bid", symbol,  soldRate, amount, option_info)
+        position = self.market.open_position("bid", symbol,  soldRate, amount, option_info, result=result)
         return position
     
     def get_ohlc_columns(self) -> dict:

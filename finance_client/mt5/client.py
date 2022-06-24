@@ -74,10 +74,10 @@ class MT5Client(Client):
             if auto_index:
                 self.__next_time = None
     
-    def __post_market_order(self, _type, vol, price, dev, sl=None, tp=None, position=None):
+    def __post_market_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
             'action': mt5.TRADE_ACTION_DEAL,
-            'symbol': self.SYMBOL,
+            'symbol': symbol,
             'volume': vol,
             'price': price,
             'deviation': dev,
@@ -149,64 +149,64 @@ class MT5Client(Client):
             return mt5.symbol_info(self.SYMBOL).spread
     
 
-    def __market_sell(self, price, tp=None, sl=None):
+    def market_sell(self, symbol, price, amount, tp=None, sl=None):
         rate = price
         if self.simulation is False:
             if tp != None:
                 if rate <= tp:
                     self.logger.warning("tp should be lower than value")
+                    return None
                 else:
-                    _tp = tp
                     offset = rate - tp
-                    if sl != None:
-                        _sl = sl
-                    else:
-                        _sl = rate + offset
+                    if sl == None:
+                        sl = rate + offset
             result = self.__post_market_order(
+                symbol=symbol,
                 _type=mt5.ORDER_TYPE_SELL,
-                vol=0.1,
+                vol=amount*0.1,
                 price=rate,
                 dev=20,
-                sl=_sl,
-                tp=_tp,
+                sl=sl,
+                tp=tp,
             )
             return result
             
-    def __buy_for_settlement(self, price, result):
+    def buy_for_settlement(self, symbol, price, amount, option, result):
         if self.simulation is False:
             rate = price
             order = result.order
             result = self.__post_market_order(
+                symbol=symbol,
                 _type=mt5.ORDER_TYPE_BUY, 
-                vol=0.1, 
+                vol=amount * 0.1, 
                 price=rate, 
                 dev=20,
                 position=order,
             )
             return result
             
-    def __market_buy(self, price, tp=None, sl=None):
+    #symbol, ask_rate, amount, option_info
+    def market_buy(self, symbol, price, amount, tp=None, sl=None):
         if self.simulation is False:
             rate = price
             
             if tp != None:
                 if rate >= tp:
                     self.logger.warning("tp should be greater than value")
+                    return None
                 else:
-                    _tp = tp
                     offset = tp - rate
-                    if sl != None:
-                        _sl = sl
-                    else:
-                        _sl = rate - offset
+                    if sl == None:
+                        sl = rate - offset
             
             result = self.__post_market_order(
+                symbol=symbol,
                 _type=mt5.ORDER_TYPE_BUY,
                 vol=0.1, 
                 price=rate,
-                dev=20,
-                sl=_sl,
-                tp=_tp,
+                dev=amount*20,
+                sl=sl,
+                tp=tp,
             )
             return result
             
@@ -238,12 +238,13 @@ class MT5Client(Client):
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
 
-    def __sell_for_settlment(self, price, result):
+    def sell_for_settlment(self, symbol, price, amount, option, result):
         if self.simulation is False:
             position = result.order
             result = self.__post_market_order(
+                symbol=symbol,
                 _type=mt5.ORDER_TYPE_SELL,
-                vol=0.1,
+                vol=amount * 0.1,
                 price=price,
                 dev=20,
                 position=position,

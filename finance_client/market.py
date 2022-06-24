@@ -10,11 +10,12 @@ import json
 class Position:
     id = uuid.uuid4()
     
-    def __init__(self, order_type:str, symbol:str, price:float, amount: float, option):
+    def __init__(self, order_type:str, symbol:str, price:float, amount: float, option, result):
         self.order_type = order_type
         self.price = price
         self.amount = amount
         self.option = option
+        self.result = result
         self.symbol = symbol
         self.timestamp = datetime.datetime.now()
         
@@ -95,13 +96,13 @@ class Manager:
         else:
             raise Exception(f"order_type should be specified: {order_type}")
     
-    def open_position(self, order_type:str, symbol:str, price:float, amount: float, option = None):
+    def open_position(self, order_type:str, symbol:str, price:float, amount: float, option = None, result=None):
         order_type = self.__check_order_type(order_type)
         ## check if budget has enough amount
         required_budget = self.trade_unit * amount * price
         ## if enough, add position
         if required_budget <= self.budget:
-            position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, option=option)
+            position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, option=option, result=result)
             self.positions[order_type][position.id] = position
             ## then reduce budget
             self.budget = self.budget - required_budget
