@@ -572,7 +572,7 @@ class CCIProcess(ProcessBase):
             return self.data
         
     def get_minimum_required_length(self):
-        return self.option['window']
+        return self.options['window']
     
     def revert(self, data_set:tuple):
         #pass

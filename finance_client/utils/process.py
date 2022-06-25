@@ -65,4 +65,7 @@ class ProcessBase:
         pass
     
     def __eq__(self, __o: object) -> bool:
-        return self.key == __o.key
+        if 'key' in dir(__o):
+            return self.key == __o.key
+        else:
+            return False

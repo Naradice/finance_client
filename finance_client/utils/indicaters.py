@@ -184,7 +184,9 @@ def bolinger_from_series(data: pd.Series, window = 14, alpha=2):
     mas = data.rolling(window).mean()
     b_high = mas + stds*alpha
     b_low = mas - stds*alpha
-    return mas, b_high, b_low, stds*alpha*2
+    #width = stds*alpha*2 ##deleted for test purpose as there is small error compared with diff
+    width = b_high - b_low
+    return mas, b_high, b_low, width
 
 def bolinger_from_array(data, window = 14,  alpha=2):
     if type(data) == list:
