@@ -370,7 +370,9 @@ class Client:
             return self.__get_short_position_diffs()
         else:
             diffs = self.__get_long_position_diffs()
-            diffs.append(self.__get_short_position_diffs())
+            bid_diffs = self.__get_short_position_diffs()
+            if len(bid_diffs) > 0:
+                diffs.append(*bid_diffs)
             return diffs
         
     
@@ -381,7 +383,9 @@ class Client:
             return self.__get_short_position_diffs(standalization="minimax")
         else:
             diffs = self.__get_long_position_diffs(standalization="minimax")
-            diffs.append(self.__get_short_position_diffs(standalization="minimax"))
+            bid_diffs = self.__get_short_position_diffs(standalization="minimax")
+            if len(bid_diffs) > 0:
+                diffs.append(*bid_diffs)
             return diffs
     
     def __open_long_position(self, symbol, boughtRate, amount, option_info=None, result=None):
