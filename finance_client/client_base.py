@@ -328,7 +328,7 @@ class Client:
         return None
     
     def __get_long_position_diffs(self, standalization="minimax"):
-        positions = self.market.poitions["ask"]
+        positions = self.market.positions["ask"]
         if len(positions) > 0:
             diffs = []
             current_bid = self.get_current_bid()
@@ -345,7 +345,7 @@ class Client:
             return []
     
     def __get_short_position_diffs(self, standalization="minimax"):
-        positions = self.market.poitions["bid"]
+        positions = self.market.positions["bid"]
         if len(positions) > 0:
             diffs = []
             current_ask = self.get_current_ask()
