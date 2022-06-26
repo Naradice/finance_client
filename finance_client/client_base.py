@@ -221,7 +221,7 @@ class Client:
     
     def add_postprocesses(self, processes: list):
         for process in processes:
-            self.add_indicater(process)
+            self.add_postprocess(process)
         
             
     def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
@@ -319,10 +319,12 @@ class Client:
     @property
     def max(self):
         print("Need to implement max")
+        return 1
         
     @property
     def min(self):
         print("Need to implement min")
+        return -1
     
     def __getitem__(self, ndx):
         return None
@@ -335,7 +337,7 @@ class Client:
             if standalization == "minimax":
                 current_bid = utils.mini_max(current_bid, self.min, self.max, (0, 1))
                 for key, position in positions.items():
-                    price = standalization.mini_max(position.price, self.min, self.max, (0, 1))
+                    price = utils.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(current_bid - price)
             else:
                 for key, position in positions.items():
@@ -350,9 +352,9 @@ class Client:
             diffs = []
             current_ask = self.get_current_ask()
             if standalization == "minimax":
-                current_ask = standalization.mini_max(current_ask, self.min, self.max, (0, 1))
+                current_ask = utils.mini_max(current_ask, self.min, self.max, (0, 1))
                 for key, position in positions.items():
-                    price = standalization.mini_max(position.price, self.min, self.max, (0, 1))
+                    price = utils.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(price - current_ask)
             else:
                 for key, position in positions.items():
@@ -361,7 +363,7 @@ class Client:
         else:
             return []
 
-    def get_diffs(self, position_type='ask') -> list:
+    def get_diffs(self, position_type=None) -> list:
         if position_type == 'ask' or position_type == 'long':
             return self.__get_long_position_diffs()
         elif position_type == "bid" or position_type == 'short':
@@ -372,7 +374,7 @@ class Client:
             return diffs
         
     
-    def get_diffs_with_minmax(self, position_type='ask')-> list:
+    def get_diffs_with_minmax(self, position_type=None)-> list:
         if position_type == 'ask' or position_type == 'long':
             return self.__get_long_position_diffs(standalization="minimax")
         elif position_type == "bid" or position_type == 'short':

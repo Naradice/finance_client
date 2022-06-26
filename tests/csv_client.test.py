@@ -76,6 +76,13 @@ class TestCSVClient(unittest.TestCase):
         data = client.get_rate_with_indicaters(length)
         print(data)
         self.assertEqual(len(data.Close), length)
+        
+    def test_get_diffs_minmax(self):
+        client = CSVClient(file=csv_file, out_frame=Frame.MIN5, logger=logger)
+        result = client.open_trade(is_buy=True, amount=1, order_type="Market",symbol="USDJPY")
+        client.get_next_tick()
+        diffs = client.get_diffs()
+        diffs_mm = client.get_diffs_with_minmax()
     
 if __name__ == '__main__':
     unittest.main()

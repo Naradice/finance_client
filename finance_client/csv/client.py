@@ -302,10 +302,12 @@ class CSVClient(Client):
             tick = self.data.iloc[self.__step_index]
             return tick, True
         
-    def max(self, column):
+    @property
+    def max(self):
         return self.__high_max
         
-    def min(self, column):
+    @property
+    def min(self):
         return self.__low_min
         
     def __getitem__(self, ndx):
