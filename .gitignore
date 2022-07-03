@@ -16,3 +16,6 @@ __pycache__/
 /dist
 *finance_client*.logs
 tests/env.test.json
+finance_client/data_source/*/es_config.json
+finance_client/data_source/gmo/config.json
+*.npz

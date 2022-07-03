@@ -37,8 +37,6 @@ simulation = True
 client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=False, simulation=simulation, frame=Frame.MIN5, logger=logger)
 
 class TestMT5Client(unittest.TestCase):
-
-    """
     
     def test_get_current_ask(self):
         ask_value = client.get_current_ask()
@@ -115,8 +113,6 @@ class TestMT5Client(unittest.TestCase):
             next_time = data['time'].iloc[1]
             sleep(1)
             count += 1
-    """
-    """
     
     def test_auto_index_5min_with_indicaters(self):
         client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger)
@@ -134,7 +130,6 @@ class TestMT5Client(unittest.TestCase):
                 previouse_time = data['time'].iloc[0]
             sleep(60)
             count += 1
-    """
     
     def test_get_data_by_queue(self):
         count = 0
@@ -153,6 +148,10 @@ class TestMT5Client(unittest.TestCase):
             if count > 5:
                 test = False
                 break
+
+    def test_get_all_rates(self):
+        rates = client.get_rates(-1)
+        self.assertNotEqual(type(rates), type(None))
         
     
 if __name__ == '__main__':

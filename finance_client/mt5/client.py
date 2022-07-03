@@ -1,5 +1,6 @@
-import datetime
+import datetime, os
 import MetaTrader5 as mt5
+import numpy
 import pandas as pd
 import random
 from finance_client.client_base import Client
@@ -20,11 +21,28 @@ class MT5Client(Client):
         Frame.W1: mt5.TIMEFRAME_W1,
         Frame.MO1: mt5.TIMEFRAME_MN1
     }
+    
+    AVAILABLE_FRAMES_STR = {
+        Frame.MIN1: "min1",
+        Frame.MIN5: "min5",
+        Frame.MIN10: "min10",
+        Frame.MIN30: "min30",
+        Frame.H1: "h1",
+        Frame.H2: "h2",
+        Frame.H4: "h4",
+        Frame.H8: "h8",
+        Frame.D1: "d1",
+        Frame.W1: "w1",
+        Frame.MO1: "m1"
+    }
 
     def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
         super().__init__( budget=budget, frame=frame, provider=server, post_processes= post_process, logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
+        self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/{server}"))
+        if os.path.exists(self.data_folder) == False:
+            os.makedirs(self.data_folder)
         self.isWorking = mt5.initialize()
         if not self.isWorking:
             err_txt = f"initialize() failed, error code = {mt5.last_error()}"
@@ -250,6 +268,54 @@ class MT5Client(Client):
                 position=position,
             )
             return result
+        
+    def __get_all_rates(self):
+        existing_rate_df = None
+        file_name = f"mt5_{self.SYMBOL}_{self.AVAILABLE_FRAMES_STR[self.frame]}.csv"
+        file_path = os.path.join(self.data_folder, file_name)
+        if os.path.exists(file_path):
+            existing_rate_df = pd.read_csv(file_path, parse_dates=["time"])
+            
+        MAX_LENGTH = 12*24*345#not accurate, may depend on server
+            
+        if type(existing_rate_df) == type(None):
+            interval = MAX_LENGTH
+        else:
+            delta = datetime.datetime.now() - existing_rate_df["time"].iloc[-1]
+            total_seconds = delta.total_seconds()
+            if (total_seconds/(60*60*24*7)) >= 1:
+                total_seconds = total_seconds * 5/7#remove sat,sun
+            interval = int((total_seconds/60)/self.frame)
+            if interval == 0:
+                interval = 10# to be safe
+            if interval > MAX_LENGTH:
+                interval = MAX_LENGTH
+                self.logger.warn("data may have vacant")
+        
+        start_index = 0
+        mt5_frame = mt5.TIMEFRAME_M5
+        rates = mt5.copy_rates_from_pos(self.SYMBOL, mt5_frame, start_index, interval)
+        new_rates = rates
+
+        while type(new_rates) != type(None):
+            interval = len(new_rates)
+            start_index += interval
+            new_rates = mt5.copy_rates_from_pos(self.SYMBOL, mt5_frame, start_index, interval)
+            if type(new_rates) != type(None):
+                rates = numpy.concatenate([new_rates, rates])
+            else:
+                break
+        rate_df = pd.DataFrame(rates)
+        rate_df["time"] = pd.to_datetime(rate_df['time'], unit='s')
+        
+        if type(existing_rate_df) != type(None):
+            rate_df = pd.concat([existing_rate_df, rate_df])
+        
+        rate_df = rate_df.sort_values("time")
+        rate_df = rate_df.drop_duplicates()
+        
+        rate_df.to_csv(file_path, mode="w", index=False, header=True)
+        return rate_df
     
     def __get_rates(self, interval, start = 0):
         start_index = 0
@@ -311,11 +377,14 @@ class MT5Client(Client):
         
     def get_rates(self, interval, start = 0):
         
-        df_rates = self.__get_rates(interval=interval, start=start)
-        if self.auto_index:
-            self.sim_index = self.sim_index - 1
+        if interval == -1:
+            return self.__get_all_rates()
+        else:
+            df_rates = self.__get_rates(interval=interval, start=start)
+            if self.auto_index:
+                self.sim_index = self.sim_index - 1
 
-        return df_rates
+            return df_rates
     
     def cancel_order(self, order):
         if self.simulation is False:
