@@ -67,6 +67,8 @@ class TestMT5Client(unittest.TestCase):
         data = client.get_rate_with_indicaters(100)
         self.assertEqual(macd_column in data.columns, True)
         self.assertEqual(len(data[macd_column]), 100)
+        
+    """ takes few minutes
     
     def test_auto_index_5min(self):
         "check when frame time past during run"
@@ -148,6 +150,7 @@ class TestMT5Client(unittest.TestCase):
             if count > 5:
                 test = False
                 break
+    """
 
     def test_get_all_rates(self):
         rates = client.get_rates(-1)
