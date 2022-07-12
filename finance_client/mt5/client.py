@@ -4,7 +4,7 @@ import numpy
 import pandas as pd
 import random
 from finance_client.client_base import Client
-from finance_client.frames import Frame
+import finance_client.frames as Frame
 
 class MT5Client(Client):
     
@@ -40,7 +40,7 @@ class MT5Client(Client):
         super().__init__( budget=budget, frame=frame, provider=server, post_processes= post_process, logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
-        self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/{server}"))
+        self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/mt5/{server}"))
         if os.path.exists(self.data_folder) == False:
             os.makedirs(self.data_folder)
         self.isWorking = mt5.initialize()

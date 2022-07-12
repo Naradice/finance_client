@@ -4,7 +4,7 @@ print(module_path)
 sys.path.append(module_path)
 
 from finance_client.csv.client import CSVClient
-from finance_client.frames import Frame
+import finance_client.frames as Frame
 from finance_client import utils
 from logging import getLogger, config
 

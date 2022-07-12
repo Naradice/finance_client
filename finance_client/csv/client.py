@@ -6,7 +6,7 @@ import os
 import uuid
 import datetime
 import json
-from finance_client.frames import Frame
+import finance_client.frames as Frame
 from finance_client.client_base import Client
 from logging import getLogger
 

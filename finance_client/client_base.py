@@ -3,7 +3,7 @@ import threading
 import pandas as pd
 from finance_client import utils
 import finance_client.market as market
-from finance_client.frames import Frame
+import finance_client.frames as Frame
 from logging import getLogger, config
 import os, json, datetime
 import time
@@ -20,7 +20,7 @@ class Client:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
                     settings = json.load(f)
         except Exception as e:
-            self.logger.error(f"fail to load settings file on client: {e}")
+            print(f"fail to load settings file on client: {e}")
             raise e
         self.ohlc_columns = None
         
