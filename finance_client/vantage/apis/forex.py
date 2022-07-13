@@ -1,7 +1,6 @@
 import requests
 import time
 from finance_client.vantage.apis.base import API_BASE
-from finance_client.vantage import Target
 
 
 class FOREX(API_BASE):
@@ -11,22 +10,22 @@ class FOREX(API_BASE):
     
     @API_BASE.response_handler
     def get_exchange_rates(self, from_currency, to_currency, retry_ount=0):
-        if Target.check_physical_currency(from_currency) == False:
+        if self.check_physical_currency(from_currency) == False:
             raise ValueError(f"{from_currency} is not supported")
-        if Target.check_physical_currency(to_currency) == False:
+        if self.check_physical_currency(to_currency) == False:
             raise ValueError(f"{to_currency} is supported")
         url = f"{self.URL_BASE}/query?function=CURRENCY_EXCHANGE_RATE&from_currency={from_currency}&to_currentcy={to_currency}&apikey={self.api_key}"
         return requests.request("GET", url)
     
     @API_BASE.response_handler
     def get_interday_rates(self, from_symbol, to_symbol, interval, output_size="full"):
-        if Target.check_physical_currency(from_symbol) == False:
+        if self.check_physical_currency(from_symbol) == False:
             raise ValueError(f"{from_symbol} is not supported")
-        if Target.check_physical_currency(to_symbol) == False:
+        if self.check_physical_currency(to_symbol) == False:
             raise ValueError(f"{to_symbol} is supported")
-        if interval not in Target.available_frame:
+        if interval not in self.available_frame:
             raise ValueError(f"{interval} is not supported")
-        interval = Target.available_frame[interval]
+        interval = self.available_frame[interval]
         correct, size =  self.check_outputsize(output_size)
         if correct is False:
             self.logger.warn("outsize should be either full or compact")
@@ -35,9 +34,9 @@ class FOREX(API_BASE):
     
     @API_BASE.response_handler
     def get_daily_rates(self, from_symbol, to_symbol, output_size="full"):
-        if Target.check_physical_currency(from_symbol) == False:
+        if self.check_physical_currency(from_symbol) == False:
             raise ValueError(f"{from_symbol} is not supported")
-        if Target.check_physical_currency(to_symbol) == False:
+        if self.check_physical_currency(to_symbol) == False:
             raise ValueError(f"{to_symbol} is supported")
         correct, size =  self.check_outputsize(output_size)
         if correct is False:
@@ -48,9 +47,9 @@ class FOREX(API_BASE):
     
     @API_BASE.response_handler
     def get_weekly_rates(self, from_symbol, to_symbol):
-        if Target.check_physical_currency(from_symbol) == False:
+        if self.check_physical_currency(from_symbol) == False:
             raise ValueError(f"{from_symbol} is not supported")
-        if Target.check_physical_currency(to_symbol) == False:
+        if self.check_physical_currency(to_symbol) == False:
             raise ValueError(f"{to_symbol} is supported")
             
         url = f"{self.URL_BASE}/query?function=FX_WEEKLY&from_symbol={from_symbol}&to_symbol={to_symbol}&apikey={self.api_key}"
@@ -58,9 +57,9 @@ class FOREX(API_BASE):
     
     @API_BASE.response_handler
     def get_monthly_rates(self, from_symbol, to_symbol):
-        if Target.check_physical_currency(from_symbol) == False:
+        if self.check_physical_currency(from_symbol) == False:
             raise ValueError(f"{from_symbol} is not supported")
-        if Target.check_physical_currency(to_symbol) == False:
+        if self.check_physical_currency(to_symbol) == False:
             raise ValueError(f"{to_symbol} is supported")
             
         url = f"{self.URL_BASE}/query?function=FX_MONTHLY&from_symbol={from_symbol}&to_symbol={to_symbol}&apikey={self.api_key}"

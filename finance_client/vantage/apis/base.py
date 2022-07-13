@@ -1,16 +1,59 @@
 import json, os, datetime, time
 from logging import getLogger, config
+import pandas as pd
+import finance_client.frames as Frame
 
 class API_BASE:
     
     work_day_in_week = 5
+    
+    currency_code_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/digital_currency_list.csv"))
+    phys_currency_code_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/physical_currency_list.csv"))
+
+    digital_code_list = None
+    physical_code_list = None
+    available_frame = {
+        Frame.MIN1:"1min", Frame.MIN5:"5min", 15:"15min", Frame.MIN30:"30min", Frame.H1: "60min",
+        Frame.D1:"DAILY",
+        Frame.W1:"Weekly",
+        Frame.MO1: "Monthly"
+    }
+
+    def check_digital_currency(self, currency_code):
+        if self.digital_code_list is None:
+            if os.path.exists(self.currency_code_file_path):
+                self.digital_code_list = pd.read_csv(self.currency_code_file_path, index_col="currency code")
+                print("digital_code_list is loaded")
+            else:
+                #raise FileNotFoundError("can't check")
+                print("cant check due to faile is missing. pass anyway.")
+                return True
+        #name = dc.loc[currency code]["currency name"]
+        return currency_code in self.digital_code_list.index
+    
+    def check_physical_currency(self, currency_code):
+        if self.physical_code_list is None:
+            if os.path.exists(self.phys_currency_code_file_path):
+                self.physical_code_list = pd.read_csv(self.phys_currency_code_file_path, index_col="currency code")
+                print("physical_code_list is loaded")
+                #name = dc.loc[currency code]["currency name"]
+            else:
+                print("cant check due to faile is missing. pass anyway.")
+                return True
+
+        return currency_code in self.physical_code_list.index
+        
+    def check_currency(self, currency_code):
+        exists_in_digital = self.check_digital_currency(currency_code)
+        exists_in_physical = self.check_physical_currency(currency_code)
+        return exists_in_digital or exists_in_physical
     
     def __init__(self, api_key, logger_name=None, logger=None) -> None:
         self.URL_BASE = "https://www.alphavantage.co/"
         self.api_key = api_key
         if logger == None:
             try:
-                with open(os.path.join(dir, './settings.json'), 'r') as f:
+                with open(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../settings.json')), 'r') as f:
                     settings = json.load(f)
             except Exception as e:
                 print(f"fail to load settings file on client: {e}")

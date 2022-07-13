@@ -1,7 +1,6 @@
 import requests
 import time
 from finance_client.vantage.apis.base import API_BASE
-from finance_client.vantage import Target
 
 
 class STOCK(API_BASE):
@@ -11,18 +10,18 @@ class STOCK(API_BASE):
         
     @API_BASE.response_handler
     def get_exchange_rates(self, symbol):
-        if Target.check_stock_symbol(symbol) == False:
+        if self.check_stock_symbol(symbol) == False:
             raise ValueError(f"{symbol} is not supported")
         url = f"{self.URL_BASE}/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={self.api_key}"
         return requests.request("GET", url)
             
     @API_BASE.response_handler
     def get_interday_rates(self, symbol, interval, adjusted = False, output_size="full"):
-        if Target.check_stock_symbol(symbol) == False:
+        if self.check_stock_symbol(symbol) == False:
             raise ValueError(f"{symbol} is not supported")
-        if interval not in Target.available_frame:
+        if interval not in self.available_frame:
             raise ValueError(f"{interval} is not supported")
-        interval = Target.available_frame[interval]
+        interval = self.available_frame[interval]
         correct, size =  self.check_outputsize(output_size)
         if correct is False:
             self.logger.warn("outsize should be either full or compact")
@@ -31,7 +30,7 @@ class STOCK(API_BASE):
             
     @API_BASE.response_handler
     def get_daily_rates(self, symbol, output_size="full"):
-        if Target.check_stock_symbol(symbol) == False:
+        if self.check_stock_symbol(symbol) == False:
             raise ValueError(f"{symbol} is not supported")
         correct, size =  self.check_outputsize(output_size)
         if correct is False:
@@ -42,7 +41,7 @@ class STOCK(API_BASE):
     
     @API_BASE.response_handler
     def get_weekly_rates(self, symbol):
-        if Target.check_stock_symbol(symbol) == False:
+        if self.check_stock_symbol(symbol) == False:
             raise ValueError(f"{symbol} is not supported")
             
         url = f"{self.URL_BASE}/query?function=TIME_SERIES_WEEKLY&symbol={symbol}&apikey={self.api_key}"
@@ -50,7 +49,7 @@ class STOCK(API_BASE):
     
     @API_BASE.response_handler
     def get_monthly_rates(self, symbol):
-        if Target.check_stock_symbol(symbol) == False:
+        if self.check_stock_symbol(symbol) == False:
             raise ValueError(f"{symbol} is not supported")
             
         url = f"{self.URL_BASE}/query?function=TIME_SERIES_MONTHLY&symbol={symbol}&apikey={self.api_key}"

@@ -8,6 +8,7 @@ sys.path.append(module_path)
 import finance_client.vantage as vantage
 import finance_client.frames as Frame
 from finance_client.vantage.apis import FOREX, STOCK, DIGITAL
+from finance_client.vantage.client import VantageClient
 from logging import getLogger, config
 import time
 
@@ -35,8 +36,11 @@ fx = FOREX(env["vantage"]["api_key"], logger)
 stock = STOCK(env["vantage"]["api_key"], logger)
 digital = DIGITAL(env["vantage"]["api_key"], logger)
 
+client = VantageClient(env["vantage"]["api_key"], symbol=("USD", "JPY"))
+
 class TestVantageClient(unittest.TestCase):
     
+    """
     def test_fx_params(self):
         target = vantage.Target.FX
         fname = vantage.Target.to_function_name(target, Frame.MIN5)
@@ -77,7 +81,12 @@ class TestVantageClient(unittest.TestCase):
     def test_fx_get_unsupported_interday(self):
         with self.assertRaises(ValueError):
             data = fx.get_interday_rates(from_symbol="USD", to_symbol="JPY", interval=Frame.MIN10)
+    """
     
-    
+    def test_get_all_rates(self):
+        df = client.get_rates(-1)
+        self.assertIn("close", df)
+        self.assertGreater(len(df["close"]), 950)
+        
 if __name__ == '__main__':
     unittest.main()

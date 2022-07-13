@@ -57,12 +57,6 @@ class __Target:
         else:
             raise TypeError("frame should be specified with finance_client.frames.frame")
 
-currency_code_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "./resources/digital_currency_list.csv"))
-phys_currency_code_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "./resources/physical_currency_list.csv"))
-
-digital_code_list = None
-physical_code_list = None
-
 STOCK = __Target(0, "TIME_SERIES")
 FX = __Target(1, "FX")
 CRYPTO_CURRENCY = __Target(2, "CRYPTO")
@@ -86,33 +80,3 @@ RETAIL_SALES = __Target(19, "RETAIL_SALES")
 DURABLES_GOODS_ORDER = __Target(20, "DURABLES")
 UNEMPLOYMENT_RATE = __Target(21, "UNEMPLOYMENT")
 NONFARM_PAYROLL = __Target(22, "NONFARM_PAYROLL")
-
-def check_digital_currency(currency_code):
-    global digital_code_list
-    if digital_code_list is None:
-        if os.path.exists(currency_code_file_path):
-            digital_code_list = pd.read_csv(currency_code_file_path, index_col="currency code")
-            print("digital_code_list is loaded")
-        else:
-            #raise FileNotFoundError("can't check")
-            print("cant check due to faile is missing. pass anyway.")
-            return True
-    #name = dc.loc[currency code]["currency name"]
-    return currency_code in digital_code_list.index
-def check_physical_currency(currency_code):
-    global physical_code_list
-    if physical_code_list is None:
-        if os.path.exists(phys_currency_code_file_path):
-            physical_code_list = pd.read_csv(phys_currency_code_file_path, index_col="currency code")
-            print("physical_code_list is loaded")
-            #name = dc.loc[currency code]["currency name"]
-        else:
-            print("cant check due to faile is missing. pass anyway.")
-            return True
-
-    return currency_code in physical_code_list.index
-    
-def check_currency(currency_code):
-    exists_in_digital = check_digital_currency(currency_code)
-    exists_in_physical = check_physical_currency(currency_code)
-    return exists_in_digital or exists_in_physical

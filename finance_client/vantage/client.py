@@ -6,13 +6,11 @@ from finance_client.vantage import Target
 
 class VantageClient(Client):
 
-    available_kinds = ["fx", "forex", "stock", "btc", "digital"]
-
     def __init__(self, api_key, auto_index=False, finance_target = Target.FX, frame = 5, symbol = ('JPY', 'USD'), post_process = [], budget=1000000, logger = None, seed=1017):
+        super().__init__( budget=budget, frame=frame, provider="vantage", post_processes= post_process, logger_name=__name__, logger=logger)
         if self.frame not in Target.available_frame:
             raise ValueError(f"{self.frame} is not supported")
         
-        super().__init__( budget=budget, frame=frame, provider="vantage", post_processes= post_process, logger_name=__name__, logger=logger)
         self.debug = False
         self.auto_index = auto_index
         if type(symbol) == tuple or type(symbol) == list:
@@ -100,7 +98,7 @@ class VantageClient(Client):
             for key, value in meta_data.items():
                 if "Time Zone" in key:
                     time_zone = value
-            columns = columns.remove(meta_data_column)
+            columns.remove(meta_data_column)
             if len(columns) != 1:
                 self.logger.warn(f"data key has multiple candidates unexpectedly: {columns}")
             series_column = columns[0]
@@ -138,8 +136,9 @@ class VantageClient(Client):
         for index in column_index:
             column_names.append(desired_columns[index[0]])
             target_columns.append(data_df.columns[index[1]])
-            
-        data_df.columns = target_columns
+        
+        data_df = data_df[target_columns]
+        data_df.columns = column_names
         return data_df
     
     def __get_currency_rates(self, from_symbol, to_symbol, frame, size):
@@ -175,7 +174,7 @@ class VantageClient(Client):
     def __get_all_rates(self):
         existing_rate_df = None
         if os.path.exists(self.file_path):
-            existing_rate_df = pd.read_csv(self.file_path, parse_dates=["time"])
+            existing_rate_df = pd.read_csv(self.file_path, parse_dates=["time"], index_col="time")
             
         MAX_LENGTH = 950#not accurate
     
@@ -183,7 +182,7 @@ class VantageClient(Client):
             interval = MAX_LENGTH
             size = "full"
         else:
-            delta = datetime.datetime.utcnow() - existing_rate_df.iloc[0].name
+            delta = datetime.datetime.now(datetime.timezone.utc) - existing_rate_df.iloc[0].name
             total_seconds = delta.total_seconds()
             if (total_seconds/(60*60*24*7)) >= 1:
                 total_seconds = total_seconds * self.client.work_day_in_week/7#remove sat,sun
@@ -200,30 +199,33 @@ class VantageClient(Client):
             new_data_df = self.__get_stock_rates(self.symbol, self.frame, size)
             
         if existing_rate_df is not None:
-            rate_df = pd.concat([existing_rate_df, new_data_df])
-            rate_df = rate_df.drop_duplicates()
-            rate_df = rate_df.sort_index()
-        rate_df.to_csv(self.file_path)
-        return rate_df            
+            new_data_df = pd.concat([existing_rate_df, new_data_df])
+            new_data_df = new_data_df.drop_duplicates()
+            new_data_df = new_data_df.sort_index()
+        new_data_df.to_csv(self.file_path, index_label="time")
+        return new_data_df            
     
     def get_rates(self, interval):
-        MAX_LENGTH = 950#not accurate
-        
-        if interval <= MAX_LENGTH:
-            if interval <= 100:
-                size = "compact"
-            else:
-                size = "full"
-                
-            if self.__currency_trade:
-                new_data_df = self.__get_currency_rates(self.from_symbol, self.to_symbol, self.frame, size)
-            else:
-                new_data_df = self.__get_stock_rates(self.symbol, self.frame, size)
+        if interval == -1:
+            return self.__get_all_rates()
         else:
-            new_data_df = self.__get_all_rates()
+            MAX_LENGTH = 950#not accurate
             
-        out_size_df = new_data_df.iloc[-interval:]
-        return out_size_df
+            if interval <= MAX_LENGTH:
+                if interval <= 100:
+                    size = "compact"
+                else:
+                    size = "full"
+                    
+                if self.__currency_trade:
+                    new_data_df = self.__get_currency_rates(self.from_symbol, self.to_symbol, self.frame, size)
+                else:
+                    new_data_df = self.__get_stock_rates(self.symbol, self.frame, size)
+            else:
+                new_data_df = self.__get_all_rates()
+                
+            out_size_df = new_data_df.iloc[-interval:]
+            return out_size_df
     
     def cancel_order(self, order):
         pass
