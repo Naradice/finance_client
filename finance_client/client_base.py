@@ -52,9 +52,9 @@ class Client:
         
         self.__idc_processes = []
         self.__additional_length_for_prc = 0
-        self.__add_indicaters(indicater_processes)
+        self.add_indicaters(indicater_processes)
         self.__postprocesses = []
-        self.__add_postprocesses(post_processes)
+        self.add_postprocesses(post_processes)
         
     def initialize_process_params(self):
         if len(self.__postprocesses) > 0:
@@ -217,7 +217,7 @@ class Client:
         else:
             self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
             
-    def __add_indicaters(self, processes: list):
+    def add_indicaters(self, processes: list):
         for process in processes:
             self.__add_indicater(process)
     
@@ -229,7 +229,7 @@ class Client:
         else:
             self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
     
-    def __add_postprocesses(self, processes: list):
+    def add_postprocesses(self, processes: list):
         for process in processes:
             self.__add_postprocess(process)
         
@@ -287,8 +287,6 @@ class Client:
             data = self.get_rates(self.__data_queue_length)
         self.__data_queue.put(data)
     
-    def save_prams(self):
-        pass
         
     ## Need to implement in the actual client ##
 
