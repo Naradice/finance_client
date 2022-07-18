@@ -106,8 +106,19 @@ class MinMaxPreProcess(ProcessBase):
     kinds = 'MiniMax'
     opiton = {}
     
-    def __init__(self, key: str = 'minmax', scale = (-1, 1)):
+    def __init__(self, key: str='minmax', scale=(-1, 1), params:dict=None):
+        """Apply minimax for each column of data.
+        Note that if params are not specified, mini max values are detected by data on running once only.
+        So if data is partial data, mini max values will be not correct.
+
+        Args:
+            key (str, optional): identification of this process. Defaults to 'minmax'.
+            scale (tuple, optional): minimax scale. Defaults to (-1, 1).
+            params (dict, optional): {column_name: (min, max)}. Defaults to None and caliculate by provided data when run this process.
+        """
         self.opiton['scale'] = scale
+        if type(params) == dict:
+            self.opiton.update(params)
         super().__init__(key)
         
     @classmethod

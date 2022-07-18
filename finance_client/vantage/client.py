@@ -1,18 +1,40 @@
 import datetime, os, json, time
 import pandas as pd
-from finance_client.client_base import Client
+from finance_client.csv.client import CSVClient
 import finance_client.frames as Frame
 from finance_client.vantage import Target
 
-class VantageClient(Client):
+class VantageClient(CSVClient):
+    
+    OHLC_COLUMNS = ["open", "high", "low", "close"]
+    VOLUME_COLUMN = ["volume"]
+    TIME_INDEX_NAME = "time"
+    
+    def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = Target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, idc_processes=[], post_process=[], budget=1000000, logger=None):
+        """Get ohlc rate from alpha vantage api
+        Args:
+            api_key (str): apikey of alpha vantage
+            auto_index (bool, optional): increase step when get_rates is called. Defaults to False.
+            finance_target (Target, optional): Target of finance market. Defaults to Target.FX.
+            frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
+            symbol (tuple or str, optional): (from_symbol, to_symbol) for fx or stock symbol. Defaults to ('JPY', 'USD').
+            post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
+            budget (int, optional): budget for the simulation. Defaults to 1000000.
+            logger (logger, optional): you can pass your logger if needed. Defaults to None.
+            seed (int, optional): random seed. Defaults to 1017.
 
-    def __init__(self, api_key, auto_index=False, finance_target = Target.FX, frame = 5, symbol = ('JPY', 'USD'), post_process = [], budget=1000000, logger = None, seed=1017):
-        super().__init__( budget=budget, frame=frame, provider="vantage", post_processes= post_process, logger_name=__name__, logger=logger)
-        if self.frame not in Target.available_frame:
-            raise ValueError(f"{self.frame} is not supported")
-        
+        Raises:
+            ValueError: other than 1, 5, 15, 30, 60, 60*24, 60*24*7, 60*24*7*30 is specified as frame
+            ValueError: length of symbol(tuple) isn't 2 when target is FX or CRYPT_CURRENCY
+            Exception: length of symol(tuple) is other than 1 when target is 
+            ValueError: symbol(str) is not from_symvol/to_symbol foramt when target is FX
+            TypeError: symbol is neither tuple nor str
+        """
+        if frame not in Target.available_frame:
+            raise ValueError(f"{frame} is not supported")
+        self.frame = frame
+        self.__frame_delta = datetime.timedelta(minutes=frame)
         self.debug = False
-        self.auto_index = auto_index
         if type(symbol) == tuple or type(symbol) == list:
             if finance_target == Target.FX or finance_target == Target.CRYPTO_CURRENCY:
                 if len(symbol) != 2:
@@ -47,7 +69,6 @@ class VantageClient(Client):
             raise TypeError("symnbol should be tuple, list or str. For FX, (from, to) is expected")
         
         self.client = finance_target.create_client(api_key, logger)
-        
         self.function_name = finance_target.to_function_name(finance_target, frame)
         file_name = f"vantage_{symbol_name}_{self.function_name}_{Frame.to_str(frame)}.csv"
         
@@ -56,36 +77,9 @@ class VantageClient(Client):
             os.makedirs(self.data_folder)
             
         self.file_path = os.path.join(self.data_folder, file_name)
-
-    def get_current_ask(self):
-        pass
-    
-    def get_current_bid(self):
-        pass
-        
-    def get_current_spread(self):
-        pass
-    
-    def market_sell(self, symbol, price, amount, tp=None, sl=None):
-        pass
-            
-    def buy_for_settlement(self, symbol, price, amount, option, result):
-        pass
-    
-    def market_buy(self, symbol, price, amount, tp=None, sl=None):
-        pass
-    
-    def buy_order(self, value, tp=None, sl=None):
-        pass
-        
-    def sell_order(self, value, tp=None, sl=None):
-        pass
-    
-    def update_order(self, _type, _id, value, tp, sl):
-        print("NOT IMPLEMENTED")
-
-    def sell_for_settlment(self, symbol, price, amount, option, result):
-        pass    
+        self.__get_all_rates()
+        self.__updated_time = datetime.datetime.now()
+        super().__init__(auto_index, self.file_path, frame, "Vantage", None, self.OHLC_COLUMNS, self.TIME_INDEX_NAME, start_index, seed, idc_processes, post_process, budget, logger)
     
     def __convert_response_to_df(self, data_json:dict):
         # handle meta data and series column
@@ -119,7 +113,7 @@ class VantageClient(Client):
                 self.logger.warn(f"store datetime without timezone")
                 
         # filter ohlc and volume
-        desired_columns = ["open", "high", "low", "close", "volume"]
+        desired_columns = [*self.OHLC_COLUMNS, *self.VOLUME_COLUMN]
         column_index = []
         d_index = 0
         for d_column in desired_columns:
@@ -174,7 +168,7 @@ class VantageClient(Client):
     def __get_all_rates(self):
         existing_rate_df = None
         if os.path.exists(self.file_path):
-            existing_rate_df = pd.read_csv(self.file_path, parse_dates=["time"], index_col="time")
+            existing_rate_df = pd.read_csv(self.file_path, parse_dates=[self.TIME_INDEX_NAME], index_col=self.TIME_INDEX_NAME)
             
         MAX_LENGTH = 950#not accurate
     
@@ -202,30 +196,25 @@ class VantageClient(Client):
             new_data_df = pd.concat([existing_rate_df, new_data_df])
             new_data_df = new_data_df.drop_duplicates()
             new_data_df = new_data_df.sort_index()
-        new_data_df.to_csv(self.file_path, index_label="time")
-        return new_data_df            
+        new_data_df.to_csv(self.file_path, index_label=self.TIME_INDEX_NAME)
+        return new_data_df
     
-    def get_rates(self, interval):
-        if interval == -1:
-            return self.__get_all_rates()
-        else:
-            MAX_LENGTH = 950#not accurate
-            
-            if interval <= MAX_LENGTH:
-                if interval <= 100:
-                    size = "compact"
-                else:
-                    size = "full"
-                    
-                if self.__currency_trade:
-                    new_data_df = self.__get_currency_rates(self.from_symbol, self.to_symbol, self.frame, size)
-                else:
-                    new_data_df = self.__get_stock_rates(self.symbol, self.frame, size)
+    def update_rates(self):
+        current_time = datetime.datetime.now()
+        delta = current_time - self.__updated_time
+        if delta > self.__frame_delta:
+            last_date = self.data[self.TIME_INDEX_NAME].iloc[-1]
+            new_data_df = self.__get_all_rates()
+            new_data_df[self.TIME_INDEX_NAME] = new_data_df.index
+            new_data_df = new_data_df.reset_index()
+            new_last_date = new_data_df[self.TIME_INDEX_NAME].iloc[-1]
+            if last_date != new_last_date:
+                self.data = new_data_df
+                return True
             else:
-                new_data_df = self.__get_all_rates()
-                
-            out_size_df = new_data_df.iloc[-interval:]
-            return out_size_df
+                return False
+        else:
+            False
     
     def cancel_order(self, order):
         pass

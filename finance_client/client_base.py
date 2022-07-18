@@ -52,15 +52,25 @@ class Client:
         
         self.__idc_processes = []
         self.__additional_length_for_prc = 0
-        self.add_indicaters(indicater_processes)
+        self.__add_indicaters(indicater_processes)
         self.__postprocesses = []
-        self.add_postprocesses(post_processes)
+        self.__add_postprocesses(post_processes)
         
+    def initialize_process_params(self):
+        if len(self.__postprocesses) > 0:
+            try:
+                current_all_rates = self.get_rates(-1)
+                ##run process to initialize 
+                self.__run_processes(current_all_rates)
+            except Exception as e:
+                self.logger.error(f"error is occured on param initialization of processes")
+                self.logger.error(e)
+                exit()
+    
     def initialize_budget(self, budget):
         self.market(budget)
         
-    ## call from an actual client
-        
+    ## call from an actual client        
     def open_trade(self, is_buy, amount:float, order_type:str, symbol:str, price:float=None, option_info=None):
         """ by calling this in your client, order function is called and position is stored
 
@@ -198,7 +208,7 @@ class Client:
         return process in self.__idc_processes
         
                 
-    def add_indicater(self, process: utils.ProcessBase):
+    def __add_indicater(self, process: utils.ProcessBase):
         if self.have_process(process) == False:
             self.__idc_processes.append(process)
             required_length = process.get_minimum_required_length()
@@ -207,11 +217,11 @@ class Client:
         else:
             self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
             
-    def add_indicaters(self, processes: list):
+    def __add_indicaters(self, processes: list):
         for process in processes:
-            self.add_indicater(process)
+            self.__add_indicater(process)
     
-    def add_postprocess(self, process: utils.ProcessBase):
+    def __add_postprocess(self, process: utils.ProcessBase):
         if self.have_process(process) == False:
             self.__postprocesses.append(process)
             additional_length = process.get_minimum_required_length()
@@ -219,15 +229,18 @@ class Client:
         else:
             self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
     
-    def add_postprocesses(self, processes: list):
+    def __add_postprocesses(self, processes: list):
         for process in processes:
-            self.add_postprocess(process)
+            self.__add_postprocess(process)
         
             
     def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
-        required_length = interval + self.__additional_length_for_prc
+        if interval == -1:
+            required_length = -1
+        else:
+            required_length = interval + self.__additional_length_for_prc
         ohlc = self.get_rates(required_length)
-        if type(ohlc) == pd.DataFrame and len(ohlc) == required_length:
+        if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
             data = self.__run_processes(ohlc)
             return data.iloc[-interval:]
         else:
@@ -273,6 +286,9 @@ class Client:
         else:
             data = self.get_rates(self.__data_queue_length)
         self.__data_queue.put(data)
+    
+    def save_prams(self):
+        pass
         
     ## Need to implement in the actual client ##
 

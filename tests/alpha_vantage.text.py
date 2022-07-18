@@ -81,12 +81,20 @@ class TestVantageClient(unittest.TestCase):
     def test_fx_get_unsupported_interday(self):
         with self.assertRaises(ValueError):
             data = fx.get_interday_rates(from_symbol="USD", to_symbol="JPY", interval=Frame.MIN10)
-    """
     
     def test_get_all_rates(self):
         df = client.get_rates(-1)
         self.assertIn("close", df)
         self.assertGreater(len(df["close"]), 950)
+        
+        """
+    
+    def test_get_rates(self):
+        df = client.get_rates(100)
+        self.assertIn("close", df)
+        self.assertEqual(len(df["close"]), 100)
+    
+    #check after frame time
         
 if __name__ == '__main__':
     unittest.main()

@@ -17,7 +17,7 @@ class CSVClient(Client):
         #super().__init__()
         if self.frame in self.files:
             file = self.files[self.frame]
-            usecols = columns
+            usecols = list(columns)
             if date_col != None:
                 if date_col not in usecols:
                     usecols.append(date_col)
@@ -203,7 +203,12 @@ class CSVClient(Client):
             self.__auto_refresh = True
         self.__high_max = self.get_min_max(self.columns[0])[1]
         self.__low_min = self.get_min_max(self.columns[1])[0]
-
+        self.initialize_process_params()
+    
+    #overwrite if needed
+    def update_rates(self) -> bool:
+        return False
+    
     def get_rates(self, interval=1):
         if interval >= 1:
             rates = None
@@ -217,13 +222,17 @@ class CSVClient(Client):
                 except Exception as e:
                     self.logger.error(e)
             else:
-                if self.__auto_refresh:
-                    self.__step_index = random.randint(0, len(self.data))
-                    return self.get_rates(interval)
+                if self.update_rates():
+                    self.get_rates(interval)
                 else:
-                    self.logger.warning(f"not more data on index {self.__step_index}")
+                    if self.__auto_refresh:
+                        self.__step_index = random.randint(0, len(self.data))
+                        return self.get_rates(interval)
+                    else:
+                        self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
         elif interval == -1:
+            self.update_rates()
             rates = self.data.copy()
             return rates
         else:
@@ -241,7 +250,7 @@ class CSVClient(Client):
                     self.logger.error(e)
             else:
                 self.__step_index = random.randint(0, len(self.data))
-                return self.get_rates(interval)
+                return self.get_future_rates(interval)
         else:
             raise Exception("interval should be greater than 0.")
     
