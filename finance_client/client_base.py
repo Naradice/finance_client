@@ -16,6 +16,7 @@ class Client:
         self.__data_queue = None
         self.__timer_thread = None
         self.__data_queue_length = None
+        
         try:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
                     settings = json.load(f)
@@ -44,7 +45,6 @@ class Client:
         else:
             self.logger = logger
             self.market = market.Manager(budget, logger=logger, provider=provider)
-            
         try:
             self.frame = int(frame)
         except Exception as e:
@@ -207,7 +207,6 @@ class Client:
     def have_process(self, process: utils.ProcessBase):
         return process in self.__idc_processes
         
-                
     def __add_indicater(self, process: utils.ProcessBase):
         if self.have_process(process) == False:
             self.__idc_processes.append(process)
@@ -233,7 +232,6 @@ class Client:
         for process in processes:
             self.__add_postprocess(process)
         
-            
     def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
         if interval == -1:
             required_length = -1
@@ -258,7 +256,6 @@ class Client:
             self.__data_queue_length = 1
         return self.__data_queue
         
-    
     def __timer(self):
         next_time = 0
         interval = self.frame*60
@@ -287,8 +284,18 @@ class Client:
             data = self.get_rates(self.__data_queue_length)
         self.__data_queue.put(data)
     
+    def get_client_params(self):
+        common_args = {
+            "budget": self.market.budget, "indicater_processes": self.indicater_processes, "post_processes": self.post_processes, "frame": self.frame, "provider": self.market.provider
+        }
+        add_params = self.get_additional_params()
+        common_args.update(add_params)
+        return common_args
         
     ## Need to implement in the actual client ##
+    
+    def get_additional_params(self):
+        return {}
 
     def get_rates(self, interval:int) -> pd.DataFrame:
         print("Overwrite get_rates in your client")

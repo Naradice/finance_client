@@ -64,6 +64,7 @@ class Manager:
         providers = settings["providers"]
         if provider in providers:
             SymbolInfo = providers[provider]
+            self.provider = provider
         else:
             error_txt = f"provider {provider} is not defined in settings.json"
             self.logger.error(error_txt)

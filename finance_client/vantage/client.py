@@ -10,6 +10,12 @@ class VantageClient(CSVClient):
     VOLUME_COLUMN = ["volume"]
     TIME_INDEX_NAME = "time"
     
+    kinds = "vantage"
+    
+    def get_additional_params(self):
+        self.logger.warn("parameters are not saved for vantage as credentials are included.")
+        return {}
+    
     def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = Target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, idc_processes=[], post_process=[], budget=1000000, logger=None):
         """Get ohlc rate from alpha vantage api
         Args:

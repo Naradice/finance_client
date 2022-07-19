@@ -132,6 +132,13 @@ class CSVClient(Client):
             rolled_file_name += separator
             return rolled_file_name
         raise Exception(f"{org_file_name} isn't csv.")
+    
+    def get_additional_params(self):
+        args = {
+            "auto_index":self.auto_index, "file":self.files[self.frame]
+        }        
+        args.update(self.__args)
+        return args
 
     def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
@@ -152,7 +159,7 @@ class CSVClient(Client):
         super().__init__(budget=budget, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
         self.auto_index = auto_index
         random.seed(seed)
-        self.args = (file, frame, provider, out_frame, columns, date_column, seed)
+        self.__args = {"out_frame": out_frame, "olumns": columns, "date_column": date_column, "start_index": start_index, "seed": seed}
         if type(file) == str:
             file = os.path.abspath(file)
         self.ask_positions = {}

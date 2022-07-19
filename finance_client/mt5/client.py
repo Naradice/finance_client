@@ -8,6 +8,8 @@ import finance_client.frames as Frame
 
 class MT5Client(Client):
     
+    kinds = "mt5"
+    
     AVAILABLE_FRAMES = {
         Frame.MIN1: mt5.TIMEFRAME_M1,
         Frame.MIN5: mt5.TIMEFRAME_M5,
@@ -35,9 +37,14 @@ class MT5Client(Client):
         Frame.W1: "w1",
         Frame.MO1: "m1"
     }
+    
+    
+    def get_additional_params(self):
+        self.logger.warn("parameters are not saved for mt5 as credentials are included.")
+        return {}
 
-    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
-        super().__init__( budget=budget, frame=frame, provider=server, post_processes= post_process, logger_name=__name__, logger=logger)
+    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
+        super().__init__( budget=budget, frame=frame, provider=server, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
         self.simulation = simulation
         self.debug = False
         self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/mt5/{server}"))
