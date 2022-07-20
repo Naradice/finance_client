@@ -13,7 +13,7 @@ def get_available_processes() -> dict:
     }
     return processes
 
-def to_params_dict(processes:list) -> dict:
+def postprocess_to_params(processes:list) -> dict:
     """convert procese list to dict for saving params as file
 
     Args:

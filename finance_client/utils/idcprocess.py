@@ -1,5 +1,3 @@
-from signal import signal
-from matplotlib.style import available
 import numpy
 from finance_client.utils import indicaters
 import pandas as pd
@@ -23,7 +21,7 @@ def get_available_processes() -> dict:
     }
     return processes
 
-def to_param_dict(processes:list) -> dict:
+def indicaters_to_params(processes:list) -> dict:
     """ convert procese list to dict for saving params as file
 
     Args:

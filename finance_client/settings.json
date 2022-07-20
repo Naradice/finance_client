@@ -8,6 +8,9 @@
         },
         "bitflayer":{
             "trade_unit":0.01
+        },
+        "Vantage":{
+            "trade_unit":1
         }
     },
     "log":{

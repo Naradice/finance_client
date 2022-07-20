@@ -1,7 +1,7 @@
 import queue
 import threading
 import pandas as pd
-from finance_client import utils
+import finance_client.utils as utils
 import finance_client.market as market
 import finance_client.frames as Frame
 from logging import getLogger, config
@@ -285,9 +285,9 @@ class Client:
         self.__data_queue.put(data)
     
     def get_client_params(self):
-        common_args = {
-            "budget": self.market.budget, "indicater_processes": self.indicater_processes, "post_processes": self.post_processes, "frame": self.frame, "provider": self.market.provider
-        }
+        idc_params = utils.indicaters_to_params(self.indicater_processes)
+        pps_params = utils.postprocess_to_params(self.post_processes)
+        common_args = { "budget": self.market.budget, "indicater_processes": idc_params, "post_processes": pps_params, "frame": self.frame, "provider": self.market.provider }
         add_params = self.get_additional_params()
         common_args.update(add_params)
         return common_args
