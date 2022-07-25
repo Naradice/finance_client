@@ -436,7 +436,8 @@ class RenkoProcess(ProcessBase):
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
-            'NUM': f'{key}_block_num'
+            'NUM': f'{key}_block_num',
+            "TREND": f'{key}_trend',
         }
         
     @classmethod
@@ -453,11 +454,14 @@ class RenkoProcess(ProcessBase):
         date_column = option["date_column"]
         ohlc_column = option["ohlc_column"]
         window = option['window']
-        idc_column = "bar_num"
+        num_column = "bar_num"
+        trend_column = "uptrend"
+        
         renko_block_num = self.columns["NUM"]
+        renko_trend = self.columns["TREND"]
         
         renko_df = indicaters.renko_time_scale(data, date_column=date_column, ohlc_columns=ohlc_column, window=window)
-        return {renko_block_num:renko_df[idc_column].values}
+        return {renko_block_num:renko_df[num_column].values, renko_trend: renko_df[trend_column].values}
         
     def update(self, tick:pd.Series):
         raise Exception("update is not implemented yet on renko process")

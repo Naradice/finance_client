@@ -26,7 +26,7 @@ config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
 
-file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../data_source/bitcoin_5_2017T0710-2021T103022.csv'))
+file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/csv/bitcoin_5_2017T0710-2021T103022.csv'))
 class TestIndicaters(unittest.TestCase):
     client = CSVClient(file=file_path, logger=logger)
     

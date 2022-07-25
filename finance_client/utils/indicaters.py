@@ -330,11 +330,12 @@ def renko_from_ohlc(ohlc: pd.DataFrame, atr_length:int = 120, date_column = "Tim
     renko_df["bar_num"] = bar_num
     #when value rise up/down multiple bricks, renko (ohlc value as brick) is stored on same date. so we need to drop duplicates and keep last item only.
     renko_df.drop_duplicates(subset="date",keep="last",inplace=True)
-    renko_df = renko_df[[date_column_4_renko,"uptrend", "bar_num"]]
+    renko_df["uptrend"] = renko_df["uptrend"].astype(int).values
+    renko_df = renko_df[[date_column_4_renko,"uptrend", "bar_num"]].copy()
     renko_df.columns = [date_column, "uptrend", "bar_num"]
     return renko_df
 
-def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close'), is_date_index=False, window=120):
+def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close'), is_date_index=False, window=120, mode="count"):
     "function to merging renko df with original ohlc df"
     df = copy.deepcopy(DF)
     if is_date_index:
@@ -345,8 +346,9 @@ def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns =
         if type(date_column) != str or date_column not in DF:
             raise Exception("datetime index or columns is required to scale renko result to the datetime.")
     renko = renko_from_ohlc(df, ohlc_columns=ohlc_columns, date_column=date_column, atr_length=window)
-    merged_df = df.merge(renko.loc[:,[date_column,"bar_num"]],how="outer",on=date_column)
+    merged_df = df.merge(renko.loc[:,[date_column, "uptrend", "bar_num"]], how="outer",on=date_column)
     merged_df["bar_num"].fillna(method='ffill',inplace=True)
+    merged_df["uptrend"].fillna(method='ffill',inplace=True)
     return merged_df
 
 def slope(ser: pd.Series, window):
