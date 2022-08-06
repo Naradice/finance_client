@@ -2,7 +2,7 @@ import datetime, os, json, time
 import pandas as pd
 from finance_client.csv.client import CSVClient
 import finance_client.frames as Frame
-from finance_client.vantage import Target
+import finance_client.vantage.target as Target
 
 class VantageClient(CSVClient):
     
@@ -70,7 +70,7 @@ class VantageClient(CSVClient):
             else:
                 self.__currency_trade = False
                 self.symbol = symbol
-                symbol_name = symbol                
+                symbol_name = symbol
         else:
             raise TypeError("symnbol should be tuple, list or str. For FX, (from, to) is expected")
         

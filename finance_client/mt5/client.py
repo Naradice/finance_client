@@ -227,9 +227,9 @@ class MT5Client(Client):
             result = self.__post_market_order(
                 symbol=symbol,
                 _type=mt5.ORDER_TYPE_BUY,
-                vol=0.1, 
+                vol=0.1*amount, 
                 price=rate,
-                dev=amount*20,
+                dev=20,
                 sl=sl,
                 tp=tp,
             )
