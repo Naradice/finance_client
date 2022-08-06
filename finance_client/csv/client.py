@@ -1,4 +1,5 @@
 from tkinter.ttk import Separator
+from matplotlib.style import available
 import numpy
 import pandas as pd
 import random
@@ -12,6 +13,24 @@ from logging import getLogger
 
 class CSVClient(Client):
     kinds = 'csv'
+    
+    def __update_columns(self, columns:list):
+        if self.ohlc_columns == None:
+            self.ohlc_columns = {}
+        temp_columns = {}
+        for column in columns:
+            column_ = str(column).lower()
+            if column_ == 'open':
+                temp_columns['Open'] = column
+            elif column_ == 'high':
+                temp_columns['High'] = column
+            elif column_ == 'low':
+                temp_columns['Low'] = column
+            elif column_ == 'close':
+                temp_columns['Close'] = column
+            elif "time" in column_:#assume time, timestamp or datetime
+                temp_columns["Time"] = column
+        self.ohlc_columns.update(temp_columns)
 
     def __read_csv__(self, columns, date_col=None):
         #super().__init__()
@@ -24,7 +43,7 @@ class CSVClient(Client):
                 self.data = pd.read_csv(file,  header=0, parse_dates=[date_col], usecols = usecols)
             else:
                 self.data = pd.read_csv(file,  header=0, usecols = usecols)
-            self.columns = usecols
+            self.__update_columns(usecols)
         else:
             raise Exception(f"{self.frame} is not available in CSV Client.")
 
@@ -58,6 +77,11 @@ class CSVClient(Client):
             get_past_window = self.__past_hours
         else:
             get_past_window = self.__past_minutes
+            
+        open_column = self.ohlc_columns["Open"]
+        high_column = self.ohlc_columns["High"]
+        low_column = self.ohlc_columns["Low"]
+        close_column = self.ohlc_columns["Close"]
         
         pre_index = len(data)-1
         past_index = get_past_window(data[self.date_column].iloc[pre_index], from_frame, to_frame)
@@ -108,17 +132,17 @@ class CSVClient(Client):
                 Closes.append(numpy.Nan)
                 Timestamp.append(expected_date)
             else:
-                Highs.append(data[self.columns[0]].iloc[next_index:pre_index].max())
-                Lows.append(data[self.columns[1]].iloc[next_index:pre_index].min())
-                Opens.append(data[self.columns[2]].iloc[next_index])
-                Closes.append(data[self.columns[3]].iloc[pre_index-1])
+                Highs.append(data[high_column].iloc[next_index:pre_index].max())
+                Lows.append(data[high_column].iloc[next_index:pre_index].min())
+                Opens.append(data[open_column].iloc[next_index])
+                Closes.append(data[close_column].iloc[pre_index-1])
                 Timestamp.append(data[self.date_column].iloc[next_index])
 
                 expected_date = expected_date - delta
                 pre_index = next_index
                 next_index = pre_index - window_
 
-        rolled_data = pd.DataFrame({self.date_column:Timestamp, self.columns[0]: Highs, self.columns[1]:Lows, self.columns[2]:Opens, self.columns[3]:Closes})
+        rolled_data = pd.DataFrame({self.date_column:Timestamp, high_column: Highs, low_column:Lows, open_column:Opens, close_column:Closes})
         return rolled_data
     
     def __get_rolled_file_name(self, org_file_name:str, from_frame, to_frame, addNan=False) -> str:
@@ -140,7 +164,7 @@ class CSVClient(Client):
         args.update(self.__args)
         return args
 
-    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
+    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, slip_type="random", seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
@@ -158,6 +182,15 @@ class CSVClient(Client):
         """
         super().__init__(budget=budget, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
         self.auto_index = auto_index
+        available_slip_type = ["random", "none", "percentage"]
+        if slip_type in available_slip_type:
+            self.slip_type = slip_type
+            if slip_type == "percentage":
+                self.slip_rate = 0.1
+        else:
+            self.logger.warn(f"{slip_type} is not in availble values: {available_slip_type}")
+            self.logger.info(f"use random as slip_type")
+            self.slip_type = "random"
         random.seed(seed)
         self.__args = {"out_frame": out_frame, "olumns": columns, "date_column": date_column, "start_index": start_index, "seed": seed}
         if type(file) == str:
@@ -208,8 +241,11 @@ class CSVClient(Client):
         else:
             self.__step_index = random.randint(0, len(self.data))
             self.__auto_refresh = True
-        self.__high_max = self.get_min_max(self.columns[0])[1]
-        self.__low_min = self.get_min_max(self.columns[1])[0]
+        
+        high_column = self.ohlc_columns["High"]
+        low_column = self.ohlc_columns["Low"]
+        self.__high_max = self.get_min_max(column = high_column)[1]
+        self.__low_min = self.get_min_max(column = low_column)[0]
         self.initialize_process_params()
     
     #overwrite if needed
@@ -263,14 +299,29 @@ class CSVClient(Client):
     
     def get_current_ask(self):
         tick = self.data.iloc[self.__step_index]
-        mean = (tick.High + tick.Low)/2
-        return random.uniform(mean, tick.High)
+        open_column = self.ohlc_columns["Open"]
+        high_column = self.ohlc_columns["High"]
         
+        if self.slip_type == "random":
+            return random.uniform(tick[open_column], tick[high_column])
+        elif self.slip_type == "none":
+            return tick[open_column]
+        elif "percentage":
+            slip = (tick[high_column] - tick[open_column]) * self.slip_rate
+            return tick[open_column] + slip
 
     def get_current_bid(self):
         tick = self.data.iloc[self.__step_index]
-        mean = (tick.High + tick.Low)/2
-        return random.uniform(tick.Low, mean)
+        open_column = self.ohlc_columns["Open"]
+        low_column = self.ohlc_columns["Low"]
+        
+        if self.slip_type == "random":
+            return random.uniform(tick[low_column], tick[open_column])
+        elif self.slip_type == "none":
+            return tick[open_column]
+        elif "percentage":
+            slip = (tick[open_column] - tick[low_column]) * self.slip_rate
+            return tick[open_column] - slip
         
     def reset(self, mode:str = None, retry=0)-> bool:
         self.ask_positions = {}#ignore if there is position
