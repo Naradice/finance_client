@@ -174,7 +174,7 @@ class MT5Client(Client):
             return mt5.symbol_info(self.SYMBOL).spread
     
 
-    def market_sell(self, symbol, price, amount, tp=None, sl=None):
+    def market_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         rate = price
         if self.simulation is False:
             if tp != None:
@@ -211,7 +211,7 @@ class MT5Client(Client):
             return result
             
     #symbol, ask_rate, amount, option_info
-    def market_buy(self, symbol, price, amount, tp=None, sl=None):
+    def market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         if self.simulation is False:
             rate = price
             
@@ -259,6 +259,7 @@ class MT5Client(Client):
                 tp=tp,
             )
             self.orders["bid"].append(result)
+            return result
     
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
@@ -382,7 +383,7 @@ class MT5Client(Client):
         else:
             return df_rates
         
-    def get_rates(self, interval, start = 0):
+    def get_rates_from_client(self, interval, start = 0):
         
         if interval == -1:
             return self.__get_all_rates()

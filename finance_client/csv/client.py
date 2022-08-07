@@ -252,7 +252,7 @@ class CSVClient(Client):
     def update_rates(self) -> bool:
         return False
     
-    def get_rates(self, interval=1):
+    def get_rates_from_client(self, interval=1):
         if interval >= 1:
             rates = None
             if self.__step_index >= interval-1:
@@ -261,16 +261,18 @@ class CSVClient(Client):
                     rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1].copy()
                     if self.auto_index:
                         self.__step_index = self.__step_index + 1
+                        ## raise index change event
                     return rates
                 except Exception as e:
                     self.logger.error(e)
             else:
                 if self.update_rates():
-                    self.get_rates(interval)
+                    self.get_rates_from_client(interval)
                 else:
                     if self.__auto_refresh:
                         self.__step_index = random.randint(0, len(self.data))
-                        return self.get_rates(interval)
+                        ## raise index change event
+                        return self.get_rates_from_client(interval)
                     else:
                         self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
@@ -292,8 +294,13 @@ class CSVClient(Client):
                 except Exception as e:
                     self.logger.error(e)
             else:
-                self.__step_index = random.randint(0, len(self.data))
-                return self.get_future_rates(interval)
+                if self.__auto_refresh:
+                    self.__step_index = random.randint(0, len(self.data))
+                    ## raise index change event
+                    return self.get_future_rates(interval)
+                else:
+                    self.logger.warning(f"not more data on index {self.__step_index}")
+                return pd.DataFrame()
         else:
             raise Exception("interval should be greater than 0.")
     
@@ -306,7 +313,7 @@ class CSVClient(Client):
             return random.uniform(tick[open_column], tick[high_column])
         elif self.slip_type == "none":
             return tick[open_column]
-        elif "percentage":
+        elif self.slip_type == "percentage":
             slip = (tick[high_column] - tick[open_column]) * self.slip_rate
             return tick[open_column] + slip
 
@@ -319,14 +326,14 @@ class CSVClient(Client):
             return random.uniform(tick[low_column], tick[open_column])
         elif self.slip_type == "none":
             return tick[open_column]
-        elif "percentage":
+        elif self.slip_type == "percentage":
             slip = (tick[open_column] - tick[low_column]) * self.slip_rate
             return tick[open_column] - slip
         
     def reset(self, mode:str = None, retry=0)-> bool:
         self.ask_positions = {}#ignore if there is position
         self.__step_index = random.randint(0, len(self.data))
-        if mode != None:
+        if mode != None:##start time mode: hour day, week, etc
             if retry <= 10:
                 if mode == "day":
                     current_date = self.data[self.date_column].iloc[self.__step_index]
@@ -349,6 +356,7 @@ class CSVClient(Client):
             else:
                 self.logger.warning("Data client reset with {mode} mode retried over 10. index was not correctly reset.")
                 return False
+        ## raise index change event
         return True
                                 
 
@@ -363,11 +371,17 @@ class CSVClient(Client):
         if self.__step_index < len(self.data)-2:
             self.__step_index += 1
             tick = self.data.iloc[self.__step_index]
+            ## raise index change event
             return tick, False
         else:
-            self.__step_index = random.randint(0, len(self.data))
-            tick = self.data.iloc[self.__step_index]
-            return tick, True
+            if self.__auto_refresh:
+                self.__step_index = random.randint(0, len(self.data))
+                ## raise index change event
+                tick = self.data.iloc[self.__step_index]
+                return tick, True
+            else:
+                self.logger.warning(f"not more data on index {self.__step_index}")
+            return pd.DataFrame(), True
         
     @property
     def max(self):

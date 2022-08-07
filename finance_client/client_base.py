@@ -71,7 +71,7 @@ class Client:
         self.market(budget)
         
     ## call from an actual client        
-    def open_trade(self, is_buy, amount:float, order_type:str, symbol:str, price:float=None, option_info=None):
+    def open_trade(self, is_buy, amount:float, order_type:str, symbol:str, price:float=None, tp=None, sl=None, option_info=None):
         """ by calling this in your client, order function is called and position is stored
 
         Args:
@@ -92,17 +92,17 @@ class Client:
                     ask_rate = self.get_current_ask()
                 else:
                     ask_rate = price
-                result = self.market_buy(symbol, ask_rate, amount, option_info)
-                return self.__open_long_position(symbol, ask_rate, amount, option_info, result)
+                result = self.market_buy(symbol, ask_rate, amount, tp, sl, option_info)
+                return self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
             else:
                 if price == None:
                     bid_rate = self.get_current_bid()
                 else:
                     bid_rate = price
-                result = self.market_sell(symbol, bid_rate, amount, option_info)
-                return self.__open_short_position(symbol, bid_rate, amount, option_info, result)
+                result = self.market_sell(symbol, bid_rate, amount, tp, sl, option_info)
+                return self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
         else:
-            self.logger.debug(f"{order_type} is not defined.")
+            self.logger.debug(f"{order_type} is not defined/implemented.")
             
     def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
@@ -207,7 +207,7 @@ class Client:
     def have_process(self, process: utils.ProcessBase):
         return process in self.__idc_processes
         
-    def __add_indicater(self, process: utils.ProcessBase):
+    def add_indicater(self, process: utils.ProcessBase):
         if self.have_process(process) == False:
             self.__idc_processes.append(process)
             required_length = process.get_minimum_required_length()
@@ -218,7 +218,7 @@ class Client:
             
     def add_indicaters(self, processes: list):
         for process in processes:
-            self.__add_indicater(process)
+            self.add_indicater(process)
     
     def __add_postprocess(self, process: utils.ProcessBase):
         if self.have_process(process) == False:
@@ -291,14 +291,58 @@ class Client:
         add_params = self.get_additional_params()
         common_args.update(add_params)
         return common_args
+    
+    def __check_order_completion(self, ohlc_df: pd.DataFrame):
+        if len(self.market.listening_positions) > 0:
+            positions = self.market.listening_positions.copy()
+            self.logger.debug("start checking the tp and sl of positions")
+            high_column = self.ohlc_columns["High"]
+            low_column = self.ohlc_columns["Low"]
+            tick = ohlc_df.iloc[-1]
+            for id, position in positions.items():
+                # start checking stop loss at first.
+                if position.sl is not None:
+                    if position.order_type == "ask":
+                        if position.sl >= tick[low_column]:
+                            self.market.close_position(position, position.sl)
+                            self.logger.info("Position is closed to stop loss")
+                            continue
+                    elif position.order_type == "bid":
+                        if position.sl <= tick[high_column]:
+                            self.market.close_position(position, position.sl)
+                            self.logger.info("Position is closed to stop loss")
+                            continue
+                    else:
+                        self.logger.error(f"unkown order_type: {position.order_type}")
+                        continue
+                        
+                if position.tp is not None:
+                    if position.order_type == "ask":
+                        self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
+                        if position.tp <= tick[high_column]:
+                            self.market.close_position(position, position.tp)
+                            self.logger.info("Position is closed to take profit")
+                    elif position.order_type == "bid":
+                        self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
+                        if position.tp >= tick[low_column]:
+                            self.market.close_position(position, position.tp)
+                            self.logger.info("Position is closed to take profit")
+                    else:
+                        self.logger.error(f"unkown order_type: {position.order_type}")
+                            
+    def get_rates(self, interval:int) -> pd.DataFrame:
+        rates = self.get_rates_from_client(interval=interval)
+        t = threading.Thread(target=self.__check_order_completion, args=(rates,), daemon=True)
+        t.start()
+        return rates
         
     ## Need to implement in the actual client ##
     
     def get_additional_params(self):
         return {}
 
-    def get_rates(self, interval:int) -> pd.DataFrame:
-        print("Overwrite get_rates in your client")
+    def get_rates_from_client(self, interval:int):
+        return {}
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass
@@ -309,10 +353,10 @@ class Client:
     def get_current_bid(self) -> float:
         print("Need to implement get_current_bid on your client")
             
-    def market_buy(self, symbol, ask_rate, amount, option_info):
+    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
         pass
     
-    def market_sell(self, symbol, bid_rate, amount, option_info):
+    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
         pass
     
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
@@ -409,18 +453,19 @@ class Client:
                 diffs.append(*bid_diffs)
             return diffs
     
-    def __open_long_position(self, symbol, boughtRate, amount, option_info=None, result=None):
-        self.logger.debug("open long position is created.")
-        position = self.market.open_position("ask", symbol, boughtRate, amount, option_info, result)
+    def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
+        self.logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+        position = self.market.open_position(order_type="ask", symbol=symbol,  price=boughtRate, amount=amount, tp=tp, sl=sl, option=option_info, result=result)
         return position
 
-    def __open_short_position(self, symbol, soldRate, amount, option_info=None, result = None):
-        self.logger.debug("open short position is created.")
-        position = self.market.open_position("bid", symbol,  soldRate, amount, option_info, result=result)
+    def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result = None):
+        self.logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+        position = self.market.open_position(order_type="bid", symbol=symbol,  price=soldRate, amount=amount, tp=tp, sl=sl, option=option_info, result=result)
         return position
     
     def get_ohlc_columns(self) -> dict:
         if self.ohlc_columns == None:
+            self.ohlc_columns = {}
             columns = {}
             temp = self.auto_index
             self.auto_index = False

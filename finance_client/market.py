@@ -10,17 +10,19 @@ import json
 class Position:
     id = uuid.uuid4()
     
-    def __init__(self, order_type:str, symbol:str, price:float, amount: float, option, result):
+    def __init__(self, order_type:str, symbol:str, price:float, amount: float,  tp:float, sl:float, option, result):
         self.order_type = order_type
         self.price = price
         self.amount = amount
         self.option = option
         self.result = result
         self.symbol = symbol
+        self.tp = tp
+        self.sl = sl
         self.timestamp = datetime.datetime.now()
         
     def __str__(self) -> str:
-        return f'(order_type:{self.order_type}, price:{self.price}, amount:{self.amount}, symbol:{self.symbol})'
+        return f'(order_type:{self.order_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol})'
     
 
 class Manager:
@@ -29,6 +31,13 @@ class Manager:
         "ask": {},
         "bid": {}
     }
+    
+    pending_orders = {
+        "ask": {},
+        "bid": {}
+    }
+    
+    listening_positions = {}
     
     __locked = False
     
@@ -97,16 +106,21 @@ class Manager:
         else:
             raise Exception(f"order_type should be specified: {order_type}")
     
-    def open_position(self, order_type:str, symbol:str, price:float, amount: float, option = None, result=None):
+    def open_position(self, order_type:str, symbol:str, price:float, amount: float, tp=None, sl=None, option = None, result=None):
         order_type = self.__check_order_type(order_type)
         ## check if budget has enough amount
         required_budget = self.trade_unit * amount * price
         ## if enough, add position
         if required_budget <= self.budget:
-            position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, option=option, result=result)
+            position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
             self.positions[order_type][position.id] = position
+            self.logger.debug(f"position is stored: {position}")
             ## then reduce budget
             self.budget = self.budget - required_budget
+            ## check if tp/sl exists
+            if tp is not None or sl is not None:
+                self.listening_positions[position.id] = position
+                self.logger.debug(f"position is stored to listening list")
             return position
         else:
             logger.info(f"current budget {self.budget} is less than required {required_budget}")
@@ -146,21 +160,26 @@ class Manager:
             profit = self.trade_unit * amount * price_diff
             return_budget = self.trade_unit * amount * position.price + profit
             
-            self.budget += return_budget
-            
             if(self.__wait_lock()):
                 self.__locked = True
+                ## close position
                 if position.id in self.positions[position.order_type]:
                     if position.amount == amount:
                         self.positions[position.order_type].pop(position.id)
                     else:
                         position.amount = position.amount - amount
                         self.positions[position.order_type][position.id] = position
+                    self.logger.info(f"closed result:: profit {profit}, return_budget: {return_budget}")
+                    self.budget += return_budget
                     self.__locked = False
                     return price, position.price, price_diff, profit
                 else:
                     self.__locked = False
                     logger.info("info: positionis already removed.")
+                    
+                ## remove position from listening
+                if position.id in self.listening_positions:
+                    self.listening_positions.pop(position.id)
             else:
                 logger.debug("lock returned false somehow.")
         else:
