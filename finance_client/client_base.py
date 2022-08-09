@@ -394,6 +394,8 @@ class Client:
     def __getitem__(self, ndx):
         return None
     
+    ###
+    
     def __get_long_position_diffs(self, standalization="minimax"):
         positions = self.market.positions["ask"]
         if len(positions) > 0:

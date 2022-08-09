@@ -43,9 +43,9 @@ class MT5Client(Client):
         self.logger.warn("parameters are not saved for mt5 as credentials are included.")
         return {}
 
-    def __init__(self,id, password, server, simulation=True, auto_index=False, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
+    def __init__(self,id, password, server, back_test=False, auto_index=True, simulation=True, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
         super().__init__( budget=budget, frame=frame, provider=server, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
-        self.simulation = simulation
+        self.back_test = back_test
         self.debug = False
         self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/mt5/{server}"))
         if os.path.exists(self.data_folder) == False:
@@ -85,9 +85,9 @@ class MT5Client(Client):
         self.point = symbol_info.point
         self.orders = {"ask":[], "bid":[]}
         
-        if self.simulation:
-            if frame != Frame.MIN5:
-                self.logger.warning("simulation mode is available only for MIN5 for now")
+        if self.back_test:
+            if frame > Frame.H1:
+                self.logger.warning("back_test mode is available only for less than H1 for now")
             if type(simulation_seed) == int:
                 random.seed(simulation_seed)
             else:
@@ -98,6 +98,11 @@ class MT5Client(Client):
             self.auto_index = auto_index
             if auto_index:
                 self.__next_time = None
+        
+        if back_test or simulation:
+            self.__ignore_order = True
+        else:
+            self.__ignore_order = False
     
     def __post_market_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
@@ -146,7 +151,7 @@ class MT5Client(Client):
         return result
 
     def get_current_ask(self):
-        if self.simulation:
+        if self.back_test:
             next_data = self.__get_rates(1, self.sim_index-1)
             open_column = self.get_ohlc_columns()["Open"]
             high_column = self.get_ohlc_columns()["High"]
@@ -157,7 +162,7 @@ class MT5Client(Client):
             return mt5.symbol_info_tick(self.SYMBOL).ask
     
     def get_current_bid(self):
-        if self.simulation:
+        if self.back_test:
             next_data = self.__get_rates(1, self.sim_index-1)
             open_column = self.get_ohlc_columns()["Open"]
             low_column = self.get_ohlc_columns()["Low"]
@@ -168,7 +173,7 @@ class MT5Client(Client):
             return mt5.symbol_info_tick(self.SYMBOL).bid
     
     def get_current_spread(self):
-        if self.simulation:
+        if self.back_test:
             return self.data["spread"].iloc[-1]
         else:
             return mt5.symbol_info(self.SYMBOL).spread
@@ -176,7 +181,7 @@ class MT5Client(Client):
 
     def market_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         rate = price
-        if self.simulation is False:
+        if self.__ignore_order is False:
             if tp != None:
                 if rate <= tp:
                     self.logger.warning("tp should be lower than value")
@@ -197,7 +202,7 @@ class MT5Client(Client):
             return result
             
     def buy_for_settlement(self, symbol, price, amount, option, result):
-        if self.simulation is False:
+        if self.__ignore_order is False:
             rate = price
             order = result.order
             result = self.__post_market_order(
@@ -212,7 +217,7 @@ class MT5Client(Client):
             
     #symbol, ask_rate, amount, option_info
     def market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
-        if self.simulation is False:
+        if self.__ignore_order is False:
             rate = price
             
             if tp != None:
@@ -237,7 +242,7 @@ class MT5Client(Client):
             
     
     def buy_order(self, value, tp=None, sl=None):
-        if self.simulation is False:
+        if self.__ignore_order is False:
             result = self.post_order(
                 _type=mt5.ORDER_TYPE_BUY_LIMIT,
                 vol=0.1,
@@ -249,7 +254,7 @@ class MT5Client(Client):
             return result
     
     def sell_order(self, value, tp=None, sl=None):            
-        if self.simulation is False:
+        if self.__ignore_order is False:
             result = self.post_order(
                 _type=mt5.ORDER_TYPE_SELL_LIMIT,
                 vol=0.1,
@@ -265,7 +270,7 @@ class MT5Client(Client):
         print("NOT IMPLEMENTED")
 
     def sell_for_settlment(self, symbol, price, amount, option, result):
-        if self.simulation is False:
+        if self.__ignore_order is False:
             position = result.order
             result = self.__post_market_order(
                 symbol=symbol,
@@ -294,7 +299,7 @@ class MT5Client(Client):
             if (total_seconds/(60*60*24*7)) >= 1:
                 total_seconds = total_seconds * 5/7#remove sat,sun
             interval = int((total_seconds/60)/self.frame)
-            if interval == 0:
+            if interval <= 0:
                 interval = 10# to be safe
             if interval > MAX_LENGTH:
                 interval = MAX_LENGTH
@@ -330,7 +335,7 @@ class MT5Client(Client):
         _interval = None
         if start != 0:
             start_index = start
-        elif self.simulation:
+        elif self.back_test:
             start_index = self.sim_index
         if self.auto_index and interval == 1:
             _interval  = interval
@@ -341,7 +346,8 @@ class MT5Client(Client):
         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
         #df_rates = df_rates.set_index('time')
         
-        if self.simulation and self.auto_index:
+        ##MT5 index based on current time. So we need to update the index based on past time.
+        if self.back_test and self.auto_index:
             if self.__next_time == None:
                 self.__next_time = df_rates['time'].iloc[1]
                 self.logger.debug(f"auto index: initialized with {df_rates['time'].iloc[0]}")
@@ -395,7 +401,7 @@ class MT5Client(Client):
             return df_rates
     
     def cancel_order(self, order):
-        if self.simulation is False:
+        if self.__ignore_order is False:
             position = order.order
             request = {
                 'action': mt5.TRADE_ACTION_REMOVE,
