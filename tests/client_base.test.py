@@ -12,10 +12,10 @@ class TestClient(Client):
     def __init__(self, budget=1000000, indicater_processes: list = [], do_rendere = False, post_processes: list = [], frame: int = Frame.MIN5, provider="Default", logger_name=None, logger=None):
         super().__init__(budget, indicater_processes, post_processes, frame, provider, do_rendere, logger_name, logger)
         self.data = pd.DataFrame.from_dict({
-            "Open":[*[100 for open in range(0,1000)], *[100 for open in range(0,100)]],
-            "High":[*[110 for high in range(0, 1000)], *[150 for high in range(0,100)]],
-            "Low":[*[90 for low in range(0, 1000)], *[50 for low in range(0,100)]],
-            "Close":[*[100 for close in range(0, 1000)], *[100 for close in range(0,100)]]
+            "Open":[*[100 + open -1 for open in range(0,1000)], *[100 for open in range(0,100)]],
+            "High":[*[110 + high for high in range(0, 1000)], *[150 for high in range(0,100)]],
+            "Low":[*[90 + low for low in range(0, 1000)], *[50 for low in range(0,100)]],
+            "Close":[*[100 + close for close in range(0, 1000)], *[100 for close in range(0,100)]]
         })
         self.step_index = 200
         
@@ -97,8 +97,9 @@ class TestCSVClient(unittest.TestCase):
         
     def test_get_rates_with_plot(self):
         client = TestClient(do_rendere=True)
-        client.get_rates(100)
-        time.sleep(5)
+        for i in range(0, 10):
+            client.get_rates(100)
+            time.sleep(1)
 
     
 if __name__ == '__main__':

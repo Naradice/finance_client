@@ -99,7 +99,7 @@ class Rendere:
         if options != None:
             for key, content in options.items():
                 self.__data[index_][key] = content
-        return index
+        return index_
         
     def register_xy(self, x:list, y:list, title:str=None, index=-1):
         """
@@ -155,7 +155,9 @@ class Rendere:
             index (_type_): _description_
         """
         if index in self.__data:
-            self.__data[index].update('data', ohlc)
+            self.__data[index].update({'data': ohlc})
+        else:
+            print("index not in the data")
     
     def register_ohlc(self, ohlc, index=-1,title='OHLC Candle',open='Open',high = 'High', low='Low', close='Close'):
         """
@@ -186,7 +188,6 @@ class Rendere:
         close = content['columns'][3]
         
         x = numpy.arange(0, len(ohlc))
-        print(f"{index}: {self.shape}")
         if index > -1 and self.__check_subplot(index):
             column = int(index/self.shape[0])
             row = index % self.shape[0]
