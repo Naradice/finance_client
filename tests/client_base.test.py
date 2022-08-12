@@ -1,4 +1,4 @@
-import unittest, os, json, sys, datetime, random
+import unittest, os, json, sys, datetime, random, time
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(module_path)
 from finance_client.client_base import Client
@@ -9,21 +9,21 @@ import pandas as pd
 
 class TestClient(Client):
     
-    def __init__(self, budget=1000000, indicater_processes: list = [], post_processes: list = [], frame: int = Frame.MIN5, provider="Default", logger_name=None, logger=None):
-        super().__init__(budget, indicater_processes, post_processes, frame, provider, logger_name, logger)
+    def __init__(self, budget=1000000, indicater_processes: list = [], do_rendere = False, post_processes: list = [], frame: int = Frame.MIN5, provider="Default", logger_name=None, logger=None):
+        super().__init__(budget, indicater_processes, post_processes, frame, provider, do_rendere, logger_name, logger)
         self.data = pd.DataFrame.from_dict({
             "Open":[*[100 for open in range(0,1000)], *[100 for open in range(0,100)]],
             "High":[*[110 for high in range(0, 1000)], *[150 for high in range(0,100)]],
             "Low":[*[90 for low in range(0, 1000)], *[50 for low in range(0,100)]],
             "Close":[*[100 for close in range(0, 1000)], *[100 for close in range(0,100)]]
         })
-        self.step_index = 100
+        self.step_index = 200
         
     def get_additional_params(self):
         return {}
 
     def get_rates_from_client(self, interval:int):
-        df = self.data.iloc[interval - self.step_index]
+        df = self.data.iloc[self.step_index - interval+1: self.step_index+1]
         self.step_index += 1
         return df
     
@@ -89,9 +89,16 @@ class TestCSVClient(unittest.TestCase):
         valid = client.have_process(process2)
         self.assertEqual(valid, True)
         client.add_indicaters([process, process2])
+    
+    def test_get_rates_wo_plot(self):
+        client = TestClient(do_rendere=False)
+        rates = client.get_rates(100)
+        self.assertEqual(len(rates["Open"]), 100)
         
-    def test_initialize_process_params(self):
-        
+    def test_get_rates_with_plot(self):
+        client = TestClient(do_rendere=True)
+        client.get_rates(100)
+        time.sleep(5)
 
     
 if __name__ == '__main__':

@@ -4,18 +4,24 @@ import pandas as pd
 import finance_client.utils as utils
 import finance_client.market as market
 import finance_client.frames as Frame
+from finance_client.render import graph
 from logging import getLogger, config
 import os, json, datetime
 import time
 
 class Client:
     
-    def __init__(self, budget=1000000.0, indicater_processes:list = [], post_processes: list = [], frame:int = Frame.MIN5, provider = "Default", logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, indicater_processes:list=[], post_processes: list=[], frame:int=Frame.MIN5, provider="Default", do_render=True, logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
         self.__timer_thread = None
         self.__data_queue_length = None
+        self.__do_render = do_render
+        if self.__do_render:
+            self.__rendere = graph.Rendere()
+            self.__ohlc_index = -1
+            self.__is_graph_initialized = False
         
         try:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
@@ -285,8 +291,8 @@ class Client:
         self.__data_queue.put(data)
     
     def get_client_params(self):
-        idc_params = utils.indicaters_to_params(self.indicater_processes)
-        pps_params = utils.postprocess_to_params(self.post_processes)
+        idc_params = utils.indicaters_to_params(self.__idc_processes)
+        pps_params = utils.postprocess_to_params(self.__postprocesses)
         common_args = { "budget": self.market.budget, "indicater_processes": idc_params, "post_processes": pps_params, "frame": self.frame, "provider": self.market.provider }
         add_params = self.get_additional_params()
         common_args.update(add_params)
@@ -329,11 +335,30 @@ class Client:
                             self.logger.info("Position is closed to take profit")
                     else:
                         self.logger.error(f"unkown order_type: {position.order_type}")
-                            
+
+    def __plot_data(self, data_df: pd.DataFrame):
+        if self.__is_graph_initialized is False:
+            ohlc_columns = self.get_ohlc_columns()
+            args_dict = {
+                'open':ohlc_columns['Open'],
+                'high':ohlc_columns['High'],
+                'low':ohlc_columns['Low'],
+                'close':ohlc_columns['Close']
+            }
+            result = self.__rendere.register_ohlc(data_df, **args_dict)
+            self.__ohlc_index = result
+            self.__is_graph_initialized = True
+        else:
+            self.__rendere.update_ohlc(data_df, self.__ohlc_index)
+        self.__rendere.plot()
+            
+        
     def get_rates(self, interval:int) -> pd.DataFrame:
         rates = self.get_rates_from_client(interval=interval)
         t = threading.Thread(target=self.__check_order_completion, args=(rates,), daemon=True)
         t.start()
+        if self.__do_render:
+            self.__plot_data(rates)
         return rates
         
     ## Need to implement in the actual client ##
@@ -471,8 +496,11 @@ class Client:
             columns = {}
             temp = self.auto_index
             self.auto_index = False
+            temp_r = self.__do_render
+            self.__do_render = False
             data = self.get_rates(1)
             self.auto_index = temp
+            self.__do_render = temp_r
             for column in data.columns.values:
                 column_ = str(column).lower()
                 if column_ == 'open':
