@@ -43,8 +43,8 @@ class MT5Client(Client):
         self.logger.warn("parameters are not saved for mt5 as credentials are included.")
         return {}
 
-    def __init__(self,id, password, server, back_test=False, auto_index=True, simulation=True, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], budget=1000000, logger = None, simulation_seed = 1017):
-        super().__init__( budget=budget, frame=frame, provider=server, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
+    def __init__(self,id, password, server, back_test=False, auto_index=True, simulation=True, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], do_render=True, budget=1000000, logger = None, simulation_seed = 1017):
+        super().__init__( budget=budget, frame=frame, provider=server, do_render=do_render, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
         self.back_test = back_test
         self.debug = False
         self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/mt5/{server}"))
@@ -340,7 +340,9 @@ class MT5Client(Client):
         if self.auto_index and interval == 1:
             _interval  = interval
             interval += 1
-                
+            
+        ## save data when mode is back test
+        ## if interval is less than stored length - step_index. Then update time fit logic
         rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
         df_rates = pd.DataFrame(rates)
         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
