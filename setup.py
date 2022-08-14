@@ -1,10 +1,18 @@
 from setuptools import setup, find_packages
 
 install_requires = [
+    #for indicaters
     'numpy',
     'pandas',
     'stocktrends',
-    'statsmodels'
+    'statsmodels',
+    #for rendere
+    'matplotlib',
+    #for mt5
+    'MetaTrader5',
+    #for coincheck
+    'websocket-client'
+    'rel'
 ]
 
 setup(name='finance_client',

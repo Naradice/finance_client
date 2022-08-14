@@ -31,19 +31,23 @@ class ServiceBase:
         return cls.__singleton
 
     def __setSignature__(self, request_headers, path):
-        nonce = str(round(time.time() * 1000000))
         url = 'https://' + self.apiBase + path
-        message = nonce + url
-        signature = hmac.new(os.environ[self.ACCESS_SECRET_KEY].encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
-        request_headers.update({
-                'ACCESS-NONCE': nonce,
-                'ACCESS-KEY': os.environ[self.ACCESS_ID_KEY],
-                'ACCESS-SIGNATURE': signature
-            })
+        creds_header = self.create_credential_header(url=url)
+        request_headers.update(creds_header)
 
         if (self.DEBUG):
-            self.logger.info('Set signature...')
-            self.logger.debug('\n\tnone: %s\n\turl: %s\n\tmessage: %s\n\tsignature: %s', nonce, url, message, signature)
+            self.logger.info(f'Set signature: {creds_header}')
+    
+    def create_credential_header(self, url):
+        nonce = str(round(time.time() * 1000000))
+        message = nonce + url
+        signature = hmac.new(os.environ[self.ACCESS_SECRET_KEY].encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
+        header = {
+            'ACCESS-NONCE': nonce,
+            'ACCESS-KEY': os.environ[self.ACCESS_ID_KEY],
+            'ACCESS-SIGNATURE': signature
+        }
+        return header
 
     def request(self, method, path, params = {}):
         if (method == 'GET' and len(params) > 0):

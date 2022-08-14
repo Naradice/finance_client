@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import math
 import numpy
 import pandas as pd
-import _thread
 
 class Rendere:
     
@@ -70,7 +69,6 @@ class Rendere:
         return -1, -1
     
     def __get_nextempy_index(self):
-        indices = numpy.array([])
         next_empty_index = -1
         if len(self.__data) > 0:
             for i in range(0, self.plot_num):
@@ -88,7 +86,7 @@ class Rendere:
             index_ = self.__get_nextempy_index()
             if index_ == -1:
                 self.add_subplot()
-                index_ = self.plot_num - 1
+                index_ = self.plot_num - 1#index start with 0. plot_num start with 1
         else:
             index_ = index
             #noisy
@@ -110,7 +108,7 @@ class Rendere:
             y (list): y-axis data
             index (int, optional): index of subplot to plot the data. use greater than 1 to specify subplot index. use -1 to plot on fisrt empty subplot. Defaults to -1.
         """
-        self.__register_data('xy', (x,y, title), index)
+        self.__register_data('xy', (x,y), title=title, index=index)
     
     def append_x(self, x, index:int):
         """
@@ -222,7 +220,10 @@ class Rendere:
         if self.__check_subplot_axis():
             ax = self.axs[column][row]
         else:
-            ax = self.axs[row]
+            if self.plot_num == 1:
+                ax = self.axs
+            else:
+                ax = self.axs[row]
         ax.clear()
         ax.plot(y,x)
         

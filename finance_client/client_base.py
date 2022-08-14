@@ -17,8 +17,8 @@ class Client:
         self.__data_queue = None
         self.__timer_thread = None
         self.__data_queue_length = None
-        self.__do_render = do_render
-        if self.__do_render:
+        self.do_render = do_render
+        if self.do_render:
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1
             self.__is_graph_initialized = False
@@ -302,6 +302,8 @@ class Client:
         if len(self.market.listening_positions) > 0:
             positions = self.market.listening_positions.copy()
             self.logger.debug("start checking the tp and sl of positions")
+            if self.ohlc_columns is None:
+                self.ohlc_columns = self.get_ohlc_columns()
             high_column = self.ohlc_columns["High"]
             low_column = self.ohlc_columns["Low"]
             tick = ohlc_df.iloc[-1]
@@ -357,7 +359,7 @@ class Client:
         rates = self.get_rates_from_client(interval=interval)
         t = threading.Thread(target=self.__check_order_completion, args=(rates,), daemon=True)
         t.start()
-        if self.__do_render:
+        if self.do_render:
             self.__plot_data(rates)
         return rates
         
@@ -496,11 +498,11 @@ class Client:
             columns = {}
             temp = self.auto_index
             self.auto_index = False
-            temp_r = self.__do_render
-            self.__do_render = False
+            temp_r = self.do_render
+            self.do_render = False
             data = self.get_rates(1)
             self.auto_index = temp
-            self.__do_render = temp_r
+            self.do_render = temp_r
             for column in data.columns.values:
                 column_ = str(column).lower()
                 if column_ == 'open':

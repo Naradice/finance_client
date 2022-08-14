@@ -1,4 +1,5 @@
 import datetime, os
+from multiprocessing.sharedctypes import Value
 import MetaTrader5 as mt5
 import numpy
 import pandas as pd
@@ -38,12 +39,20 @@ class MT5Client(Client):
         Frame.MO1: "m1"
     }
     
+    LAST_IDX = {
+        Frame.H2: 12*12*560,
+        Frame.H4: 43930,
+        Frame.H8: int(12*12*560/4)+5400,
+        Frame.D1: 13301,
+        Frame.W1: 2681
+    }
+    
     
     def get_additional_params(self):
         self.logger.warn("parameters are not saved for mt5 as credentials are included.")
         return {}
 
-    def __init__(self,id, password, server, back_test=False, auto_index=True, simulation=True, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], do_render=True, budget=1000000, logger = None, simulation_seed = 1017):
+    def __init__(self,id, password, server, back_test=False, auto_index=True, simulation=True, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], do_render=True, budget=1000000, logger = None, seed = 1017):
         super().__init__( budget=budget, frame=frame, provider=server, do_render=do_render, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
         self.back_test = back_test
         self.debug = False
@@ -86,18 +95,27 @@ class MT5Client(Client):
         self.orders = {"ask":[], "bid":[]}
         
         if self.back_test:
-            if frame > Frame.H1:
-                self.logger.warning("back_test mode is available only for less than H1 for now")
-            if type(simulation_seed) == int:
-                random.seed(simulation_seed)
+            if frame > Frame.W1:
+                raise ValueError("back_test mode is available only for less than W1 for now")
+            if type(seed) == int:
+                random.seed(seed)
             else:
                 random.seed(1017)
             #self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
-            self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*345) ##only for M5
+            if frame > Frame.H2:
+                if frame in self.LAST_IDX:
+                    self.sim_index = self.LAST_IDX[frame]
+                else:
+                    raise ValueError(f"unexpected Frame is specified: {frame}")
+            else:
+                self.sim_index = 12*24*345
             self.sim_initial_index = self.sim_index
             self.auto_index = auto_index
             if auto_index:
                 self.__next_time = None
+        
+        if simulation and auto_index:
+            self.logger.warning("auto index feature is applied only for back test.")
         
         if back_test or simulation:
             self.__ignore_order = True
@@ -306,14 +324,13 @@ class MT5Client(Client):
                 self.logger.warn("data may have vacant")
         
         start_index = 0
-        mt5_frame = mt5.TIMEFRAME_M5
-        rates = mt5.copy_rates_from_pos(self.SYMBOL, mt5_frame, start_index, interval)
+        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
         new_rates = rates
 
         while type(new_rates) != type(None):
             interval = len(new_rates)
             start_index += interval
-            new_rates = mt5.copy_rates_from_pos(self.SYMBOL, mt5_frame, start_index, interval)
+            new_rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
             if type(new_rates) != type(None):
                 rates = numpy.concatenate([new_rates, rates])
             else:
@@ -330,13 +347,13 @@ class MT5Client(Client):
         rate_df.to_csv(file_path, mode="w", index=False, header=True)
         return rate_df
     
-    def __get_rates(self, interval, start = 0):
+    def __get_rates(self, interval, start = None):
         start_index = 0
         _interval = None
-        if start != 0:
+        if start is not None:
             start_index = start
         elif self.back_test:
-            start_index = self.sim_index
+            start_index = self.sim_index#simu index will be reduced by get_client_rate.
         if self.auto_index and interval == 1:
             _interval  = interval
             interval += 1
@@ -391,7 +408,7 @@ class MT5Client(Client):
         else:
             return df_rates
         
-    def get_rates_from_client(self, interval, start = 0):
+    def get_rates_from_client(self, interval, start = None):
         
         if interval == -1:
             return self.__get_all_rates()

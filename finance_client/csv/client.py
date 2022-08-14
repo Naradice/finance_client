@@ -1,5 +1,3 @@
-from tkinter.ttk import Separator
-from matplotlib.style import available
 import numpy
 import pandas as pd
 import random
@@ -164,7 +162,7 @@ class CSVClient(Client):
         args.update(self.__args)
         return args
 
-    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, slip_type="random", seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
+    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
@@ -180,7 +178,7 @@ class CSVClient(Client):
             seed (int, options): specify random seed. Defaults to 1017
             idc_processes (Process, options) : list of indicater process. Dafaults to []
         """
-        super().__init__(budget=budget, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
+        super().__init__(budget=budget,do_render=do_render, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
         self.auto_index = auto_index
         available_slip_type = ["random", "none", "percentage"]
         if slip_type in available_slip_type:
