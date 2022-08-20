@@ -65,7 +65,7 @@ class Client:
     def initialize_process_params(self):
         if len(self.__postprocesses) > 0:
             try:
-                current_all_rates = self.get_rates(-1)
+                current_all_rates = self.get_rates()
                 ##run process to initialize 
                 self.__run_processes(current_all_rates)
             except Exception as e:
@@ -239,15 +239,18 @@ class Client:
             self.__add_postprocess(process)
         
     def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
-        if interval == -1:
-            required_length = -1
+        if interval is None:
+            required_length = 1
+            ohlc = self.get_rates()
         else:
             required_length = interval + self.__additional_length_for_prc
-        ohlc = self.get_rates(required_length)
+            ohlc = self.get_rates(required_length)
+            
         if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
             data = self.__run_processes(ohlc)
             return data.iloc[-interval:]
         else:
+            self.logger.error(f"data length is insufficient to caliculate indicaters.")
             return ohlc
         
     def get_data_queue(self, data_length = int):
@@ -359,8 +362,8 @@ class Client:
         """ get ohlc data with interval length
 
         Args:
-            interval (int | None): specify data length > 1. If None is provided, return all date. If minus value is provided, return data from the end.
-            data is sorted from older to latest
+            interval (int | None): specify data length > 1. If None is provided, return all date.
+            data is sorted from older to latest. data are returnes with length from latest data
             Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         Returns:
             pd.DataFrame: ohlc data.

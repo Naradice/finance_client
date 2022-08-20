@@ -82,9 +82,9 @@ class TestVantageClient(unittest.TestCase):
             data = fx.get_interday_rates(from_symbol="USD", to_symbol="JPY", interval=Frame.MIN10)
     
     def test_get_all_rates(self):
-        df = client.get_rates(-1)
+        df = client.get_rates()
         self.assertIn("close", df)
-        self.assertGreater(len(df["close"]), 950)        
+        self.assertGreater(len(df["close"]), 950)
         
     def test_get_rates(self):
         df = client.get_rates(100)
@@ -92,7 +92,7 @@ class TestVantageClient(unittest.TestCase):
         self.assertEqual(len(df["close"]), 100)
     
     def test_bc_get_all_rates(self):
-        df = bc_client.get_rate_with_indicaters(-1)
+        df = bc_client.get_rate_with_indicaters()
         print(df)
 
 if __name__ == '__main__':

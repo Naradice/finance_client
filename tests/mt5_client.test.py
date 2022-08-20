@@ -153,7 +153,7 @@ class TestMT5Client(unittest.TestCase):
     """
 
     def test_get_all_rates(self):
-        rates = client.get_rates(-1)
+        rates = client.get_rates()
         self.assertNotEqual(type(rates), type(None))
         
     

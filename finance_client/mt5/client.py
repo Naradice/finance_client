@@ -412,14 +412,16 @@ class MT5Client(Client):
         
     def get_rates_from_client(self, interval, start = None):
         
-        if interval == -1:
+        if interval is None:
             return self.__get_all_rates()
-        else:
+        elif interval > 0:
             df_rates = self.__get_rates(interval=interval, start=start)
             if self.auto_index:
                 self.sim_index = self.sim_index - 1
 
             return df_rates
+        else:
+            self.logger.error(f"interval should be greater than 0.")
     
     def cancel_order(self, order):
         if self.__ignore_order is False:

@@ -250,7 +250,12 @@ class CSVClient(Client):
         return False
     
     def get_rates_from_client(self, interval=1):
-        if interval >= 1:
+        if interval is None:
+            self.update_rates()
+            rates = self.data.copy()
+            return rates
+
+        elif interval >= 1:
             rates = None
             if self.__step_index >= interval-1:
                 try:
@@ -273,10 +278,6 @@ class CSVClient(Client):
                     else:
                         self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
-        elif interval == -1:
-            self.update_rates()
-            rates = self.data.copy()
-            return rates
         else:
             raise Exception("interval should be greater than 0.")
 

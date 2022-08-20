@@ -114,7 +114,7 @@ class CoinCheckClient(Client):
         elif isinstance(initialized_with , Client):
             if initialized_with.frame != frame:
                 raise ValueError("initialize client and frame should be same.")
-            self.data = initialized_with.get_rates(-1)
+            self.data = initialized_with.get_rates()
             ## update columns name with cc policy
             ohlc_dict = initialized_with.get_ohlc_columns()
             new_column_dict = {ohlc_dict["Open"]: 'open', ohlc_dict["High"]: "high", ohlc_dict["Low"]: "low", ohlc_dict["Close"]: "close"}
@@ -186,10 +186,16 @@ class CoinCheckClient(Client):
         return {}
 
     def get_rates_from_client(self, interval:int):
-        if self.__return_intermidiate_data:
-            return pd.concat([self.data, self.frame_ohlcv])
+        if interval is None:
+            return self.data.copy()
+        elif interval > 0:
+            if self.__return_intermidiate_data:
+                return pd.concat([self.data, self.frame_ohlcv])
+            else:
+                return self.data.iloc[-interval:]
         else:
-            return self.data.iloc[-interval:]
+            self.logger.error(f"intervl should be greater than 0.")
+        
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         self.logger.info("This is not available on this client type.")
