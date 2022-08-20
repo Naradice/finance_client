@@ -16,7 +16,7 @@ class TradeHistory():
         #sample message: [228133744,"btc_jpy","3284400.0","0.05","buy"]
         elements = message.split(',')
         trade = {
-            "time":datetime.datetime.utcnow(),
+            "time":datetime.datetime.now(tz=datetime.timezone.utc),
             #"id": int(elements[0][1:-1]),
             "symbol": elements[1][1:-1],
             "price": float(elements[2][1:-1]),

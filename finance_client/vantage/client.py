@@ -16,7 +16,7 @@ class VantageClient(CSVClient):
         self.logger.warn("parameters are not saved for vantage as credentials are included.")
         return {}
     
-    def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = Target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, idc_processes=[], post_process=[], budget=1000000, logger=None):
+    def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = Target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
         """Get ohlc rate from alpha vantage api
         Args:
             api_key (str): apikey of alpha vantage
@@ -85,7 +85,7 @@ class VantageClient(CSVClient):
         self.file_path = os.path.join(self.data_folder, file_name)
         self.__get_all_rates()
         self.__updated_time = datetime.datetime.now()
-        super().__init__(auto_index, self.file_path, frame, "Vantage", None, self.OHLC_COLUMNS, self.TIME_INDEX_NAME, start_index, seed, idc_processes, post_process, budget, logger)
+        super().__init__(auto_index=auto_index, file=self.file_path, frame=frame, provider="Vantage", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
     
     def __convert_response_to_df(self, data_json:dict):
         # handle meta data and series column
@@ -200,7 +200,8 @@ class VantageClient(CSVClient):
             
         if existing_rate_df is not None:
             new_data_df = pd.concat([existing_rate_df, new_data_df])
-            new_data_df = new_data_df.drop_duplicates()
+            #new_data_df = new_data_df.drop_duplicates(subset="index")#nothing such
+            new_data_df = new_data_df[~new_data_df.index.duplicated(keep="first")]
             new_data_df = new_data_df.sort_index()
         new_data_df.to_csv(self.file_path, index_label=self.TIME_INDEX_NAME)
         return new_data_df
@@ -209,11 +210,11 @@ class VantageClient(CSVClient):
         current_time = datetime.datetime.now()
         delta = current_time - self.__updated_time
         if delta > self.__frame_delta:
-            last_date = self.data[self.TIME_INDEX_NAME].iloc[-1]
+            last_date = self.data.index[-1]
             new_data_df = self.__get_all_rates()
-            new_data_df[self.TIME_INDEX_NAME] = new_data_df.index
-            new_data_df = new_data_df.reset_index()
-            new_last_date = new_data_df[self.TIME_INDEX_NAME].iloc[-1]
+            #new_data_df[self.TIME_INDEX_NAME] = new_data_df.index
+            #new_data_df = new_data_df.reset_index()
+            new_last_date = new_data_df.index[-1]
             if last_date != new_last_date:
                 self.data = new_data_df
                 return True

@@ -11,8 +11,9 @@ install_requires = [
     #for mt5
     'MetaTrader5',
     #for coincheck
-    'websocket-client'
-    'rel'
+    'websocket-client',
+    'rel',
+    'python-dotenv'
 ]
 
 setup(name='finance_client',

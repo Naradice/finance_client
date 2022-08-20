@@ -7,7 +7,6 @@ import datetime
 import json
 import finance_client.frames as Frame
 from finance_client.client_base import Client
-from logging import getLogger
 
 class CSVClient(Client):
     kinds = 'csv'

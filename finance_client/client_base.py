@@ -355,7 +355,16 @@ class Client:
         self.__rendere.plot()
             
         
-    def get_rates(self, interval:int) -> pd.DataFrame:
+    def get_rates(self, interval:int = None) -> pd.DataFrame:
+        """ get ohlc data with interval length
+
+        Args:
+            interval (int | None): specify data length > 1. If None is provided, return all date. If minus value is provided, return data from the end.
+            data is sorted from older to latest
+            Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
+        Returns:
+            pd.DataFrame: ohlc data.
+        """
         rates = self.get_rates_from_client(interval=interval)
         t = threading.Thread(target=self.__check_order_completion, args=(rates,), daemon=True)
         t.start()
@@ -493,6 +502,11 @@ class Client:
         return position
     
     def get_ohlc_columns(self) -> dict:
+        """ returns column names of ohlc data.
+        
+        Returns:
+            dict: format is {"Open": ${open_column}, "High": ${high_column}, "Low": ${low_column}, "Close": ${close_column}, "Time": ${time_column} (Optional), "Volume": ${volume_column} (Optional)}
+        """
         if self.ohlc_columns == None:
             self.ohlc_columns = {}
             columns = {}
@@ -515,5 +529,7 @@ class Client:
                     columns['Close'] = column
                 elif "time" in column_:#assume time, timestamp or datetime
                     columns["Time"] = column
+                elif "volume" in column_:
+                    columns["Volume"] = column
             self.ohlc_columns = columns
         return self.ohlc_columns
