@@ -143,6 +143,7 @@ class MT5Client(Client):
             request.update({"position": position})
 
         result = mt5.order_send(request)
+        self.logger.debug(f"market order result: {result}")
         return result
     
     def __post_order(self, _type, vol, price, dev, sl=None, tp=None, position=None):
@@ -166,6 +167,7 @@ class MT5Client(Client):
             request.update({"position": position})
 
         result = mt5.order_send(request)
+        self.logger.debug(f"order result: {result}")
         return result
 
     def get_current_ask(self):
@@ -261,7 +263,7 @@ class MT5Client(Client):
     
     def buy_order(self, value, tp=None, sl=None):
         if self.__ignore_order is False:
-            result = self.post_order(
+            result = self.__post_order(
                 _type=mt5.ORDER_TYPE_BUY_LIMIT,
                 vol=0.1,
                 price=value,
@@ -273,7 +275,7 @@ class MT5Client(Client):
     
     def sell_order(self, value, tp=None, sl=None):            
         if self.__ignore_order is False:
-            result = self.post_order(
+            result = self.__post_order(
                 _type=mt5.ORDER_TYPE_SELL_LIMIT,
                 vol=0.1,
                 price=value,
