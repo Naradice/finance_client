@@ -19,7 +19,8 @@ install_requires = [
 setup(name='finance_client',
       version='0.0.1',
       packages=find_packages(),
-      data_files=['./finance_client/settings.json', './finance_client/coincheck/.env.template'],
+      data_files=['./finance_client/settings.json', './finance_client/coincheck/.env.template', './finance_client/vantage/resources/physical_currency_list.csv',
+                  './finance_client/vantage/resources/digital_currency_list.csv'],
       install_requires=install_requires,
       include_package_data=True
 )

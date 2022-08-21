@@ -1,7 +1,5 @@
-from more_itertools import last
 from finance_client.coincheck.apis.servicebase import ServiceBase
-from finance_client.coincheck.apis.account import Account
-from finance_client.coincheck.apis.ticker import Ticker
+import finance_client.coincheck.apis as apis
 from finance_client.coincheck.apis.ws import TradeHistory
 from finance_client.client_base import Client
 import finance_client.frames as Frame
@@ -9,6 +7,7 @@ import pandas as pd
 import time, datetime
 
 class CoinCheckClient(Client):
+    kinds = "cc"
     
     def __store_ticks(self, tick):
         tick_time = tick["time"]
@@ -38,12 +37,11 @@ class CoinCheckClient(Client):
                 self.frame_ohlcv.high = tick_price
             if self.frame_ohlcv.iloc[-1].low > tick_price:
                 self.frame_ohlcv.low = tick_price
-                
+            
             self.frame_ohlcv.volume += tick_volume
             self.frame_ohlcv.close = tick_price
         #self.last_tick = tick
-        
-    
+          
     def __update_next_frame(self):
         if self.frame_delta is None:
             if self.frame == Frame.MO1:
@@ -61,9 +59,10 @@ class CoinCheckClient(Client):
         else:
             self.next_frame = self.next_frame + self.frame_delta
     
-    def __init__(self, ACCESS_ID=None, ACCESS_SECRET=None, initialized_with = None, return_intermidiate_data=False, budget=1000000, indicater_processes: list = [], post_processes: list = [], frame: int = 30, do_render=False, logger=None):
+    def __init__(self, ACCESS_ID=None, ACCESS_SECRET=None, initialized_with = None, return_intermidiate_data=False, simulation=False, budget=1000000, indicater_processes: list = [], post_processes: list = [], frame: int = 30, do_render=False, logger=None):
         """ CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
         Create order with API. Need to specify the credentials 
+        Currentry BTC/JPY is only supported
 
         Args:
             budget (int, optional): Defaults to 1000000.
@@ -76,10 +75,8 @@ class CoinCheckClient(Client):
         """
         super().__init__(budget, indicater_processes, post_processes, frame, "CoinCheck", do_render, "ccheck", logger)
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
-        ac = Account()
-        print(f"balance: {ac.balance()}")
-        print(f"balance: {ac.leverage_balance()}")
-        print(f"info: {ac.info()}")
+        
+        self.ticker = apis.Ticker()
         
         # Initialize required params
         current_time = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -108,6 +105,7 @@ class CoinCheckClient(Client):
         self.frame_ohlcv = None
         self.data = pd.DataFrame({})
         self.time_column_name = "time"
+        self.simulation = simulation
         
         if initialized_with is None:
             self.logger.info("get_rates returns shortened or filled with 0 data without initialization as Coincheck don't provide historical data API.")
@@ -153,7 +151,7 @@ class CoinCheckClient(Client):
                 if last_frame_time == self.current_frame:
                     self.logger.info(f"initialize client returned current time frame data. try to merge it with tick data obtained from coincheck.")
                     self.frame_ohlcv = self.data.iloc[-1:]#store last tick df
-                    self.data = self.data.drop([self.index[-1]])
+                    self.data = self.data.drop([self.data.index[-1]])
                 ## If last_frame_time is greater than current_time, assuming server time and client time are mismatching. so convert(reduce) server datetime
                 elif last_frame_time > self.current_frame:
                     self.logger.info(f"initialize client returns {last_frame_time} as last frame. But current frame based on device time is {self.current_frame}. Try to fit server time to device time.")
@@ -161,10 +159,12 @@ class CoinCheckClient(Client):
                     self.data.index = self.data.index - delta - datetime.timedelta(minutes=self.frame)#Not sure last tick is actually on time. So put it on 1 frame before
                     if self.data.index[-1].to_pydatetime() == self.current_frame:
                         self.frame_ohlcv = self.data.iloc[-1:]
-                        self.data = self.data.drop([self.index[-1]])
+                        self.data = self.data.drop([self.data.index[-1]])
                     else:
                         self.logger.error(f"Unexpectedly time isn't fitted. last frame time is {self.data.index[-1]} and current time frame is {self.current_frame}")
                         exit()#exit to prevent caliculating indicaters based on bad data
+                if "volume" not in self.frame_ohlcv.columns:
+                    self.frame_ohlcv["volume"] = 0
                         
                 ## When last_frame_time is less than current_Time, if difference is just a frame ignore it otherwise assuming server time and client time are mismatching. so convert(reduce) server datetime
                 else:
@@ -180,7 +180,7 @@ class CoinCheckClient(Client):
         th = TradeHistory()
         th.subscribe(on_tick=self.__store_ticks)
 
-## Need to implement in the actual client ##
+## TODO: use cctx
     
     def get_additional_params(self):
         return {}
@@ -195,41 +195,56 @@ class CoinCheckClient(Client):
                 return self.data.iloc[-interval:]
         else:
             self.logger.error(f"intervl should be greater than 0.")
-        
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         self.logger.info("This is not available on this client type.")
     
     def get_current_ask(self) -> float:
-        print("Need to implement get_current_ask on your client")
+        tick = self.ticker.get()
+        return tick["ask"]
     
     def get_current_bid(self) -> float:
-        print("Need to implement get_current_bid on your client")
+        tick = self.ticker.get()
+        return tick["bid"]
             
     def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
-        pass
+        #buy_amount = ask_rate * amount
+        #response = apis.create_market_buy_order(amount=buy_amount, stop_loss_rate=sl)
+        ## api don't return amount, so use pending order instead.
+        ## TODO: use marketbuy and check amount from trade_history
+        if self.simulation:
+            return datetime.datetime.now().timestamp()
+        else:
+            response = apis.create_pending_buy_order(rate=ask_rate, amount=amount, stop_loss_rate=sl)
+            if response["success"]:
+                return response["id"]
+            else:
+                print(f"error happened: {response}")
     
     def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        pass
+        self.logger.error("sell is not allowed.")
     
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        pass
+        self.logger.error("sell is not allowed, so buy settlement is not available.")
     
     def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
-        pass
+        if self.simulation:
+            pass
+        else:
+            apis.create_market_sell_order(amount=amount)
     
     def get_params(self) -> dict:
-        print("Need to implement get_params")
+        return {}
     
     ## defined by the actual client for dataset or env
     def close_client(self):
         pass
     
     def get_next_tick(self, frame=5):
-        print("Need to implement get_next_tick")
+        self.logger.error("get_next_tick is not available for now")
 
     def reset(self, mode=None):
-        print("Need to implement reset")
+        pass
     
     def get_min_max(column, data_length = 0):
         pass

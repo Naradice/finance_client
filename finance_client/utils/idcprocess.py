@@ -424,12 +424,13 @@ class RenkoProcess(ProcessBase):
     
     kinds = "Renko"
     
-    def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True, option = None):
+    def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_date_index=False, is_input = True, is_output = True, option = None):
         super().__init__(key)
         self.option = {
             "date_column": date_column,
             "ohlc_column": ohlc_column,
-            "window": window
+            "window": window,
+            "is_date_index": is_date_index
         }
         if option != None:
             self.option.update(option)
@@ -453,6 +454,7 @@ class RenkoProcess(ProcessBase):
         option = self.option
         date_column = option["date_column"]
         ohlc_column = option["ohlc_column"]
+        is_date_index = option["is_date_index"]
         window = option['window']
         num_column = "bar_num"
         trend_column = "uptrend"
@@ -460,7 +462,7 @@ class RenkoProcess(ProcessBase):
         renko_block_num = self.columns["NUM"]
         renko_trend = self.columns["TREND"]
         
-        renko_df = indicaters.renko_time_scale(data, date_column=date_column, ohlc_columns=ohlc_column, window=window)
+        renko_df = indicaters.renko_time_scale(data, date_column=date_column, ohlc_columns=ohlc_column, window=window, is_date_index=is_date_index)
         return {renko_block_num:renko_df[num_column].values, renko_trend: renko_df[trend_column].values}
         
     def update(self, tick:pd.Series):

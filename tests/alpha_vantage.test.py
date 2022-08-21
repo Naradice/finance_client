@@ -40,11 +40,11 @@ digital = DIGITAL(env["vantage"]["api_key"], logger)
 client = VantageClient(env["vantage"]["api_key"], symbol=("USD", "JPY"))
 
 ## bc client
-bc_client = VantageClient(api_key=env["vantage"]["api_key"], frame=1, finance_target=Target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
+bc_client = VantageClient(api_key=env["vantage"]["api_key"], frame=30, finance_target=Target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
 
 class TestVantageClient(unittest.TestCase):
     
-            
+    """
     def test_fx_get_interday(self):
         data = fx.get_interday_rates(from_symbol="USD", to_symbol="JPY", interval=Frame.MIN1)
         self.assertEqual(type(data), dict)
@@ -90,9 +90,11 @@ class TestVantageClient(unittest.TestCase):
         df = client.get_rates(100)
         self.assertIn("close", df)
         self.assertEqual(len(df["close"]), 100)
+    """
+    
     
     def test_bc_get_all_rates(self):
-        df = bc_client.get_rate_with_indicaters()
+        df = bc_client.get_rates()
         print(df)
 
 if __name__ == '__main__':

@@ -335,17 +335,18 @@ def renko_from_ohlc(ohlc: pd.DataFrame, atr_length:int = 120, date_column = "Tim
     renko_df.columns = [date_column, "uptrend", "bar_num"]
     return renko_df
 
-def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close'), is_date_index=False, window=120, mode="count"):
+def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close'), is_date_index=False, window=120):
     "function to merging renko df with original ohlc df"
     df = copy.deepcopy(DF)
     if is_date_index:
         if type(date_column) != str:
-            date_column = "date"
+            date_column = "time"
         df[date_column] = df.index
     else:
         if type(date_column) != str or date_column not in DF:
             raise Exception("datetime index or columns is required to scale renko result to the datetime.")
     renko = renko_from_ohlc(df, ohlc_columns=ohlc_columns, date_column=date_column, atr_length=window)
+    #merged_df = df.merge(renko.loc[:,[date_column, "uptrend", "bar_num"]], how="outer",on=date_column)
     merged_df = df.merge(renko.loc[:,[date_column, "uptrend", "bar_num"]], how="outer",on=date_column)
     merged_df["bar_num"].fillna(method='ffill',inplace=True)
     merged_df["uptrend"].fillna(method='ffill',inplace=True)

@@ -1,5 +1,3 @@
-import pandas as pd
-import os
 import finance_client.frames as Frame
 from finance_client.vantage.apis import STOCK, FOREX, DIGITAL
 

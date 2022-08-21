@@ -4,8 +4,9 @@ import urllib
 import time
 import hmac
 import hashlib
+from urllib import response
 from dotenv import load_dotenv
-import os
+import os, ast, json
 
 class ServiceBase:
     METHOD_GET = 'GET'
@@ -18,30 +19,38 @@ class ServiceBase:
 
     def __new__(cls, ACCESS_ID=None, ACCESS_SECRET=None):
         if cls.__singleton is None:
-            #print("singleton")
             cls.__singleton = super(ServiceBase, cls).__new__(cls)
             cls.DEBUG = False
-            cls.apiBase = 'coincheck.jp'
+            cls.apiBase = 'coincheck.com'
+            #print("singleton")
             if ACCESS_ID is None and ACCESS_SECRET is None:
-                load_dotenv()
-                if  cls.ACCESS_ID_KEY not in os.environ or cls.ACCESS_SECRET_KEY not in os.environ:
-                    raise Exception("Coin Check Credentials is required.")
+                pass
+                # load_dotenv()
+                # if  cls.ACCESS_ID_KEY not in os.environ or cls.ACCESS_SECRET_KEY not in os.environ:
+                #     raise Exception("Coin Check Credentials is required.")
             else:
                 os.environ[cls.ACCESS_ID_KEY] = ACCESS_ID
                 os.environ[cls.ACCESS_SECRET_KEY] = ACCESS_SECRET
+                print("credentials are stored.")
+        elif cls.ACCESS_ID_KEY not in os.environ and ACCESS_SECRET is not None:
+            os.environ[cls.ACCESS_ID_KEY] = ACCESS_ID
+            os.environ[cls.ACCESS_SECRET_KEY] = ACCESS_SECRET
+            print("credentials are stored.")
         return cls.__singleton
 
-    def __setSignature__(self, request_headers, path):
+    def __setSignature(self, request_headers, path, body=None):
         url = 'https://' + self.apiBase + path
-        creds_header = self.create_credential_header(url=url)
+        creds_header = self.create_credential_header(url=url, body=body)
         request_headers.update(creds_header)
 
         if (self.DEBUG):
             self.logger.info(f'Set signature: {creds_header}')
     
-    def create_credential_header(self, url):
+    def create_credential_header(self, url, body=None):
         nonce = str(round(time.time() * 1000000))
         message = nonce + url
+        if body is not None:
+            message += body
         signature = hmac.new(os.environ[self.ACCESS_SECRET_KEY].encode('utf-8'), message.encode('utf-8'), hashlib.sha256).hexdigest()
         header = {
             'ACCESS-NONCE': nonce,
@@ -50,21 +59,44 @@ class ServiceBase:
         }
         return header
 
-    def request(self, method, path, params = {}):
-        if (method == 'GET' and len(params) > 0):
-            path = path + '?' + urllib.parse.urlencode(params)
-        data = ''
-        request_headers = {}
-        if (method == 'POST' or method == 'DELETE'):
-            request_headers = {
-                'content-type': "application/json"
-            }
-        self.__setSignature__(request_headers, path)
+    def request(self, method, path, query_params = {}, _body: dict = None):
+        if len(query_params) > 0:
+            path = path + '?' + urllib.parse.urlencode(query_params)
+        body = ''
+        if _body is not None:
+            body = json.dumps(_body)
+        request_headers = { 'content-type': "application/json" }
+        self.__setSignature(request_headers, path, body=body)
 
         client = http.client.HTTPSConnection(self.apiBase)
         if (self.DEBUG):
             self.logger.info('Process request...')
-        client.request(method, path, data, request_headers)
+        client.request(method, path, body, request_headers)
         res = client.getresponse()
         data = res.read()
+        client.close()
         return data.decode("utf-8")
+    
+    def parse_str_to_dict(self, _str):
+        try:
+            return ast.literal_eval(_str)
+        except Exception as e:
+            pass
+        
+        try:
+            return json.loads(_str)
+        except Exception as e:
+            print(f"couldn't parse: {e}")
+        return _str
+    
+    def check_response(self, response_dict):
+        #TODO: define common error
+        if 'success' in response_dict:
+            result = response_dict['success']
+            if result == False:
+                err_txt = response_dict['error']
+                print(f'error on CoinCheck API: {result}')
+                if err_txt == "invalid authentication":
+                    raise Exception(err_txt)
+                elif '所持金額が足りません' in err_txt:
+                    raise ValueError('budget is insufficient for the amount')

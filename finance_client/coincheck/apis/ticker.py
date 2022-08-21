@@ -17,5 +17,7 @@ class Ticker():
             params['pair'] = pair
         else:
             print(f'Warning: {pair} is not available. use btc_jpy instead.')
-            
-        return self.__service.request(ServiceBase.METHOD_GET, self.baseUrl, params)
+        response = self.__service.request(ServiceBase.METHOD_GET, self.baseUrl, params)
+        # response sample: '{"last":2915999.0,"bid":2915225.0,"ask":2915905.0,"high":2970000.0,"low":2850481.0,"volume":3065.26893255,"timestamp":1661000623}'
+        
+        return self.__service.parse_str_to_dict(response)

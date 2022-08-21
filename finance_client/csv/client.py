@@ -38,6 +38,7 @@ class CSVClient(Client):
                 if date_col not in usecols:
                     usecols.append(date_col)
                 self.data = pd.read_csv(file,  header=0, parse_dates=[date_col], usecols = usecols)
+                self.data = self.data.sort_index(ascending=True)
             else:
                 self.data = pd.read_csv(file,  header=0, usecols = usecols)
             self.__update_columns(usecols)
@@ -161,6 +162,7 @@ class CSVClient(Client):
         args.update(self.__args)
         return args
 
+    ##TODO: add ascending=False option
     def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file

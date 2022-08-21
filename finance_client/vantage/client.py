@@ -1,8 +1,8 @@
-import datetime, os, json, time
+import datetime, os
 import pandas as pd
 from finance_client.csv.client import CSVClient
 import finance_client.frames as Frame
-import finance_client.vantage.target as Target
+import finance_client.vantage as vantage
 
 class VantageClient(CSVClient):
     
@@ -16,7 +16,7 @@ class VantageClient(CSVClient):
         self.logger.warn("parameters are not saved for vantage as credentials are included.")
         return {}
     
-    def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = Target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
+    def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = vantage.target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
         """Get ohlc rate from alpha vantage api
         Args:
             api_key (str): apikey of alpha vantage
@@ -36,13 +36,13 @@ class VantageClient(CSVClient):
             ValueError: symbol(str) is not from_symvol/to_symbol foramt when target is FX
             TypeError: symbol is neither tuple nor str
         """
-        if frame not in Target.available_frame:
+        if frame not in vantage.target.available_frame:
             raise ValueError(f"{frame} is not supported")
         self.frame = frame
         self.__frame_delta = datetime.timedelta(minutes=frame)
         self.debug = False
         if type(symbol) == tuple or type(symbol) == list:
-            if finance_target == Target.FX or finance_target == Target.CRYPTO_CURRENCY:
+            if finance_target == vantage.target.FX or finance_target == vantage.target.CRYPTO_CURRENCY:
                 if len(symbol) != 2:
                     raise ValueError("symbol should have only two symbol for FX or Crypt Currency")
                 self.__currency_trade = True
@@ -58,7 +58,7 @@ class VantageClient(CSVClient):
                     #idea: create file name with UUID and caliculate hash from sorted symbol. Then create a table of filename and the hash
                     raise Exception("Client only handle one symbol")
         elif type(symbol) == str:
-            if finance_target == Target.FX or finance_target == Target.CRYPTO_CURRENCY:
+            if finance_target == vantage.target.FX or finance_target == vantage.target.CRYPTO_CURRENCY:
                 self.__currency_trade = True
                 symbol_set = symbol.split("/")#assume USD/JPY for ex
                 if len(symbol_set) == 2:
@@ -90,25 +90,28 @@ class VantageClient(CSVClient):
     def __convert_response_to_df(self, data_json:dict):
         # handle meta data and series column
         columns = list(data_json.keys())
-        series_column = columns[1]
-        time_zone = "UTC"
-        meta_data_column = "Meta Data"
-        if meta_data_column in data_json:
-            meta_data = data_json[meta_data_column]
-            for key, value in meta_data.items():
-                if "Time Zone" in key:
-                    time_zone = value
-            columns.remove(meta_data_column)
-            if len(columns) != 1:
-                self.logger.warn(f"data key has multiple candidates unexpectedly: {columns}")
-            series_column = columns[0]
+        if len(columns) >= 1:
+            series_column = columns[1]
+            time_zone = "UTC"
+            meta_data_column = "Meta Data"
+            if meta_data_column in data_json:
+                meta_data = data_json[meta_data_column]
+                for key, value in meta_data.items():
+                    if "Time Zone" in key:
+                        time_zone = value
+                columns.remove(meta_data_column)
+                if len(columns) != 1:
+                    self.logger.warn(f"data key has multiple candidates unexpectedly: {columns}")
+                series_column = columns[0]
+            else:
+                self.logger.warn("couldn't get meta data info. try to parse the response with UTC")
         else:
-            self.logger.warn("couldn't get meta data info. try to parse the response with UTC")
+            self.logger.error(f"Unexpected response from vantage api: {columns}")
             
         #convert dict to data frame
         data_df = pd.DataFrame(data_json[series_column]).T
         data_df.index = pd.to_datetime(data_df.index)
-        data_df.sort_index()
+        data_df = data_df.sort_index(ascending=True)
         
         # apply timezone info obtained from meta_data
         if data_df.index.tz is None:
@@ -175,6 +178,7 @@ class VantageClient(CSVClient):
         existing_rate_df = None
         if os.path.exists(self.file_path):
             existing_rate_df = pd.read_csv(self.file_path, parse_dates=[self.TIME_INDEX_NAME], index_col=self.TIME_INDEX_NAME)
+            existing_rate_df.index = existing_rate_df.index.tz_convert("UTC")
             
         MAX_LENGTH = 950#not accurate
     
@@ -182,7 +186,7 @@ class VantageClient(CSVClient):
             interval = MAX_LENGTH
             size = "full"
         else:
-            delta = datetime.datetime.now(datetime.timezone.utc) - existing_rate_df.iloc[0].name
+            delta = datetime.datetime.now(tz=datetime.timezone.utc) - existing_rate_df.index[-1]
             total_seconds = delta.total_seconds()
             if (total_seconds/(60*60*24*7)) >= 1:
                 total_seconds = total_seconds * self.client.work_day_in_week/7#remove sat,sun
@@ -200,7 +204,6 @@ class VantageClient(CSVClient):
             
         if existing_rate_df is not None:
             new_data_df = pd.concat([existing_rate_df, new_data_df])
-            #new_data_df = new_data_df.drop_duplicates(subset="index")#nothing such
             new_data_df = new_data_df[~new_data_df.index.duplicated(keep="first")]
             new_data_df = new_data_df.sort_index()
         new_data_df.to_csv(self.file_path, index_label=self.TIME_INDEX_NAME)

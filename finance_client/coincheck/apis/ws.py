@@ -33,31 +33,48 @@ class TradeHistory():
         print(f'ws error: {error}')
 
     def __on_close(self, ws, close_status_code, close_msg):
-        print("### closed ###")
+        self.ready_state = 3#closed
+        print(f"wsclosed by {close_msg} with {close_status_code}")
+        self.__reconnect()
+        
+    def __on_ping(self):
+        print("ping received")
 
     def __on_open(self, ws):
         print("Opened connection")
         self.ready_state = 1#open
+        
     
-    def __init__(self, debug=False) -> None:
-        self.ready_state = 3#closed
-        self.baseUrl = 'wss://ws-api.coincheck.com/'
-        self.on_tick = None
+    def __init_ws(self, debug=False):
         websocket.enableTrace(debug)
         self.ws = websocket.WebSocketApp(url=self.baseUrl,
                                 on_open=self.__on_open,
                                 on_message=self.__on_message,
                                 on_error=self.__on_error,
-                                on_close=self.__on_close)
+                                on_close=self.__on_close,
+                                on_ping=self.__on_open)
         self.ready_state = 0#connecting
-        t = threading.Thread(target=lambda: self.ws.run_forever(), daemon=True)
+        t = threading.Thread(target=lambda: self.ws.run_forever(ping_interval=60), daemon=True)
         t.start()
+        
+    def __reconnect(self):
+        self.__init_ws()
+        self.subscribe(self.on_tick, self.pair)
+        
+    
+    def __init__(self, debug=False) -> None:
+        self.ready_state = 3#closed
+        self.baseUrl = 'wss://ws-api.coincheck.com/'
+        self.on_tick = None
+        self.__init_ws(debug)
+        
     
     def subscribe(self, on_tick: Callable, pair='btc_jpy'):
         if on_tick is None or isinstance(on_tick, Callable) is False:
             on_tick = lambda tick: tick
             print("function for on_tick was not provided.")
         self.on_tick = on_tick
+        self.pair = pair
         while self.ready_state != 1:
             time.sleep(1)
         self.ws.send(json.dumps(
@@ -72,7 +89,7 @@ class TradeHistory():
 class Orders():
     '''
     public API
-    get latest trade result
+    get latest orders
     '''
     AVAILABLE_PAIRS = ['btc_jpy', 'plt_jpy', 'etc_jpy', 'mona_jpy']
     
