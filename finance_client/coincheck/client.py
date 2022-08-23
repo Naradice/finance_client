@@ -237,11 +237,16 @@ class CoinCheckClient(Client):
             cancel_result = apis.cancel(result_id)
             print("cancel result " + cancel_result)
             result = apis.create_market_sell_order(amount=amount)
-            if result["success"]:
-                print(result)
-                return result
+            if cancel_result["success"]:
+                print("had failed to buy")
+                return cancel_result
             else:
-                return self.sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
+                if result["success"]:
+                    print(result)
+                    return result
+                else:
+                    time.sleep(10)
+                    return self.sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
             
     
     def get_params(self) -> dict:
