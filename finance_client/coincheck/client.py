@@ -235,12 +235,11 @@ class CoinCheckClient(Client):
             if bid_rate is not None:
                 print("bid_rate is ignored for the settlement")
             cancel_result = apis.cancel(result_id)
-            print("cancel result " + cancel_result)
-            result = apis.create_market_sell_order(amount=amount)
             if cancel_result["success"]:
                 print("had failed to buy")
                 return cancel_result
             else:
+                result = apis.create_market_sell_order(amount=amount)
                 if result["success"]:
                     print(result)
                     return result
