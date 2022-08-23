@@ -55,9 +55,9 @@ def revert_mini_max_from_iterable(data, opt, scale=(0,1)):
         raise TypeError(f"this obj type is not supported for now: {type(data)}")
     
 def revert_mini_max(value, min, max, scale=(0,1)):
-    std = (value - min)/(max - min)
-    scaled = std * (scale[1] - scale[0]) + scale[0]
-    return scaled, max, min
+    std = (value - scale[0])/(scale[1] - scale[0])
+    reverted = std * (max - min) + min
+    return reverted
             
         
 def mini_max_from_data(data, scale=(0,1)):

@@ -121,22 +121,26 @@ class Client:
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
         """
-        if position != None:
+        if position is not None:
             id = position.id
-        elif id != None:
+        elif id is not None:
             position = self.market.get_position(id)
         else:
             self.logger.error("Either position or id should be specified.")
             return None
-        if amount == None:
+        if amount is None:
             amount = position.amount
             
         if position.order_type == "ask":
+            self.logger.debug(f"close long position is ordered for {id}")
             if (price == None):
                 price = self.get_current_bid()
+                self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
             self.sell_for_settlment(position.symbol , price, amount, position.option, position.result)
         elif position.order_type == "bid":
+            self.logger.debug(f"close long position is ordered for {id}")
             if (price == None):
+                self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
                 price = self.get_current_ask()
             self.buy_for_settlement(position.symbol, price, amount, position.option, position.result)
         else:

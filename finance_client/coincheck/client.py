@@ -162,10 +162,7 @@ class CoinCheckClient(Client):
                         self.data = self.data.drop([self.data.index[-1]])
                     else:
                         self.logger.error(f"Unexpectedly time isn't fitted. last frame time is {self.data.index[-1]} and current time frame is {self.current_frame}")
-                        exit()#exit to prevent caliculating indicaters based on bad data
-                if "volume" not in self.frame_ohlcv.columns:
-                    self.frame_ohlcv["volume"] = 0
-                        
+                        exit()#exit to prevent caliculating indicaters based on bad data                        
                 ## When last_frame_time is less than current_Time, if difference is just a frame ignore it otherwise assuming server time and client time are mismatching. so convert(reduce) server datetime
                 else:
                     delta = self.current_frame - last_frame_time
@@ -176,6 +173,8 @@ class CoinCheckClient(Client):
                         self.data.index = self.data.index + fitting_time
                     else:
                         self.logger.info(f"initialize client retuened {last_frame_time} for latest frame data. It is working as expected.")
+                if self.frame_ohlcv is not None and "volume" not in self.frame_ohlcv.columns:
+                    self.frame_ohlcv["volume"] = 0
                         
         th = TradeHistory()
         th.subscribe(on_tick=self.__store_ticks)
@@ -242,7 +241,7 @@ class CoinCheckClient(Client):
                 print(result)
                 return result
             else:
-                self.sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
+                return self.sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
             
     
     def get_params(self) -> dict:

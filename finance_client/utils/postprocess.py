@@ -191,7 +191,7 @@ class MinMaxPreProcess(ProcessBase):
                 data = data_set[i]
                 row_data = standalization.revert_mini_max(data, _min, _max, self.opiton['scale'])
                 result.append(row_data)
-            return True, result
+            return result
         else:
             raise Exception("number of data is different")
             
