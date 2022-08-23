@@ -1,3 +1,5 @@
+#from finance_client.render.graph import Rendere
+from copy import copy
 import matplotlib.pyplot as plt
 import math
 import numpy
@@ -128,22 +130,57 @@ class Rendere:
             data = ([x], [0])
             self.__data[index] = {'type': 'xy'}
         self.__data[index]["data"] = data
+        
+    def __tensor_to_dataframe(self, tensor, columns=None):
+        data = copy(tensor)
+        if type(data) is not pd.DataFrame:
+            if data.is_cuda:
+                data = data.cpu().detach().numpy()
+            else:
+                data = pd.DataFrame(data).astype("float")
+                
+            data = pd.DataFrame(data)
+            if columns is not None:
+                if data.shape == (len(columns), 1):
+                    data = data.T
+                data.columns = columns
+                
+        return data
             
-    def append_ohlc(self, tick, index:int):
+    def append_ohlc(self, ticks, index:int):
         """
-        add ohlc tick to existing data for plotting it later
+        add ohlc ticks to existing data for plotting it later
 
         Args:
-            tick (pd.DataFrame): ohlc data. Assume to have same columns with existing data
+            ticks (pd.DataFrame): ohlc data. Assume to have same columns with existing data
             index (int): index of subplot to plot the data. use greater than 1 to specify subplot index. use -1 to plot on last. Defaults to -1.
         """
         if index in self.__data:
             ohlc = self.__data[index]["data"]
-            ohlc = pd.concat([ohlc, pd.DataFrame.from_records([tick.to_dict()])])
+            if ticks is not pd.DataFrame:
+                columns = self.__data[index]["columns"]
+                ticks = self.__tensor_to_dataframe(ticks, columns)
+            ohlc = pd.concat([ohlc, ticks])
         else:
-            ohlc = tick
+            ohlc = ticks
             self.__data[index] = {'type': 'ohlc'}
         self.__data[index]["data"] = ohlc
+        
+    def append_ohlc_predictions(self, ohlc, index:int):
+        """add prediction ohlc widh thin color
+
+        Args:
+            tick (pd.DataFrame | torch.Tensor): ohlc data. Assume to have same columns with existing data
+            index (int): index of subplot to plot the data. use greater than 1 to specify subplot index. use -1 to plot on last. Defaults to -1.
+        """
+        
+        if index in self.__data:
+            if ohlc is not pd.DataFrame:
+                columns = self.__data[index]["columns"]
+                ohlc = self.__tensor_to_dataframe(ohlc, columns)
+            self.__data[index]["predictions"] = ohlc
+        else:
+            print(f"index doesn't exist in plot data.")
     
     def update_ohlc(self, ohlc, index):
         """ update data of the index
@@ -157,11 +194,11 @@ class Rendere:
         else:
             print("index not in the data")
     
-    def register_ohlc(self, ohlc, index=-1,title='OHLC Candle',open='Open',high = 'High', low='Low', close='Close'):
+    def register_ohlc(self, ohlc, index=-1, title='OHLC Candle',open='Open',high = 'High', low='Low', close='Close'):
         """
         register ohlc to plot later
         Args:
-            ohlc (DataFrame): 
+            ohlc (DataFrame): column order should be Open, High, Low, Close
             index (int, optional): index of subplot to plot the data. use greater than 1 to specify subplot index. use -1 to plot on last. Defaults to -1.
             open (str, optional): Column name of Open. Defaults to 'Open'.
             high (str, optional): Column name of High. Defaults to 'High'.
@@ -184,6 +221,11 @@ class Rendere:
         high = content['columns'][1]
         low = content['columns'][2]
         close = content['columns'][3]
+        title = content['title']
+        do_plot_prediction = False
+        if "predictions" in content:
+            prediction = content['predictions']
+            do_plot_prediction = True
         
         x = numpy.arange(0, len(ohlc))
         if index > -1 and self.__check_subplot(index):
@@ -200,6 +242,7 @@ class Rendere:
             else:
                 ax = self.axs[row]
         ax.clear()
+        ax.set_title(title)
         index = 0
         for idx, val in ohlc.iterrows():
             color = '#2CA453'
@@ -208,6 +251,17 @@ class Rendere:
             ax.plot([x[index], x[index]-0.1], [val[open], val[open]], color=color)
             ax.plot([x[index], x[index]+0.1], [val[close], val[close]], color=color)
             index += 1
+            
+        if do_plot_prediction:
+            p_id = 1
+            index = index - 1
+            for idx, val in prediction.iterrows():
+                color = '#b4f4b2'
+                if val[open] > val[close]: color= '#ff9395'
+                ax.plot([x[index]+p_id, x[index]+p_id], [val[low], val[high]], color=color)
+                ax.plot([x[index]+p_id, x[index]+p_id-0.1], [val[open], val[open]], color=color)
+                ax.plot([x[index]+p_id, x[index]+p_id+0.1], [val[close], val[close]], color=color)
+                p_id += 1
     
     def __plot__xy(self, index, content):
         if index > -1 and self.__check_subplot(index):
@@ -257,21 +311,21 @@ class Rendere:
             print(e)
             
 
-def line_plot(data: pd.Series, window = 10, save=False, file_name:str = None):
-    if type(data) == list:
-        data = pd.Series(data)
-    mean = data.rolling(window).mean()
-    var = data.rolling(window).var()
-    up = mean + var
-    down = mean - var
-    plt.plot(data)
-    plt.plot(mean)
-    plt.fill_between(data.index, down, up, alpha=0.5)
-    if save:
-        if file_name == None:
-            file_name = 'line_plot.png'
-        try:
-            plt.savefig(file_name)
-        except Exception as e:
-            print('skipped save as ', e)
-    plt.show()
+    def line_plot(data: pd.Series, window = 10, save=False, file_name:str = None):
+        if type(data) == list:
+            data = pd.Series(data)
+        mean = data.rolling(window).mean()
+        var = data.rolling(window).var()
+        up = mean + var
+        down = mean - var
+        plt.plot(data)
+        plt.plot(mean)
+        plt.fill_between(data.index, down, up, alpha=0.5)
+        if save:
+            if file_name == None:
+                file_name = 'line_plot.png'
+            try:
+                plt.savefig(file_name)
+            except Exception as e:
+                print('skipped save as ', e)
+        plt.show()
