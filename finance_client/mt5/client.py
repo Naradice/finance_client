@@ -47,6 +47,12 @@ class MT5Client(Client):
         Frame.W1: 2681
     }
     
+    def login(self, id, password, server):
+        return mt5.login(
+            id,
+            password=password,
+            server=server,
+        )
     
     def get_additional_params(self):
         self.logger.warn("parameters are not saved for mt5 as credentials are included.")

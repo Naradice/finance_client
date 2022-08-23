@@ -37,7 +37,7 @@ def mini_max_from_series(series: pd.Series, scale = (0,1), opt = None):
     scaled = std * (scale[1] - scale[0]) + scale[0]
     return scaled, _max, _min
 
-def revert_mini_max_from_data(data, opt, scale=(0,1)):
+def revert_mini_max_from_iterable(data, opt, scale=(0,1)):
     if type(data) == list:
         data = pd.Series(data)
     if type(data) == pd.Series:
@@ -51,6 +51,13 @@ def revert_mini_max_from_data(data, opt, scale=(0,1)):
             _max = opt[key][1]
             data_[key] = revert_mini_max_from_series(data[key], _min, _max, scale)
         return data_
+    else:
+        raise TypeError(f"this obj type is not supported for now: {type(data)}")
+    
+def revert_mini_max(value, min, max, scale=(0,1)):
+    std = (value - min)/(max - min)
+    scaled = std * (scale[1] - scale[0]) + scale[0]
+    return scaled, max, min
             
         
 def mini_max_from_data(data, scale=(0,1)):

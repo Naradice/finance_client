@@ -183,13 +183,13 @@ class MinMaxPreProcess(ProcessBase):
     def revert(self, data_set:tuple):
         columns = self.columns
         if type(data_set) == pd.DataFrame:
-            return standalization.revert_mini_max_from_data(data_set, self.option, self.opiton['scale'])
+            return standalization.revert_mini_max_from_iterable(data_set, self.option, self.opiton['scale'])
         elif len(data_set) == len(columns):
             result = []
             for i in range(0, len(columns)):
                 _min, _max = self.option[columns[i]]
                 data = data_set[i]
-                row_data = standalization.revert_mini_max_from_data(data, (_min, _max), self.opiton['scale'])
+                row_data = standalization.revert_mini_max(data, _min, _max, self.opiton['scale'])
                 result.append(row_data)
             return True, result
         else:

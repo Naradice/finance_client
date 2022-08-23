@@ -215,6 +215,8 @@ class CoinCheckClient(Client):
         if self.simulation:
             return datetime.datetime.now().timestamp()
         else:
+            if ask_rate is None:
+                ask_rate = self.get_current_ask()
             response = apis.create_pending_buy_order(rate=ask_rate, amount=amount, stop_loss_rate=sl)
             if response["success"]:
                 return response["id"]
@@ -227,11 +229,21 @@ class CoinCheckClient(Client):
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         self.logger.error("sell is not allowed, so buy settlement is not available.")
     
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result_id):
         if self.simulation:
             pass
         else:
-            apis.create_market_sell_order(amount=amount)
+            if bid_rate is not None:
+                print("bid_rate is ignored for the settlement")
+            cancel_result = apis.cancel(result_id)
+            print("cancel result " + cancel_result)
+            result = apis.create_market_sell_order(amount=amount)
+            if result["success"]:
+                print(result)
+                return result
+            else:
+                self.sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
+            
     
     def get_params(self) -> dict:
         return {}

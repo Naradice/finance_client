@@ -1,3 +1,4 @@
+from time import sleep
 import unittest, os, json, sys, datetime
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 print(module_path)
@@ -15,7 +16,7 @@ except Exception as e:
     raise e
 
 class TestCCClient(unittest.TestCase):
-        
+    
     def test_initialize(self):
         frame = 1
         vantage_client = vclient.VantageClient(api_key=env["vantage"]["api_key"], frame=frame, finance_target=target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
@@ -30,7 +31,12 @@ class TestCCClient(unittest.TestCase):
         condition = condition.values
         result = time_diffs[condition]
         self.assertEqual(len(result), 0)
-         
+        
+    def test_orders(self):
+        client = CoinCheckClient(env["cc"]["ACCESS_ID"], env["cc"]["ACCESS_SECRET"], frame=1)
+        id = client.market_buy('BTCJPY', 2952000, 0.005, None,None,None)
+        sleep(120)
+        client.sell_for_settlment('BTCJPY', 2960000, 0.005, None, id)
         
     # def test_get_rates(self):
     #     length = 10

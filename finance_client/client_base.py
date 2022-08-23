@@ -238,7 +238,7 @@ class Client:
         for process in processes:
             self.__add_postprocess(process)
         
-    def get_rate_with_indicaters(self, interval) -> pd.DataFrame:
+    def get_rate_with_indicaters(self, interval=None) -> pd.DataFrame:
         if interval is None:
             required_length = 1
             ohlc = self.get_rates()
@@ -248,7 +248,10 @@ class Client:
             
         if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
             data = self.__run_processes(ohlc)
-            return data.iloc[-interval:]
+            if interval is None:
+                return data
+            else:
+                return data.iloc[-interval:]
         else:
             self.logger.error(f"data length is insufficient to caliculate indicaters.")
             return ohlc
