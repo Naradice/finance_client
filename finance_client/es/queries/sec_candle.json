@@ -1,0 +1,42 @@
+{
+    "size":0,
+    "query": {
+        "range":{
+            "@timestamp": {
+                "time_zone": "+09:00",
+                "gte": "now-10m/m",
+                "lt": "now/m"
+            }
+        }
+    },
+    "aggs": {
+    "ticks": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "calendar_interval": "1s"
+      },
+      "aggs": {
+            "low": { "min": { "field": "rate" } },
+            "high": { "max": { "field": "rate" } },
+            "first": {"top_hits": {
+                "sort": [
+                    {"@timestamp": {"order": "asc"}}
+                ],
+            "_source": {
+              "includes": [ "rate" , "@timestamp"]
+            },
+            "size": 1
+          }},
+          "last": {"top_hits": {
+                "sort": [
+                    {"@timestamp": {"order": "desc"}}
+                ],
+            "_source": {
+              "includes": [ "rate", "@timestamp" ]
+            },
+            "size": 1
+          }}
+        }
+    }
+  }
+}

@@ -3,7 +3,6 @@ import unittest, os, json, sys, datetime
 
 import numpy
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-print(module_path)
 sys.path.append(module_path)
 
 from finance_client.mt5 import MT5Client
