@@ -205,6 +205,74 @@ class TestIndicaters(unittest.TestCase):
         self.assertTrue(new_ds['open'].min() >= -1)
         self.assertTrue(new_ds['open'].max() <= 1)
         
+    def test_min_max_with_ignore_columns(self):
+        import random
+        open = [random.random()*123 for index in range(100)]
+        high = [o_value + random.random() for o_value in open]
+        low = [o_value - random.random() for o_value in open]
+        close = [o_value + random.random() -0.5 for o_value in open]
+        time = [index for index in range(100)]
+        ds = pd.DataFrame({'open': open, 'high': high, 'low':low, 'close':close, 'time': time})
+        
+        columns_to_ignore = ['time']
+        mm = utils.MinMaxPreProcess(scale=(-1,1), entire_mode=False, columns_to_ignore=columns_to_ignore)
+        result = mm.run(ds)
+        check = 'time' in result
+        self.assertFalse(check)
+        del mm
+        
+        mm = utils.MinMaxPreProcess(scale=(-1,1), entire_mode=True, columns_to_ignore=columns_to_ignore)
+        result = mm.run(ds)
+        check = 'time' in result
+        self.assertFalse(check)
+    
+    def test_min_max_entire_mode(self):
+        import random
+        high = [random.random()*123 for index in range(100)]
+        low = [h_value - 1 for h_value in high]
+        ds = pd.DataFrame({'high':high, 'low': low})
+        mm = utils.MinMaxPreProcess(scale=(-1,1), entire_mode=True)
+        
+        result = mm.run(ds)
+        self.assertEqual(result['high'].max(), 1)
+        self.assertEqual(result['low'].min(), -1)
+        self.assertGreater(result['high'].max(), result['low'].max())
+        self.assertLess(result['low'].min(), result['high'].min())
+        ## check if revert works
+        reverted_data = mm.revert(result)
+        for index in range(0, len(low)):
+            self.assertAlmostEqual(reverted_data["low"][index], low[index])
+            self.assertAlmostEqual(reverted_data["high"][index], high[index])
+        
+        df = pd.DataFrame(result)
+        reverted_data = mm.revert(df)
+        for index in range(0, len(low)):
+            self.assertAlmostEqual(reverted_data["low"].iloc[index], low[index])
+            self.assertAlmostEqual(reverted_data["high"].iloc[index], high[index])
+            
+        reverted_column = mm.revert(result['high'], column='high')
+        for index in range(0, len(low)):
+            self.assertAlmostEqual(reverted_column[index], high[index])
+        
+        reverted_row = mm.revert(df.iloc[0])
+        for column in ds.iloc[0].index:#ds is answer/org values
+            self.assertAlmostEqual(reverted_row[column], ds[column].iloc[0])
+        
+        ## check if update works with updating min max value
+        new_high_value = ds['high'].max() + 0.5
+        new_low_value = ds['low'].min() - 0.1
+        
+        new_data = pd.Series({'high':new_high_value, 'low': new_low_value} )
+        new_data_standalized = mm.update(new_data)
+        new_ds = mm.concat(pd.DataFrame(result), new_data_standalized)
+        self.assertTrue(new_data_standalized['low'] == -1)
+        self.assertTrue(new_data_standalized['high'] == 1)
+        self.assertTrue(len(new_ds['high']) == 101)
+        self.assertTrue(new_ds['high'].min() >= -1)
+        self.assertTrue(new_ds['high'].max() <= 1)
+        self.assertTrue(new_ds['low'].min() >= -1)
+        self.assertTrue(new_ds['low'].max() <= 1)
+        
     def test_diff(self):
         process = utils.DiffPreProcess()
         ds = pd.DataFrame({'input': [10, 20, 1], 'expect': [numpy.NaN, 10, -19]})

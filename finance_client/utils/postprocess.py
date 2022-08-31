@@ -104,7 +104,6 @@ class DiffPreProcess(ProcessBase):
 class MinMaxPreProcess(ProcessBase):
     
     kinds = 'MiniMax'
-    opiton = {}
     
     def __init__(self, key: str='minmax', scale=(-1, 1), params:dict=None, entire_mode=False, columns_to_ignore=[]):
         """Apply minimax for each column of data.
@@ -118,7 +117,8 @@ class MinMaxPreProcess(ProcessBase):
             entire_mode (bool, optional): caliculate min/max from entire data (all columns). Defaults to False
             columns_to_ignore (list, optional): specify column to ignore applying minimax or revert process. Defaults to []
         """
-        self.opiton['scale'] = scale
+        self.option = {}
+        self.option['scale'] = scale
         self.option['entire_mode'] = entire_mode
         if type(columns_to_ignore) is str:
             columns_to_ignore = [columns_to_ignore]
@@ -126,7 +126,7 @@ class MinMaxPreProcess(ProcessBase):
         self.entire_mode_column = '__minmax'
         self.columns = []
         if type(params) == dict:
-            self.opiton.update(params)
+            self.option.update(params)
         super().__init__(key)
         
     @classmethod
@@ -143,10 +143,11 @@ class MinMaxPreProcess(ProcessBase):
     
     def run(self, data: pd.DataFrame) -> dict:
         columns = list(set(data.columns) - set(self.option['columns_to_ignore']))
-            
+        self.columns = columns
+        
         result = {}
         e_mode = self.option['entire_mode']
-        option = self.opiton
+        option = self.option
         if 'scale' in option:
             scale = option['scale']
         else:
@@ -154,14 +155,15 @@ class MinMaxPreProcess(ProcessBase):
             self.option['scale'] = scale
             
         if e_mode:
-            if self.entire_mode_column in self.opiton:
-                _min, _max = self.opiton[self.entire_mode_column]
+            if self.entire_mode_column in self.option:
+                _min, _max = self.option[self.entire_mode_column]
             else:
                 _min = data.min().min()
                 _max = data.max().max()                
-                self.opiton[self.entire_mode_column] = (_min, _max)
-                
-            return standalization.mini_max(data, _min, _max, scale)
+                self.option[self.entire_mode_column] = (_min, _max)
+            #return standalization.mini_max(data, _min, _max, scale)#return dict...
+            for column in columns:
+                result[column], _, _ = standalization.mini_max_from_series(data[column], scale, (_min, _max))
         else:
             for column in columns:
                 if column in self.option:
@@ -170,14 +172,13 @@ class MinMaxPreProcess(ProcessBase):
                 else:
                     result[column], _max, _min =  standalization.mini_max_from_series(data[column], scale)
                     if column not in self.option:
-                        if type(_max) != pd.Timestamp:
-                            self.option[column] = (_min, _max)
-        self.columns = columns
+                        #if type(_max) != pd.Timestamp:
+                        self.option[column] = (_min, _max)
         return result
     
     def update(self, tick:pd.Series, do_update_minmax=True):
         columns = self.columns
-        scale = self.opiton['scale']
+        scale = self.option['scale']
         result = {}
         e_mode = self.option['entire_mode']
         
@@ -229,48 +230,49 @@ class MinMaxPreProcess(ProcessBase):
         
         if type(data_set) == pd.DataFrame:
             if e_mode:
-                return standalization.mini_max(data_set[self.columns], *self.option[self.entire_mode_column], self.opiton['scale'])
+                data_set = data_set[self.columns].copy()
+                return standalization.revert_mini_max(data_set, *self.option[self.entire_mode_column], self.option['scale'])
             else:
-                return standalization.revert_mini_max_from_iterable(data_set, self.option, self.opiton['scale'])
+                return standalization.revert_mini_max_from_iterable(data_set, self.option, self.option['scale'])
         elif type(data_set) == pd.Series:
             if e_mode:
-                return standalization.revert_mini_max_from_iterable(data_set, self.option, self.opiton['scale'])
+                return standalization.revert_mini_max_from_iterable(data_set.copy(), self.option[self.entire_mode_column], self.option['scale'])
             else:
                 index_set = set(data_set.index)
                 column_set = set(self.columns)
                 union = index_set & column_set
                 if len(union) == 0:
                     if type(column) is str and column in self.option:
-                        return standalization.revert_mini_max_from_series(data_set, *self.option[column], self.opiton['scale'])
+                        return standalization.revert_mini_max_from_series(data_set, *self.option[column], self.option['scale'])
                     else:
                         if len(self.columns) != 1:
                             raise ValueError(f"column need to be specified to revert column series data.")
                         else:
                             return standalization.revert_mini_max_from_row_series(data_set, *self.option[self.columns[0]])
                 else:
-                    return standalization.revert_mini_max_from_row_series(data_set, self.option, self.opiton['scale'])
+                    return standalization.revert_mini_max_from_row_series(data_set, self.option, self.option['scale'])
         elif type(data_set) == dict:
             reverted = {}
             for column in data_set:
                 if e_mode:
-                    minmax = self.opiton[self.entire_mode_column]
+                    minmax = self.option[self.entire_mode_column]
                 else:
                     minmax = self.option[column]
-                r = standalization.revert_mini_max_from_iterable(data_set[column], minmax, self.opiton['scale'])
+                r = standalization.revert_mini_max_from_iterable(data_set[column], minmax, self.option['scale'])
                 reverted[column] = r
             return reverted
         else:#assume iterable like list, tuple
             if e_mode:
-                return standalization.revert_mini_max_from_iterable(data_set, self.option[self.entire_mode_column], self.opiton['scale'])
+                return standalization.revert_mini_max_from_iterable(data_set, self.option[self.entire_mode_column], self.option['scale'])
             else:
                 if type(column) is str and column in self.option:
-                    return standalization.revert_mini_max_from_iterable(data_set, self.option[column], self.opiton['scale'])
+                    return standalization.revert_mini_max_from_iterable(data_set, self.option[column], self.option['scale'])
                 elif len(data_set) == len(self.columns):
                     result = []
                     for i in range(0, len(self.columns)):
                         _min, _max = self.option[self.columns[i]]
                         data = data_set[i]
-                        row_data = standalization.revert_mini_max(data, _min, _max, self.opiton['scale'])
+                        row_data = standalization.revert_mini_max(data, _min, _max, self.option['scale'])
                         result.append(row_data)
                     return result
                 else:
