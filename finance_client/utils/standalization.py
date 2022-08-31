@@ -26,6 +26,36 @@ def revert_mini_max_from_series(series: pd.Series, _min, _max, scale = (0 ,1)):
     values = std * (_max - _min) + _min
     return values
 
+def revert_mini_max_from_row_series(series: pd.Series, options, scale = (0 ,1)):
+    """ assume series index have column name
+
+    Args:
+        series (pd.Series): data to revert
+        options (dict): {column_name: (min, max)}
+        scale (tuple, optional): Defaults to (0 ,1).
+
+    Returns:
+        reverted series data
+    """
+    index = series.index
+    max_list = []
+    min_list = []
+    available_idx = []
+    for column in index:
+        if column in options:
+            available_idx.append(column)
+            min_max = options[column]
+            min_list.append(min_max[0])
+            max_list.append(min_max[1])
+        else:
+            print(f"{column} is ignored on revert process of minimax")
+    s = series[available_idx]
+    std = (s - scale[0])/(scale[1] - scale[0])
+    _max = pd.Series(data=max_list, index=available_idx)
+    _min = pd.Series(data=min_list, index=available_idx)
+    values = std * (_max - _min) + _min
+    return values
+
 def mini_max_from_series(series: pd.Series, scale = (0,1), opt = None):
     if opt == None:
         _max = series.max()
@@ -37,6 +67,37 @@ def mini_max_from_series(series: pd.Series, scale = (0,1), opt = None):
     scaled = std * (scale[1] - scale[0]) + scale[0]
     return scaled, _max, _min
 
+def mini_max_from_row_series(series: pd.Series, options, scale = (0 ,1)):
+    """ assume series index have column name
+
+    Args:
+        series (pd.Series): data to revert
+        options (dict): {column_name: (min, max)}
+        scale (tuple, optional): Defaults to (0 ,1).
+
+    Returns:
+        series data appied minimax
+    """
+    index = series.index
+    max_list = []
+    min_list = []
+    available_idx = []
+    for column in index:
+        if column in options:
+            available_idx.append(column)
+            min_max = options[column]
+            min_list.append(min_max[0])
+            max_list.append(min_max[1])
+        else:
+            print(f"{column} is ignored on revert process of minimax")
+    s = series[available_idx]
+    _max = pd.Series(data=max_list, index=available_idx)
+    _min = pd.Series(data=min_list, index=available_idx)
+
+    std = (series - _min)/(_max - _min)
+    scaled_series = std * (scale[1] - scale[0]) + scale[0]
+    return scaled_series
+    
 def revert_mini_max_from_iterable(data, opt, scale=(0,1)):
     if type(data) == list:
         data = pd.Series(data)
@@ -78,7 +139,3 @@ def mini_max_from_data(data, scale=(0,1)):
     else:
         #todo add numpy
         raise Exception(f"{type(data)} is not supported")
-
-    
-def standalization(value, var, mean):
-    pass

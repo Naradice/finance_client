@@ -157,19 +157,20 @@ class MinMaxPreProcess(ProcessBase):
         self.columns = columns
         return result
     
-    def update(self, tick:pd.Series):
+    def update(self, tick:pd.Series, do_update_minmax=True):
         columns = self.columns
         scale = self.opiton['scale']
         result = {}
         for column in columns:
             _min, _max = self.option[column]
             new_value = tick[column]
-            if new_value < _min:
-                _min = new_value
-                self.option[column] = (_min, _max)
-            if new_value > _max:
-                _max = new_value
-                self.option[column] = (_min, _max)
+            if do_update_minmax:
+                if new_value < _min:
+                    _min = new_value
+                    self.option[column] = (_min, _max)
+                if new_value > _max:
+                    _max = new_value
+                    self.option[column] = (_min, _max)
             
             scaled_new_value = standalization.mini_max(new_value, _min, _max, scale)
             result[column] = scaled_new_value
@@ -180,20 +181,51 @@ class MinMaxPreProcess(ProcessBase):
     def get_minimum_required_length(self):
         return 1
     
-    def revert(self, data_set:tuple):
-        columns = self.columns
+    def revert(self, data_set, column=None):
+        """revert data minimaxed by this process
+
+        Args:
+            data_set (dict|DataFrame|Series|list): _description_
+            column (str, optional): column to revert series data or list data. Defaults to None.
+
+        Returns:
+           reverted data. type is same as input
+        """
         if type(data_set) == pd.DataFrame:
             return standalization.revert_mini_max_from_iterable(data_set, self.option, self.opiton['scale'])
-        elif len(data_set) == len(columns):
-            result = []
-            for i in range(0, len(columns)):
-                _min, _max = self.option[columns[i]]
-                data = data_set[i]
-                row_data = standalization.revert_mini_max(data, _min, _max, self.opiton['scale'])
-                result.append(row_data)
-            return result
+        elif type(data_set) == pd.Series:
+            index_set = set(data_set.index)
+            column_set = set(self.columns)
+            union = index_set & column_set
+            if len(union) == 0:
+                if type(column) is str and column in self.option:
+                    return standalization.revert_mini_max_from_series(data_set, *self.option[column], self.opiton['scale'])
+                else:
+                    if len(self.columns) != 1:
+                        raise ValueError(f"column need to be specified to revert column series data.")
+                    else:
+                        return standalization.revert_mini_max_from_row_series(data_set, *self.option[self.columns[0]])
+            else:
+                return standalization.revert_mini_max_from_row_series(data_set, self.option, self.opiton['scale'])
+        elif type(data_set) == dict:
+            reverted = {}
+            for column in data_set:
+                r = standalization.revert_mini_max_from_iterable(data_set[column], self.option[column], self.opiton['scale'])
+                reverted[column] = r
+            return reverted
         else:
-            raise Exception("number of data is different")
+            if type(column) is str and column in self.option:
+                return standalization.revert_mini_max_from_iterable(data_set, self.option[column], self.opiton['scale'])
+            elif len(data_set) == len(self.columns):
+                result = []
+                for i in range(0, len(self.columns)):
+                    _min, _max = self.option[self.columns[i]]
+                    data = data_set[i]
+                    row_data = standalization.revert_mini_max(data, _min, _max, self.opiton['scale'])
+                    result.append(row_data)
+                return result
+            else:
+                raise Exception("number of data is different. row data or columns with same length data is supported for list")
             
 class STDPreProcess(ProcessBase):
     pass
