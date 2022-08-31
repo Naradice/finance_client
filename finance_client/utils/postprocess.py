@@ -106,7 +106,7 @@ class MinMaxPreProcess(ProcessBase):
     kinds = 'MiniMax'
     opiton = {}
     
-    def __init__(self, key: str='minmax', scale=(-1, 1), params:dict=None):
+    def __init__(self, key: str='minmax', scale=(-1, 1), params:dict=None, entire_mode=False):
         """Apply minimax for each column of data.
         Note that if params are not specified, mini max values are detected by data on running once only.
         So if data is partial data, mini max values will be not correct.
@@ -115,8 +115,11 @@ class MinMaxPreProcess(ProcessBase):
             key (str, optional): identification of this process. Defaults to 'minmax'.
             scale (tuple, optional): minimax scale. Defaults to (-1, 1).
             params (dict, optional): {column_name: (min, max)}. Defaults to None and caliculate by provided data when run this process.
+            entire_mode (bool, optional): caliculate min/max from entire data (all columns). Defaults to False
         """
         self.opiton['scale'] = scale
+        self.option['entire_mode'] = entire_mode
+        self.entire_mode_column = '__minmax'
         if type(params) == dict:
             self.opiton.update(params)
         super().__init__(key)
@@ -126,18 +129,17 @@ class MinMaxPreProcess(ProcessBase):
         option = {}
         scale = (-1, 1)
         for k, value in params.items():
-            if k == "scale":
-                scale = tuple(value)
-            elif type(value) == list:
+            if type(value) == list:
                 option[k] = tuple(value)
-        process = MinMaxPreProcess(key, scale)
-        process.option.update(option)
+            else:
+                option[k] = value
+        process = MinMaxPreProcess(key, scale, option)
         return process
-                
     
     def run(self, data: pd.DataFrame) -> dict:
         columns = data.columns
         result = {}
+        e_mode = self.option['entire_mode']
         option = self.opiton
         if 'scale' in option:
             scale = option['scale']
@@ -145,15 +147,25 @@ class MinMaxPreProcess(ProcessBase):
             scale = (-1, 1)
             self.option['scale'] = scale
             
-        for column in columns:
-            if column in self.option:
-                _min, _max = self.option[column]
-                result[column], _, _ = standalization.mini_max_from_series(data[column], scale, (_min, _max))
+        if e_mode:
+            if self.entire_mode_column in self.opiton:
+                _min, _max = self.opiton[self.entire_mode_column]
             else:
-                result[column], _max, _min =  standalization.mini_max_from_series(data[column], scale)
-                if column not in self.option:
-                    if type(_max) != pd.Timestamp:
-                        self.option[column] = (_min, _max)
+                _min = data.min().min()
+                _max = data.max().max()                
+                self.opiton[self.entire_mode_column] = (_min, _max)
+                
+            return standalization.mini_max(data, _min, _max, scale)
+        else:
+            for column in columns:
+                if column in self.option:
+                    _min, _max = self.option[column]
+                    result[column], _, _ = standalization.mini_max_from_series(data[column], scale, (_min, _max))
+                else:
+                    result[column], _max, _min =  standalization.mini_max_from_series(data[column], scale)
+                    if column not in self.option:
+                        if type(_max) != pd.Timestamp:
+                            self.option[column] = (_min, _max)
         self.columns = columns
         return result
     
@@ -161,16 +173,24 @@ class MinMaxPreProcess(ProcessBase):
         columns = self.columns
         scale = self.opiton['scale']
         result = {}
+        e_mode = self.option['entire_mode']
+        
         for column in columns:
-            _min, _max = self.option[column]
+            if e_mode:
+                minmax_column = self.entire_mode_column
+            else:
+                minmax_column = column
+                
+            _min, _max = self.option[minmax_column]
             new_value = tick[column]
+            
             if do_update_minmax:
                 if new_value < _min:
                     _min = new_value
-                    self.option[column] = (_min, _max)
+                    self.option[minmax_column] = (_min, _max)
                 if new_value > _max:
                     _max = new_value
-                    self.option[column] = (_min, _max)
+                    self.option[minmax_column] = (_min, _max)
             
             scaled_new_value = standalization.mini_max(new_value, _min, _max, scale)
             result[column] = scaled_new_value
