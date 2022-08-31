@@ -182,6 +182,19 @@ class TestIndicaters(unittest.TestCase):
         self.assertTrue(new_ds['close'].max() <= 1)
         self.assertTrue(new_ds['open'].min() >= -1)
         self.assertTrue(new_ds['open'].max() <= 1)
+        
+    def test_diff(self):
+        process = utils.DiffPreProcess()
+        ds = pd.DataFrame({'input': [10, 20, 1], 'expect': [numpy.NaN, 10, -19]})
+        diff_dict = process.run(ds)
+        for index in range(1,len(ds)):
+            self.assertEqual(diff_dict['input'].iloc[index], ds['expect'].iloc[index])
+            
+        new_data = pd.Series({'input': 10, 'expect': 9})
+        standalized_new_data = process.update(new_data)
+        standalized_ds = process.concat(ds, standalized_new_data)
+        self.assertEqual(len(standalized_ds), 4)
+        self.assertEqual(standalized_ds['input'].iloc[3], new_data['expect'])
     
 if __name__ == '__main__':
     unittest.main()

@@ -45,7 +45,7 @@ def create_market_sell_order(amount:float, pair:str="btc_jpy"):
 
 def cancel(id):
     response = service.request(ServiceBase.METHOD_DELETE, baseUrl + '/' + str(id))
-    return response
+    return service.parse_str_to_dict(response)
 
 def get_pending_orders():
     """ get orders. GET /opens

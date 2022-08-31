@@ -4,7 +4,7 @@ from finance_client.client_base import Client
 from finance_client.csv.client import CSVClient, MultiFrameClient
 from finance_client.mt5.client import MT5Client
 from finance_client.vantage.client import VantageClient
-
+import finance_client.utils as utils
 
 available_clients = {
     CSVClient.kinds : CSVClient,

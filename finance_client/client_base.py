@@ -195,7 +195,7 @@ class Client:
             values_dict = process.run(data_cp)
             for column, values in values_dict.items():
                 data_cp[column] = values
-                
+        
         if "Time" in columns_dict and columns_dict["Time"] != None:
             date_column = columns_dict["Time"]
             columns = list(data_cp.columns.copy())
@@ -543,3 +543,21 @@ class Client:
                     columns["Volume"] = column
             self.ohlc_columns = columns
         return self.ohlc_columns
+    
+    def revert_postprocesses(self, data: pd.DataFrame=None):
+        if data is None:
+            data = self.get_rates()
+        data = data.copy()
+        
+        columns_dict = self.get_ohlc_columns()
+        if "Time" in columns_dict and columns_dict["Time"] != None:
+            date_column = columns_dict["Time"]
+            columns = list(data.columns.copy())
+            if date_column in columns:
+                date_data = data[date_column].copy()
+                #df = df.set_index(date_column)
+                columns.remove(date_column)
+                data = data[columns]
+        for ps in self.__postprocesses:
+            data = ps.revert(data)
+        return data
