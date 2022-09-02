@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import math
 import numpy
 import pandas as pd
+from finance_client import utils
 
 class Rendere:
     
@@ -13,6 +14,13 @@ class Rendere:
         self.shape = (1,1)
         self.__data = {}
         self.__is_shown = False
+        self.__indicater_process_info = {
+            utils.BBANDpreProcess.kinds : {
+                    "function": self.overlap_bolinger_band,
+                    "columns":("MB", "Width"),
+                    "option": ('alpha',)
+                }
+        }
         
     def add_subplot(self):
         self.plot_num += 1
@@ -194,25 +202,87 @@ class Rendere:
         else:
             print("index not in the data")
     
-    def register_ohlc(self, ohlc, index=-1, title='OHLC Candle',open='Open',high = 'High', low='Low', close='Close'):
+    def register_ohlc(self, ohlc:pd.DataFrame, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
         """
         register ohlc to plot later
         Args:
             ohlc (DataFrame): column order should be Open, High, Low, Close
             index (int, optional): index of subplot to plot the data. use greater than 1 to specify subplot index. use -1 to plot on last. Defaults to -1.
-            open (str, optional): Column name of Open. Defaults to 'Open'.
-            high (str, optional): Column name of High. Defaults to 'High'.
-            low (str, optional): Column name of Low. Defaults to 'Low'.
-            close (str, optional): Column name of Close. Defaults to 'Close'.
-            time_column (str, optional): Column name of datetime. Default to None
+            ohlc_columns (tuple|list, optional): ohlc colmun names. Defaults to ('Open', 'High', 'Low', 'Close')
         """
-        return self.__register_data('ohlc', ohlc, title, index, {'columns': (open, high, low, close)})
-     
-    def register_indicater_to_overlap(self, data, time_column, index=-1, title=None, columns:list=None, chart_type:str="line"):
+        ohlc_columns = ohlc_columns
+        if type(ohlc) == pd.DataFrame:
+            consistent = set(ohlc.columns) & set(ohlc_columns)
+            if len(consistent) < 4:
+                print(f"{ohlc_columns} is not found in the data. try to extruct them from the data.")
+                for column in ohlc.columns:
+                    c = column.lower()
+                    if 'open' in c:
+                        open = column
+                    elif 'high' in c:
+                        high = column
+                    elif 'low' in c:
+                        low = column
+                    elif 'close' in c:
+                        close = column
+                ohlc_columns = (open, high, low, close)
+        else:
+            raise TypeError(f"only dataframe is available as ohlc for now.")
+        return self.__register_data('ohlc', ohlc, title, index, {'columns': ohlc_columns})
+
+    def register_ohlc_with_indicaters(self, data:pd.DataFrame, idc_processes:list, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
+        idx = self.register_ohlc(data, index=index, title=title, ohlc_columns=ohlc_columns)
+        idc_plot_processes = []
+        for idc in idc_processes:
+            if idc.kinds in self.__indicater_process_info:
+                process_info = self.__indicater_process_info[idc.kinds]
+                plot_func = process_info["function"]
+                column_keys = process_info["columns"]
+                columns = tuple(idc.columns[key] for key in column_keys)
+                option_keys = process_info["option"]
+                options = tuple(idc.option[key] for key in option_keys)
+                
+                idc_plot_processes.append(
+                    (plot_func, columns, options)
+                )
+            else:
+                print(f"{idc.kinds} is not supported for now.")
+        if len(idc_plot_processes) > 0:
+            self.__data[idx]["indicaters"] = idc_plot_processes
+    
+    def overlap_bolinger_band(self, data, index, mean_column, width_column=None, alpha=2, std_column=None):
+        ax = self.__get_ax(index)
+        x = numpy.arange(0, len(data))
+        std = data[width_column]/alpha
+        y1 = data[mean_column] + std
+        y2 = data[mean_column] - std
+        ax.plot(x, data[mean_column])
+        ax.fill_between(x, y1, y2, alpha=0.4)
+        y1 = data[mean_column] + std*2
+        y2 = data[mean_column] - std*2
+        ax.fill_between(x, y1, y2, alpha=0.2)
+
+    def overlap_indicater(self, data, time_column, index, columns:list=None, chart_type:str="line"):
         pass
     
     def register_indicater(self):
         pass
+    
+    def __get_ax(self, index):
+        if index > -1 and self.__check_subplot(index):
+            column = int(index/self.shape[0])
+            row = index % self.shape[0]
+        else:
+            column = self.shape[0]
+            row = self.shape[1]
+        if self.__check_subplot_axis():
+            ax = self.axs[column][row]
+        else:
+            if self.plot_num == 1:
+                ax = self.axs
+            else:
+                ax = self.axs[row]
+        return ax
     
     def __plot_candle(self, index, content):
         
@@ -228,21 +298,14 @@ class Rendere:
             do_plot_prediction = True
         
         x = numpy.arange(0, len(ohlc))
-        if index > -1 and self.__check_subplot(index):
-            column = int(index/self.shape[0])
-            row = index % self.shape[0]
-        else:
-            column = self.shape[0]
-            row = self.shape[1]
-        if self.__check_subplot_axis():
-            ax = self.axs[column][row]
-        else:
-            if self.plot_num == 1:
-                ax = self.axs
-            else:
-                ax = self.axs[row]
+        
+        ax = self.__get_ax(index)
         ax.clear()
         ax.set_title(title)
+        if "indicaters" in content:
+            for idc_plot_info in content["indicaters"]:
+                func, columns, option = idc_plot_info
+                func(ohlc, index, *columns, *option)
         index = 0
         for idx, val in ohlc.iterrows():
             color = '#2CA453'
@@ -264,20 +327,8 @@ class Rendere:
                 p_id += 1
     
     def __plot__xy(self, index, content):
-        if index > -1 and self.__check_subplot(index):
-            column = int(index/self.shape[0])
-            row = index % self.shape[0]
-        else:
-            column = self.shape[0]
-            row = self.shape[1]
+        ax = self.__get_ax(index)
         x, y = content['data']
-        if self.__check_subplot_axis():
-            ax = self.axs[column][row]
-        else:
-            if self.plot_num == 1:
-                ax = self.axs
-            else:
-                ax = self.axs[row]
         ax.clear()
         ax.plot(y,x)
         
