@@ -17,7 +17,7 @@ class Rendere:
         self.__indicater_process_info = {
             utils.BBANDpreProcess.kinds : {
                     "function": self.overlap_bolinger_band,
-                    "columns":("MB", "Width"),
+                    "columns":("MV", "Width"),
                     "option": ('alpha',)
                 }
         }
@@ -169,10 +169,13 @@ class Rendere:
                 columns = self.__data[index]["columns"]
                 ticks = self.__tensor_to_dataframe(ticks, columns)
             ohlc = pd.concat([ohlc, ticks])
+            self.__data[index]["data"] = ohlc
+            history = self.__data[index]["trade_history"]
+            history.append([])
+            self.__data[index]["trade_history"] = history
         else:
             ohlc = ticks
-            self.__data[index] = {'type': 'ohlc'}
-        self.__data[index]["data"] = ohlc
+            self.register_ohlc(ohlc, index)
         
     def append_ohlc_predictions(self, ohlc, index:int):
         """add prediction ohlc widh thin color
@@ -199,6 +202,10 @@ class Rendere:
         """
         if index in self.__data:
             self.__data[index].update({'data': ohlc})
+            history = self.__data[index]["trade_history"]
+            history.append([])
+            history = history[1:]
+            self.__data[index]["trade_history"] = history
         else:
             print("index not in the data")
     
@@ -228,7 +235,9 @@ class Rendere:
                 ohlc_columns = (open, high, low, close)
         else:
             raise TypeError(f"only dataframe is available as ohlc for now.")
-        return self.__register_data('ohlc', ohlc, title, index, {'columns': ohlc_columns})
+        idx = self.__register_data('ohlc', ohlc, title, index, {'columns': ohlc_columns})
+        self.__data[idx]["trade_history"] = [[] for i in  range(0, len(ohlc))]
+        return idx
 
     def register_ohlc_with_indicaters(self, data:pd.DataFrame, idc_processes:list, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
         idx = self.register_ohlc(data, index=index, title=title, ohlc_columns=ohlc_columns)
@@ -249,6 +258,20 @@ class Rendere:
                 print(f"{idc.kinds} is not supported for now.")
         if len(idc_plot_processes) > 0:
             self.__data[idx]["indicaters"] = idc_plot_processes
+        return idx
+    
+    def add_trade_histories_to_ohlc(self, positions:list, prices:list, index:int):
+        pass
+    
+    def add_trade_history_to_latest_tick(self, position:int, price:float, index:int):
+        if index in self.__data:
+            histories = self.__data[index]["trade_history"]
+            last_trade = histories[-1]
+            last_trade.append([position, price])
+            histories[-1] = last_trade
+            self.__data[index]["trade_history"] = histories
+        else:
+            print(f"{index} is not registered.")
     
     def overlap_bolinger_band(self, data, index, mean_column, width_column=None, alpha=2, std_column=None):
         ax = self.__get_ax(index)
@@ -302,6 +325,7 @@ class Rendere:
         ax = self.__get_ax(index)
         ax.clear()
         ax.set_title(title)
+        
         if "indicaters" in content:
             for idc_plot_info in content["indicaters"]:
                 func, columns, option = idc_plot_info
@@ -314,7 +338,31 @@ class Rendere:
             ax.plot([x[index], x[index]-0.1], [val[open], val[open]], color=color)
             ax.plot([x[index], x[index]+0.1], [val[close], val[close]], color=color)
             index += 1
-            
+        
+        index = 0
+        if "trade_history" in self.__data[index]:
+            histories = self.__data[index]["trade_history"]
+            if len(histories) == len(ohlc):
+                for history in histories:
+                    for trade in history:
+                        marker = 'o'
+                        color  = '#0000FF'
+                        if trade[0] == 1:#buy
+                            marker = '^'
+                            color  = '#0000FF'
+                        elif trade[0] == -1:#buy to close
+                            marker = '^'
+                            color  = '#7700FF'
+                        elif trade[0] == 2:#sell
+                            marker = 'v'
+                            color = '#FF0077'
+                        elif trade[0] == -2:#sell to close
+                            marker = 'v'
+                            color  = '#7700FF'
+                        ax.plot(x[index], trade[1], marker, color=color)
+                    index += 1
+            else:
+                print(f"history length: {len(histories)} is different from data length {len(ohlc)}")
         if do_plot_prediction:
             p_id = 1
             index = index - 1
@@ -332,7 +380,7 @@ class Rendere:
         ax.clear()
         ax.plot(y,x)
         
-    def __plot(self):
+    def __plot(self, file_name:str=None):
         if self.__is_shown == False:
             self.__is_shown = True
             self.fig, self.axs = plt.subplots(*self.shape)
@@ -346,14 +394,15 @@ class Rendere:
             else:
                 raise Exception(f'unexpected type was specified in {index}: {data_type}')
         #self.fig.canvas.draw()
+        if file_name is not None and type(file_name) is str:
+            plt.savefig(file_name+".png")
         plt.pause(0.01)
-        #plt.savefig("img.png")
     
     def plot_async(self):
         pass
         
-    def plot(self):
-        self.__plot()
+    def plot(self, file_name:str=None):
+        self.__plot(file_name)
         
     def write_image(self, file_name):
         try:

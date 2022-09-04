@@ -130,21 +130,25 @@ class Client:
             return None
         if amount is None:
             amount = position.amount
-            
+        position_plot = 0
         if position.order_type == "ask":
             self.logger.debug(f"close long position is ordered for {id}")
             if (price == None):
                 price = self.get_current_bid()
                 self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
             self.sell_for_settlment(position.symbol , price, amount, position.option, position.result)
+            position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close long position is ordered for {id}")
             if (price == None):
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
                 price = self.get_current_ask()
             self.buy_for_settlement(position.symbol, price, amount, position.option, position.result)
+            position_plot = -1
         else:
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
+        if self.do_render:
+            self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         return self.market.close_position(position, price, amount)
     
     def close_all_positions(self):
@@ -243,6 +247,8 @@ class Client:
             self.__add_postprocess(process)
         
     def get_rate_with_indicaters(self, interval=None) -> pd.DataFrame:
+        temp = self.do_render
+        self.do_render = False
         if interval is None:
             required_length = 1
             ohlc = self.get_rates()
@@ -250,8 +256,11 @@ class Client:
             required_length = interval + self.__additional_length_for_prc
             ohlc = self.get_rates(required_length)
             
+        self.do_render = temp
         if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
             data = self.__run_processes(ohlc)
+            if self.do_render:
+                self.__plot_data_width_indicaters(data)
             if interval is None:
                 return data
             else:
@@ -324,11 +333,15 @@ class Client:
                         if position.sl >= tick[low_column]:
                             self.market.close_position(position, position.sl)
                             self.logger.info("Position is closed to stop loss")
+                            if self.do_render:
+                                self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             continue
                     elif position.order_type == "bid":
                         if position.sl <= tick[high_column]:
                             self.market.close_position(position, position.sl)
                             self.logger.info("Position is closed to stop loss")
+                            if self.do_render:
+                                self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
                             continue
                     else:
                         self.logger.error(f"unkown order_type: {position.order_type}")
@@ -340,11 +353,15 @@ class Client:
                         if position.tp <= tick[high_column]:
                             self.market.close_position(position, position.tp)
                             self.logger.info("Position is closed to take profit")
+                            if self.do_render:
+                                self.__rendere.add_trade_history_to_latest_tick(-2, position.tp, self.__ohlc_index)
                     elif position.order_type == "bid":
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
                             self.market.close_position(position, position.tp)
                             self.logger.info("Position is closed to take profit")
+                            if self.do_render:
+                                self.__rendere.add_trade_history_to_latest_tick(-1, position.tp, self.__ohlc_index)
                     else:
                         self.logger.error(f"unkown order_type: {position.order_type}")
 
@@ -352,10 +369,12 @@ class Client:
         if self.__is_graph_initialized is False:
             ohlc_columns = self.get_ohlc_columns()
             args_dict = {
-                'open':ohlc_columns['Open'],
-                'high':ohlc_columns['High'],
-                'low':ohlc_columns['Low'],
-                'close':ohlc_columns['Close']
+                "ohlc_columns": (
+                    ohlc_columns['Open'],
+                    ohlc_columns['High'],
+                    ohlc_columns['Low'],
+                    ohlc_columns['Close']
+                )
             }
             result = self.__rendere.register_ohlc(data_df, **args_dict)
             self.__ohlc_index = result
@@ -363,7 +382,26 @@ class Client:
         else:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
-            
+    
+    def __plot_data_width_indicaters(self, data_df: pd.DataFrame):
+        if self.__is_graph_initialized is False:
+            ohlc_columns = self.get_ohlc_columns()
+            args_dict = {
+                "ohlc_columns": (
+                    ohlc_columns['Open'],
+                    ohlc_columns['High'],
+                    ohlc_columns['Low'],
+                    ohlc_columns['Close']
+                ),
+                "idc_processes": self.__idc_processes,
+                "index": self.__ohlc_index
+            }
+            result = self.__rendere.register_ohlc_with_indicaters(data_df, **args_dict)
+            self.__ohlc_index = result
+            self.__is_graph_initialized = True
+        else:
+            self.__rendere.update_ohlc(data_df, self.__ohlc_index)
+        self.__rendere.plot()
         
     def get_rates(self, interval:int = None) -> pd.DataFrame:
         """ get ohlc data with interval length
@@ -504,11 +542,15 @@ class Client:
     def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
         self.logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         position = self.market.open_position(order_type="ask", symbol=symbol,  price=boughtRate, amount=amount, tp=tp, sl=sl, option=option_info, result=result)
+        if self.do_render:
+            self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
         return position
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result = None):
         self.logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         position = self.market.open_position(order_type="bid", symbol=symbol,  price=soldRate, amount=amount, tp=tp, sl=sl, option=option_info, result=result)
+        if self.do_render:
+            self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
         return position
     
     def get_ohlc_columns(self) -> dict:
