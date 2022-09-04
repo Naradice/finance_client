@@ -223,9 +223,9 @@ class BBANDpreProcess(ProcessBase):
         if option != None:
             self.option.update(option)
         self.columns = {
-            "MB": f"{key}_MB",
-            "UB": f"{key}_UB",
-            "LB": f"{key}_LB",
+            "MV": f"{key}_MV",
+            "UV": f"{key}_UV",
+            "LV": f"{key}_LV",
             "Width": f"{key}_Width"
         }
         self.is_input = is_input
@@ -248,9 +248,9 @@ class BBANDpreProcess(ProcessBase):
         
         ema, ub, lb, bwidth = indicaters.bolinger_from_ohlc(data, target_column, window=window, alpha=alpha)
         
-        c_ema = self.columns['MB']
-        c_ub = self.columns['UB']
-        c_lb = self.columns['LB']
+        c_ema = self.columns['MV']
+        c_ub = self.columns['UV']
+        c_lb = self.columns['LV']
         c_width = self.columns['Width']
         
         self.last_data = pd.DataFrame({c_ema:ema, c_ub: ub, c_lb:lb, c_width:bwidth, target_column:data[target_column] }).iloc[-self.get_minimum_required_length():]
@@ -273,9 +273,9 @@ class BBANDpreProcess(ProcessBase):
         new_lb = new_sma - alpha * std
         new_width = alpha*2*std
         
-        c_ema = self.columns['MB']
-        c_ub = self.columns['UB']
-        c_lb = self.columns['LB']
+        c_ema = self.columns['MV']
+        c_ub = self.columns['UV']
+        c_lb = self.columns['LV']
         c_width = self.columns['Width']
         
         new_data = pd.Series({c_ema:new_sma, c_ub: new_ub, c_lb:new_lb, c_width:new_width, target_column: tick[target_column]})
@@ -582,6 +582,174 @@ class CCIProcess(ProcessBase):
         #pass
         return False, None        
 
+class RangeTrendProcess(ProcessBase):
+    
+    kinds = "rtp"
+    available_mode = ["bband"]
+    TREND_KEY = "trend"
+    RANGE_KEY = "range"
+    
+    def __init__(self, key: str = "rtp", mode="bband", required_columns=[], use_sample_param=False, is_input=True, is_output=True, option=None):
+        """Process to caliculate likelyfood of market state
+        {key}_trend: from -1 to 1. 1 then bull (long position) state is strong, -1 then cow (short position) is strong
+        {key}_range: from 0 to 1. possibility of market is in range trading
+
+        Args:
+            key (str): key to differentiate processes. Defaults to rtp
+            mode (str, optional): mode to caliculate the results. Defaults to "bband".
+            required_columns (list, optional): columns which needs to caliculate the results. Defaults to None then columns are obtained from data
+            is_input (bool, optional): client/env use this to handle in/out. Defaults to True.
+            is_output (bool, optional): client/env use this to handle in/out. Defaults to True.
+            use_sample_param (bool, optional): Use SAMPLE params caliculated by daily USDJPY. Defaults to False. Recommend to run with entire data if False
+            option (dict, optional): option to update params. Mostly used by load func. Defaults to None.
+
+        """
+        super().__init__(key)
+        if mode not in self.available_mode:
+            raise ValueError(f"{mode} is not supported. Please specify one of {self.available_mode}")
+        self.initialized = False
+        ## params for default. This is caliculated by daily USDJPY. So need to add more samples, or this process must be run with entire data
+        self.params = {
+            "bband":{
+                "slope_std": 0.193937,
+                "slope_mean": -0.002998,
+                "pct_thread":0.359497
+            }
+        }
+        self.required_length = 3
+        self.options = {
+            "mode": mode
+        }
+        if mode == "bband":
+            if len(required_columns) > 1:
+                self.options["required_columns"] = required_columns
+            self.run = self.__range_trand_by_bb
+                
+        if option != None and type(option) == dict:
+            self.options.update(option)
+        self.data = None
+        self.is_input = is_input
+        self.is_output = is_output
+        self.__preprocess = None
+        self.use_sample_param = use_sample_param
+        self.columns = {
+            self.RANGE_KEY: f'{key}_range',
+            self.TREND_KEY: f'{key}_trend'
+        }
+        
+    def __bb_initialization(self, data:pd.DataFrame):
+        close_column = None
+        if "required_columns" not in self.options:
+            default_required_columns = ["BBAND_Width", "BBAND_MV"]
+            required_columns = set(data.columns) & set(default_required_columns)
+            self.required_length = 3
+            if len(required_columns) == 2:
+                self.options["required_columns"] = default_required_columns
+            else:
+                required_columns = ["temp", "temp"]
+                for column in data.columns:
+                    if "_MV" in column:
+                        required_columns[0] = column
+                    elif "_Width" in column:
+                        required_columns[1] = column
+                    elif "close" in column.lower():
+                        close_column = column
+                if "temp" in required_columns and close_column:
+                    self.__preprocess = BBANDpreProcess(target_column=close_column)
+                    self.required_length = 14
+                    required_columns = default_required_columns
+                self.options["required_columns"] = required_columns
+        if self.use_sample_param is False:
+            print("assume enough data length is provided to caliculate std etc.")
+            if close_column is None:
+                for column in data.columns:
+                    if "close" in column.lower():
+                        close_column = column
+            pct_std = data[close_column].pct_change(periods=1).std()
+            mean_column = required_columns[1]
+            slope = (data[mean_column] - data[mean_column].shift(periods=3))/3
+            self.params["bband"] = {
+                "slope_std": slope.std(),
+                "slope_mean": slope.mean(),
+                "pct_thread":pct_std
+            }
+                
+        self.initialized = True
+    
+    def __range_trand_by_bb(self, data:pd.DataFrame):
+        if self.initialized == False:
+            self.__bb_initialization(data)
+        if self.__preprocess is not None:
+            data = data.copy()
+            result_dict = self.__preprocess.run(data)
+            for key, value in result_dict.items():
+                data[key] = value
+        required_columns = self.options["required_columns"]
+        
+        width_column = required_columns[0]
+        mean_column = required_columns[1]
+        
+        period = 1
+        max_period=3
+        
+        # caliculate a width is how differ from previous width
+        pct_change = data[width_column].pct_change(periods=period)
+        range_possibility_df = 1 - pct_change.abs()
+        thresh = self.params["bband"]["pct_thread"]
+        range_market = (pct_change <= thresh) & (pct_change >= -thresh)
+        range_cont_df = range_market
+        range_data = data[range_market]
+        indices = range_data.index
+        
+        # do the same for shifted data till max_period
+        while len(indices) > 0 and period < max_period:
+            period+=1
+            pct_change = data[width_column].pct_change(periods=period)
+            cont_pct_change = pct_change[indices]
+            range_market = (cont_pct_change <= thresh) & (cont_pct_change >= -thresh)
+            range_data = cont_pct_change[range_market]
+            indices = range_data.index
+            new_pos = range_possibility_df.copy()
+            range_cont_num = range_cont_df.copy()
+            new_pos[indices] += 1/(1+cont_pct_change.abs())
+            range_cont_num[indices] += 1
+            range_possibility_df = new_pos
+            range_cont_df = range_cont_num
+        range_possibility_df = range_possibility_df/max_period
+        
+        # caliculate slope by mean value
+        window_for_slope = max_period
+        #window_for_slope = 14#bolinger window size
+        slope = (data[mean_column] - data[mean_column].shift(periods=window_for_slope))/window_for_slope
+        smean = self.params["bband"]["slope_mean"]
+        sstd = self.params["bband"]["slope_std"]
+        slope = slope.clip(smean-sstd, smean+sstd)
+        slope = slope/(smean+sstd)
+        
+        return {self.columns[self.RANGE_KEY]:range_possibility_df, self.columns[self.TREND_KEY]:slope}
+
+    @classmethod
+    def load(self, key:str, params:dict):
+        mode = params["mode"]
+        required_columns = params["required_columns"]
+        is_input = params["input"]
+        is_out = params["output"]
+        process = RangeTrendProcess(key, mode=mode, required_columns=required_columns, is_input=is_input, is_output=is_out)
+        return process
+        
+    def run(self, data:pd.DataFrame):
+        return data
+    
+    def update(self, tick: pd.Series):
+        print("not supported for now")
+        
+    def get_minimum_required_length(self):
+        return self.required_length
+    
+    def revert(self, data_set:tuple):
+        print("not supported for now")
+        return False, None 
+
 ####
 # Not implemented as I can't caliculate required length
 ####
@@ -615,3 +783,4 @@ class RollingProcess(ProcessBase):
     
     def revert(self, data_set: tuple):
         raise NotImplemented
+    
