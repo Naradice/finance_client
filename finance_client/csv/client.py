@@ -157,18 +157,18 @@ class CSVClient(Client):
     
     def get_additional_params(self):
         args = {
-            "auto_index":self.auto_index, "file":self.files[self.frame]
+            "auto_step_index":self.auto_step_index, "file":self.files[self.frame]
         }        
         args.update(self.__args)
         return args
 
     ##TODO: add ascending=False option
-    def __init__(self, auto_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
+    def __init__(self, auto_step_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, auto_refresh_index=False, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
         Args:
-            auto_index (bool, options): If true, get_rate function returns data with index advance. Otherwise data index advance by get_next_tick
+            auto_step_index (bool, options): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
             file (str, optional): You can directly specify the file name. Defaults to None.
             file_frame (int, optional): You can specify the frame of data. CSV need to exist. Defaults to 5.
             provider (str, optional): Provider of data to load csv file. Defaults to "bitflayer".
@@ -176,11 +176,12 @@ class CSVClient(Client):
             columns (list, optional): ohlc columns name. Defaults to ['High', 'Low','Open','Close'].
             date_column (str, optional): If specified, time is parsed. Otherwise ignored. Defaults to Timestamp
             start_index (int, options): specify start index. If not specified, randm index is used. Defauls to None.
+            auto_refresh_index ( bool, options): refreh the index with random value when index reach the end. Defaults False
             seed (int, options): specify random seed. Defaults to 1017
             idc_processes (Process, options) : list of indicater process. Dafaults to []
         """
         super().__init__(budget=budget,do_render=do_render, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
-        self.auto_index = auto_index
+        self.auto_step_index = auto_step_index
         available_slip_type = ["random", "none", "percentage"]
         if slip_type in available_slip_type:
             self.slip_type = slip_type
@@ -236,11 +237,9 @@ class CSVClient(Client):
             self.out_frames = self.frame
         if start_index:
             self.__step_index = start_index
-            self.__auto_refresh = False
         else:
             self.__step_index = random.randint(0, len(self.data))
-            self.__auto_refresh = True
-        
+        self.__auto_refresh = auto_refresh_index
         high_column = self.ohlc_columns["High"]
         low_column = self.ohlc_columns["Low"]
         self.__high_max = self.get_min_max(column = high_column)[1]
@@ -263,7 +262,7 @@ class CSVClient(Client):
                 try:
                     #return data which have interval length
                     rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1].copy()
-                    if self.auto_index:
+                    if self.auto_step_index:
                         self.__step_index = self.__step_index + 1
                         ## raise index change event
                     return rates
