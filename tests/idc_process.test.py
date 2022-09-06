@@ -27,12 +27,12 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_d1.csv'))
+file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv'))
 ohlc_columns = ["open", "high", "low", "close"]
 date_column = "time"
 
 class TestIndicaters(unittest.TestCase):
-    client = CSVClient(file=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_index=False)
+    client = CSVClient(file=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False)
     
     def test_cci(self):
         ohlc = self.client.get_rates(100)
@@ -157,6 +157,26 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(s_slp_column in data.columns, True)
         self.assertEqual(len(data[s_slp_column]), 100)
         self.assertNotEqual(data[slp_column].iloc[-1], data[s_slp_column].iloc[-1])
+
+    def test_range_process(self):
+        client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, auto_refresh_index=False,logger=logger)
+        slope_window = 4
+        range_p = utils.RangeTrendProcess(slope_window=slope_window)
+        bband_p = utils.BBANDpreProcess(alpha=2, target_column=ohlc_columns[3])
+        client.add_indicaters([bband_p, range_p])
+        start_time = datetime.datetime.now()
+        client.get_rate_with_indicaters()
+        end_time = datetime.datetime.now()
+        logger.debug(f"range process took {end_time - start_time}")
+        data = client.get_rate_with_indicaters(100)
+        self.assertEqual(len(data), 100)
+        mv = data["bolinger_MV"]
+        slope = data[range_p.columns[range_p.TREND_KEY]]
+        for i in range(slope_window, 100):
+            if slope.iloc[i] >= 0:
+                self.assertGreaterEqual(mv.iloc[i], mv.iloc[i-slope_window])
+            else:
+                self.assertLess(mv.iloc[i], mv.iloc[i-slope_window])
 
     def test_min_max(self):
         import random

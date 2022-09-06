@@ -589,7 +589,7 @@ class RangeTrendProcess(ProcessBase):
     TREND_KEY = "trend"
     RANGE_KEY = "range"
     
-    def __init__(self, key: str = "rtp", mode="bband", required_columns=[], use_sample_param=False, is_input=True, is_output=True, option=None):
+    def __init__(self, key: str = "rtp", mode="bband", required_columns=[], slope_window=4,use_sample_param=False, is_input=True, is_output=True, option=None):
         """Process to caliculate likelyfood of market state
         {key}_trend: from -1 to 1. 1 then bull (long position) state is strong, -1 then cow (short position) is strong
         {key}_range: from 0 to 1. possibility of market is in range trading
@@ -616,7 +616,7 @@ class RangeTrendProcess(ProcessBase):
                 "pct_thread":0.359497
             }
         }
-        self.required_length = 3
+        self.required_length = slope_window + 14
         self.options = {
             "mode": mode
         }
@@ -632,6 +632,7 @@ class RangeTrendProcess(ProcessBase):
         self.is_output = is_output
         self.__preprocess = None
         self.use_sample_param = use_sample_param
+        self.slope_window = slope_window
         self.columns = {
             self.RANGE_KEY: f'{key}_range',
             self.TREND_KEY: f'{key}_trend'
@@ -640,18 +641,18 @@ class RangeTrendProcess(ProcessBase):
     def __bb_initialization(self, data:pd.DataFrame):
         close_column = None
         if "required_columns" not in self.options:
-            default_required_columns = ["BBAND_Width", "BBAND_MV"]
-            required_columns = set(data.columns) & set(default_required_columns)
-            self.required_length = 3
+            default_required_columns = ["bolinger_Width", "bolinger_MV"]
+            required_columns = list(set(data.columns) & set(default_required_columns))
+            self.required_length = self.slope_window
             if len(required_columns) == 2:
                 self.options["required_columns"] = default_required_columns
             else:
                 required_columns = ["temp", "temp"]
                 for column in data.columns:
                     if "_MV" in column:
-                        required_columns[0] = column
-                    elif "_Width" in column:
                         required_columns[1] = column
+                    elif "_Width" in column:
+                        required_columns[0] = column
                     elif "close" in column.lower():
                         close_column = column
                 if "temp" in required_columns and close_column:
@@ -667,9 +668,9 @@ class RangeTrendProcess(ProcessBase):
                         close_column = column
             pct_std = data[close_column].pct_change(periods=1).std()
             mean_column = required_columns[1]
-            slope = (data[mean_column] - data[mean_column].shift(periods=3))/3
+            slope = (data[mean_column] - data[mean_column].shift(periods=self.slope_window))/self.slope_window
             self.params["bband"] = {
-                "slope_std": slope.std(),
+                "slope_std": slope.std()*2,
                 "slope_mean": slope.mean(),
                 "pct_thread":pct_std
             }
@@ -677,6 +678,7 @@ class RangeTrendProcess(ProcessBase):
         self.initialized = True
     
     def __range_trand_by_bb(self, data:pd.DataFrame):
+        max_period=3
         if self.initialized == False:
             self.__bb_initialization(data)
         if self.__preprocess is not None:
@@ -690,7 +692,6 @@ class RangeTrendProcess(ProcessBase):
         mean_column = required_columns[1]
         
         period = 1
-        max_period=3
         
         # caliculate a width is how differ from previous width
         pct_change = data[width_column].pct_change(periods=period)
@@ -718,9 +719,10 @@ class RangeTrendProcess(ProcessBase):
         range_possibility_df = range_possibility_df/max_period
         
         # caliculate slope by mean value
-        window_for_slope = max_period
+        window_for_slope = self.slope_window
         #window_for_slope = 14#bolinger window size
-        slope = (data[mean_column] - data[mean_column].shift(periods=window_for_slope))/window_for_slope
+        shifted = data[mean_column].shift(periods=window_for_slope)
+        slope = (data[mean_column] - shifted)/window_for_slope
         smean = self.params["bband"]["slope_mean"]
         sstd = self.params["bband"]["slope_std"]
         slope = slope.clip(smean-sstd, smean+sstd)
