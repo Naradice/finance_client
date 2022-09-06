@@ -170,6 +170,9 @@ class TestIndicaters(unittest.TestCase):
         logger.debug(f"range process took {end_time - start_time}")
         data = client.get_rate_with_indicaters(100)
         self.assertEqual(len(data), 100)
+        ran = data[range_p.columns[range_p.RANGE_KEY]]
+        self.assertLessEqual(ran.max(), 1)
+        self.assertGreaterEqual(ran.min(), -1)
         mv = data["bolinger_MV"]
         slope = data[range_p.columns[range_p.TREND_KEY]]
         for i in range(slope_window, 100):

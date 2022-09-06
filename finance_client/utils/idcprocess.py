@@ -616,7 +616,7 @@ class RangeTrendProcess(ProcessBase):
                 "pct_thread":0.359497
             }
         }
-        self.required_length = slope_window + 14
+        self.required_length = slope_window + 14 + 1
         self.options = {
             "mode": mode
         }
@@ -643,7 +643,6 @@ class RangeTrendProcess(ProcessBase):
         if "required_columns" not in self.options:
             default_required_columns = ["bolinger_Width", "bolinger_MV"]
             required_columns = list(set(data.columns) & set(default_required_columns))
-            self.required_length = self.slope_window
             if len(required_columns) == 2:
                 self.options["required_columns"] = default_required_columns
             else:
@@ -657,7 +656,6 @@ class RangeTrendProcess(ProcessBase):
                         close_column = column
                 if "temp" in required_columns and close_column:
                     self.__preprocess = BBANDpreProcess(target_column=close_column)
-                    self.required_length = 14
                     required_columns = default_required_columns
                 self.options["required_columns"] = required_columns
         if self.use_sample_param is False:
@@ -666,18 +664,22 @@ class RangeTrendProcess(ProcessBase):
                 for column in data.columns:
                     if "close" in column.lower():
                         close_column = column
-            pct_std = data[close_column].pct_change(periods=1).std()
+            width_column = required_columns[1]
+            pct_change = (data[width_column].diff()+1).pct_change(periods=1)
+            pct_normalized = pct_change/pct_change.std()
+            range_possibility_df = 1/(1+pct_normalized.abs())
             mean_column = required_columns[1]
             slope = (data[mean_column] - data[mean_column].shift(periods=self.slope_window))/self.slope_window
             self.params["bband"] = {
                 "slope_std": slope.std()*2,
                 "slope_mean": slope.mean(),
-                "pct_thread":pct_std
+                "pct_thread":range_possibility_df.std()
             }
                 
         self.initialized = True
     
-    def __range_trand_by_bb(self, data:pd.DataFrame):
+    def __range_trand_by_bb(self, data:pd.DataFrame, max_period=1, thresh = 0.8):
+        #currentry max_period > 1 don't work well
         max_period=3
         if self.initialized == False:
             self.__bb_initialization(data)
@@ -691,31 +693,32 @@ class RangeTrendProcess(ProcessBase):
         width_column = required_columns[0]
         mean_column = required_columns[1]
         
-        period = 1
-        
         # caliculate a width is how differ from previous width
-        pct_change = data[width_column].pct_change(periods=period)
-        range_possibility_df = 1 - pct_change.abs()
-        thresh = self.params["bband"]["pct_thread"]
+        period = 1
+        pct_change = (data[width_column].diff()+1).pct_change(periods=period)
+        pct_normalized = pct_change/pct_change.std()
+        range_possibility_df = 1/(1+pct_normalized.abs())
+        #remove indicies if latest tick is not a range
         range_market = (pct_change <= thresh) & (pct_change >= -thresh)
-        range_cont_df = range_market
+        range_count_df = range_market
         range_data = data[range_market]
         indices = range_data.index
-        
-        # do the same for shifted data till max_period
+
         while len(indices) > 0 and period < max_period:
             period+=1
-            pct_change = data[width_column].pct_change(periods=period)
+            pct_change = (data[width_column].shift(periods=period-1).diff()+1).pct_change(periods=period)
+            pct_normalized = pct_change/pct_change.std()
+            pct_change= 1/(1+pct_normalized.abs())
             cont_pct_change = pct_change[indices]
             range_market = (cont_pct_change <= thresh) & (cont_pct_change >= -thresh)
             range_data = cont_pct_change[range_market]
             indices = range_data.index
             new_pos = range_possibility_df.copy()
-            range_cont_num = range_cont_df.copy()
-            new_pos[indices] += 1/(1+cont_pct_change.abs())
-            range_cont_num[indices] += 1
+            range_cont_num = range_count_df.copy()
+            new_pos += pct_change
+            range_cont_num = range_cont_num[indices] + 1
             range_possibility_df = new_pos
-            range_cont_df = range_cont_num
+            range_count_df = range_cont_num
         range_possibility_df = range_possibility_df/max_period
         
         # caliculate slope by mean value
