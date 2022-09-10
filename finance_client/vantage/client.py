@@ -16,11 +16,11 @@ class VantageClient(CSVClient):
         self.logger.warn("parameters are not saved for vantage as credentials are included.")
         return {}
     
-    def __init__(self, api_key, auto_index=False, frame: int = Frame.MIN5, finance_target = vantage.target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
+    def __init__(self, api_key, auto_step_index=False, frame: int = Frame.MIN5, finance_target = vantage.target.FX, symbol = ('JPY', 'USD'), start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
         """Get ohlc rate from alpha vantage api
         Args:
             api_key (str): apikey of alpha vantage
-            auto_index (bool, optional): increase step when get_rates is called. Defaults to False.
+            auto_step_index (bool, optional): increase step when get_rates is called. Defaults to False.
             finance_target (Target, optional): Target of finance market. Defaults to Target.FX.
             frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
             symbol (tuple or str, optional): (from_symbol, to_symbol) for fx or stock symbol. Defaults to ('JPY', 'USD').
@@ -85,7 +85,7 @@ class VantageClient(CSVClient):
         self.file_path = os.path.join(self.data_folder, file_name)
         self.__get_all_rates()
         self.__updated_time = datetime.datetime.now()
-        super().__init__(auto_index=auto_index, file=self.file_path, frame=frame, provider="Vantage", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
+        super().__init__(auto_step_index=auto_step_index, file=self.file_path, frame=frame, provider="Vantage", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
     
     def __convert_response_to_df(self, data_json:dict):
         # handle meta data and series column

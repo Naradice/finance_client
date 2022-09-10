@@ -11,6 +11,9 @@
         },
         "Vantage":{
             "trade_unit":1
+        },
+        "CoinCheck":{
+            "trade_unit":0.01
         }
     },
     "log":{
