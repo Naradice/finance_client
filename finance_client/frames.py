@@ -1,6 +1,7 @@
 MIN1 = 1
 MIN5 = 5
 MIN10 = 10
+MIN15 = 15
 MIN30 = 30
 H1 = 60
 H2 = 120
@@ -12,31 +13,17 @@ D4 = 5760
 W1 = 10080
 MO1 = 43200
 
+min_str = {
+    MIN1:"MIN1",MIN5:"MIN5",MIN10:"MIN10",MIN30:"MIN30",
+    H1:"H1",H2:"H2",H4:"H4",H8:"H8",
+    D1:"D1",D2:"D2",D4:"D4",
+    W1:"W1",
+    MO1:"MO1"
+}
+
 # TODO: change to reduce "if"
-def to_str(value):
-    if value == MIN1:
-        return "MIN1"
-    elif value == MIN5:
-        return "MIN5"
-    elif value == MIN5:
-        return "MIN10"
-    elif value == MIN30:
-        return "MIN30"
-    elif value == H1:
-         return "H1"
-    elif value == H2:
-        return "H2"
-    elif value == H4:
-        return "H4"
-    elif value == H8:
-        return "H8"
-    elif value == D1:
-        return "D1"
-    elif value == D2:
-        return "D2"
-    elif value == D4:
-        return "D4"
-    elif value == W1:
-        return "W1"
-    elif value == MO1:
-        return "MO1"
+def to_str(value:int):
+    if value in min_str:
+        return min_str[value]
+    return str(value)
+    
