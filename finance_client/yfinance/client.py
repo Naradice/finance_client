@@ -87,6 +87,17 @@ class YahooClient(CSVClient):
         file_path = self.create_filename(self.symbols[0])
         #TODO: support multi symbols on CSV Client
         super().__init__(auto_step_index=auto_step_index, file=file_path, frame=frame, provider="yfinance", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
+    
+    def __tz_convert(self, df):
+        if 'tz_convert' in dir(df.index):
+            df.index = df.index.tz_convert('UTC')
+        else:
+            try:
+                df.index = pd.DatetimeIndex(df.index)
+                df.index = df.index.tz_convert('UTC')
+            except Exception as e:
+                print(f'failed tz_convert of index: ({type(df.index)})')
+        return df
 
     def __get_all_rates(self):
         if len(self.symbols) > 0:
@@ -99,7 +110,7 @@ class YahooClient(CSVClient):
                 if os.path.exists(file_path):
                     existing_rate_df = pd.read_csv(file_path, parse_dates=[self.TIME_INDEX_NAME], index_col=self.TIME_INDEX_NAME)
                     if self.frame < Frame.D1:
-                        existing_rate_df.index = existing_rate_df.index.tz_convert("UTC")
+                        existing_rate_df = self.__tz_convert(existing_rate_df)
                     existing_rate_df = existing_rate_df.sort_index()
                     # get last date of existing data
                     existing_last_date = existing_rate_df.index[-1].date()
@@ -129,7 +140,7 @@ class YahooClient(CSVClient):
                     kwargs["start"] = start
                 # compare start and range. If today- range > start, change start to range then change flag true
                 if "start" in kwargs:
-                    if mrange > start:
+                    if mrange >= start:
                         start = mrange
                         kwargs["start"] = start
                         isDataRemaining = False
@@ -138,7 +149,7 @@ class YahooClient(CSVClient):
                 df = yf.download(symbol, interval=interval, **kwargs)
                 ticks_df = df.copy()
                 if self.frame < Frame.D1:
-                    ticks_df.index = ticks_df.index.tz_convert('UTC')
+                    ticks_df = self.__tz_convert(ticks_df)
                 if len(df) > 0:
                     while isDataRemaining:
                         end = end - delta
@@ -150,19 +161,11 @@ class YahooClient(CSVClient):
                         print(f"from {start} to {end} of {symbol}")
                         sleep(1)#to avoid a load
                         df = yf.download(symbol, interval=interval, group_by='ticker', start=start, end=end)
-                        if len(df) != 0:                                        
+                        if len(df) != 0:
+                            if self.frame < Frame.D1:
+                                df = self.__tz_convert(df)
                             ticks_df = pd.concat([df, ticks_df])
                             ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
-
-                    if self.frame < Frame.D1:
-                        if 'tz_convert' in dir(df.index):
-                            df.index = df.index.tz_convert('UTC')
-                        else:
-                            try:
-                                df.index = pd.DatetimeIndex(df.index)
-                                df.index = df.index.tz_convert('UTC')
-                            except Exception as e:
-                                print(f'failed tz_convert of index: ({type(df.index)})')
                     ticks_df = ticks_df.sort_index()
                 
                 if len(ticks_df) > 0:

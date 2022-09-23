@@ -27,6 +27,18 @@ class TestYFClient(unittest.TestCase):
         sleep(10)
         self.client.sell_for_settlment('1812.T', 1005, 0.005, None, id)
     
+    def test_get_rates_with_indicater(self):
+        from finance_client.utils.idcprocess import MACDpreProcess, RangeTrendProcess, BBANDpreProcess
+        macd_p = MACDpreProcess(short_window=12, long_window=26, signal_window=9, target_column="Close")
+        macd_column = macd_p.columns["MACD"]
+        bband_process = BBANDpreProcess(target_column="Close", alpha=2)
+        rtp_p = RangeTrendProcess(slope_window=3)
+        range_column = rtp_p.columns[rtp_p.RANGE_KEY]
+        client = YahooClient('1812.T',auto_step_index=True, frame=5, idc_processes=[macd_p, bband_process, rtp_p])
+        data = client.get_rate_with_indicaters(10)
+        self.assertTrue(macd_column in data.columns)
+        self.assertTrue(range_column in data.columns)
+    
     # def test_get_next_tick(self):
     #     print(self.client.get_next_tick())
         
