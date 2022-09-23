@@ -20,7 +20,7 @@ class TestCCClient(unittest.TestCase):
     def test_initialize(self):
         frame = 1
         vantage_client = vclient.VantageClient(api_key=env["vantage"]["api_key"], frame=frame, finance_target=target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
-        client = CoinCheckClient(frame=frame, initialized_with=vantage_client)
+        client = CoinCheckClient(ACCESS_ID=env["cc"]["ACCESS_ID"], ACCESS_SECRET=env["cc"]["ACCESS_SECRET"], frame=frame, initialized_with=vantage_client, return_intermidiate_data=True, simulation=False)
         df = client.get_rates(100)
         self.assertEqual(len(df["open"]), 100)
         
@@ -31,12 +31,14 @@ class TestCCClient(unittest.TestCase):
         condition = condition.values
         result = time_diffs[condition]
         self.assertEqual(len(result), 0)
+        sleep(60*3)
+        new_df = client.get_rates(100)
         
-    def test_orders(self):
-        client = CoinCheckClient(env["cc"]["ACCESS_ID"], env["cc"]["ACCESS_SECRET"], frame=1)
-        id = client.market_buy('BTCJPY', 2952000, 0.005, None,None,None)
-        sleep(120)
-        client.sell_for_settlment('BTCJPY', 2960000, 0.005, None, id)
+    # def test_orders(self):
+    #     client = CoinCheckClient(env["cc"]["ACCESS_ID"], env["cc"]["ACCESS_SECRET"], frame=1)
+    #     id = client.market_buy('BTCJPY', 2952000, 0.005, None,None,None)
+    #     sleep(120)
+    #     client.sell_for_settlment('BTCJPY', 2960000, 0.005, None, id)
         
     # def test_get_rates(self):
     #     length = 10

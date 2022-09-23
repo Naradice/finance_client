@@ -44,7 +44,6 @@ bc_client = VantageClient(api_key=env["vantage"]["api_key"], frame=30, finance_t
 
 class TestVantageClient(unittest.TestCase):
     
-    """
     def test_fx_get_interday(self):
         data = fx.get_interday_rates(from_symbol="USD", to_symbol="JPY", interval=Frame.MIN1)
         self.assertEqual(type(data), dict)
@@ -90,12 +89,11 @@ class TestVantageClient(unittest.TestCase):
         df = client.get_rates(100)
         self.assertIn("close", df)
         self.assertEqual(len(df["close"]), 100)
-    """
-    
     
     def test_bc_get_all_rates(self):
         df = bc_client.get_rates()
         print(df)
-
+    
+    
 if __name__ == '__main__':
     unittest.main()

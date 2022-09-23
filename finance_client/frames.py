@@ -21,7 +21,6 @@ min_str = {
     MO1:"MO1"
 }
 
-# TODO: change to reduce "if"
 def to_str(value:int):
     if value in min_str:
         return min_str[value]

@@ -189,7 +189,7 @@ class CoinCheckClient(Client):
             return self.data.copy()
         elif interval > 0:
             if self.__return_intermidiate_data:
-                return pd.concat([self.data, self.frame_ohlcv])
+                return pd.concat([self.data, self.frame_ohlcv]).iloc[-interval:]
             else:
                 return self.data.iloc[-interval:]
         else:
