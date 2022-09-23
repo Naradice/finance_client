@@ -12,7 +12,7 @@ install_requires = [
     'MetaTrader5',
     #for coincheck
     'websocket-client',
-    'python-dotenv'
+    'python-dotenv',
     #for yfinance
     'yfinance'
 ]
