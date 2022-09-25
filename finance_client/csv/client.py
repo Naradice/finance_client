@@ -23,7 +23,7 @@ class CSVClient(Client):
                 temp_columns['High'] = column
             elif column_ == 'low':
                 temp_columns['Low'] = column
-            elif column_ == 'close':
+            elif 'close' in column_:
                 temp_columns['Close'] = column
             elif "time" in column_:#assume time, timestamp or datetime
                 temp_columns["Time"] = column
@@ -37,10 +37,10 @@ class CSVClient(Client):
             if date_col != None:
                 if date_col not in usecols:
                     usecols.append(date_col)
-                self.data = pd.read_csv(file,  header=0, parse_dates=[date_col], usecols = usecols)
+                self.data = pd.read_csv(file, header=0, parse_dates=[date_col], usecols = usecols)
                 self.data = self.data.sort_index(ascending=True)
             else:
-                self.data = pd.read_csv(file,  header=0, usecols = usecols)
+                self.data = pd.read_csv(file, header=0, usecols = usecols)
             self.__update_columns(usecols)
         else:
             raise Exception(f"{self.frame} is not available in CSV Client.")
@@ -163,7 +163,7 @@ class CSVClient(Client):
         return args
 
     ##TODO: add ascending=False option
-    def __init__(self, auto_step_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['High', 'Low','Open','Close'], date_column = "Timestamp", start_index = None, auto_refresh_index=False, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
+    def __init__(self, auto_step_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['Open', 'High', 'Low', 'Close'], date_column = "Timestamp", start_index = None, auto_refresh_index=False, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
@@ -207,7 +207,6 @@ class CSVClient(Client):
             }
         else:
             raise Exception(f"unexpected file type is specified. {type(file)}")
-        #if provider == "bitflayer":
         self.base_point = 0.01
         self.__read_csv__(columns, date_column)
         self.date_column = date_column
@@ -439,6 +438,6 @@ class MultiFrameClient(CSVClient):
                 columns['High'] = column
             elif column_ == 'low':
                 columns['Low'] = column
-            elif column_ == 'close':
+            elif 'close' in column_:
                 columns['Close'] = column
         return columns

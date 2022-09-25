@@ -7,10 +7,6 @@ import yfinance as yf
 
 class YahooClient(CSVClient):
     
-    OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
-    VOLUME_COLUMN = ["Volume"]
-    TIME_INDEX_NAME = "Datetime"
-    
     kinds = "yfinance"
     
     ## max period to call with interval. Confirmed on 2022-09
@@ -47,7 +43,7 @@ class YahooClient(CSVClient):
     def get_additional_params(self):
         return {}
     
-    def __init__(self, symbol, auto_step_index=False, frame: int = Frame.MIN5, start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
+    def __init__(self, symbol, auto_step_index=False, frame: int = Frame.MIN5, adjust_close:bool=False, start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
         """Get ohlc rate from yfinance
         Args:
             symbol (str|list): stock symbol.
@@ -65,6 +61,12 @@ class YahooClient(CSVClient):
             ValueError: symbol(str) is not from_symvol/to_symbol foramt when target is FX
             TypeError: symbol is neither tuple nor str
         """
+        self.OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
+        if adjust_close:
+            self.OHLC_COLUMNS[3] = "Adj Close"
+        self.VOLUME_COLUMN = ["Volume"]
+        self.TIME_INDEX_NAME = "Datetime"
+
         if frame not in self.available_frames:
             raise ValueError(f"{frame} is not supported")
         self.frame = frame

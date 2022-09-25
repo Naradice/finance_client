@@ -91,7 +91,7 @@ class TestCSVClient(unittest.TestCase):
         self.assertNotEqual(sum(diffs), 0)
         self.assertEqual(type(diffs_mm), list)
         self.assertNotEqual(sum(diffs_mm), 0)
-        
+    
     
 if __name__ == '__main__':
     unittest.main()

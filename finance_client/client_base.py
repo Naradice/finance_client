@@ -577,7 +577,7 @@ class Client:
                     columns['High'] = column
                 elif column_ == 'low':
                     columns['Low'] = column
-                elif column_ == 'close':
+                elif 'close' in column_:
                     columns['Close'] = column
                 elif "time" in column_:#assume time, timestamp or datetime
                     columns["Time"] = column
