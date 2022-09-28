@@ -1,5 +1,6 @@
 from time import sleep
 import unittest, os, json, sys, datetime
+import dotenv
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 print(module_path)
 sys.path.append(module_path)
@@ -8,19 +9,13 @@ from finance_client.coincheck.apis.ws import TradeHistory
 import finance_client.vantage.target as target
 import finance_client.vantage.client as vclient
 
-try:
-    with open(os.path.join(os.path.dirname(__file__), './env.test.json'), 'r') as f:
-        env = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-
+dotenv.load_dotenv(".env")
 class TestCCClient(unittest.TestCase):
     
     def test_initialize(self):
         frame = 1
-        vantage_client = vclient.VantageClient(api_key=env["vantage"]["api_key"], frame=frame, finance_target=target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
-        client = CoinCheckClient(ACCESS_ID=env["cc"]["ACCESS_ID"], ACCESS_SECRET=env["cc"]["ACCESS_SECRET"], frame=frame, initialized_with=vantage_client, return_intermidiate_data=True, simulation=False)
+        vantage_client = vclient.VantageClient(api_key=os.environ["vantage_api_key"], frame=frame, finance_target=target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
+        client = CoinCheckClient(ACCESS_ID=os.environ["cc_ACCESS_ID"], ACCESS_SECRET=os.environ["cc_ACCESS_SECRET"], frame=frame, initialized_with=vantage_client, return_intermidiate_data=True, simulation=False)
         df = client.get_rates(100)
         self.assertEqual(len(df["open"]), 100)
         
@@ -35,7 +30,7 @@ class TestCCClient(unittest.TestCase):
         new_df = client.get_rates(100)
         
     # def test_orders(self):
-    #     client = CoinCheckClient(env["cc"]["ACCESS_ID"], env["cc"]["ACCESS_SECRET"], frame=1)
+    #     client = CoinCheckClient(os.environ["cc_ACCESS_ID"], os.environ["cc_ACCESS_SECRET"], frame=1)
     #     id = client.market_buy('BTCJPY', 2952000, 0.005, None,None,None)
     #     sleep(120)
     #     client.sell_for_settlment('BTCJPY', 2960000, 0.005, None, id)

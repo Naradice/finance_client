@@ -11,6 +11,7 @@ from finance_client.vantage.apis import FOREX, STOCK, DIGITAL
 from finance_client.vantage.client import VantageClient
 from logging import getLogger, config
 import time
+import dotenv
 
 try:
     with open(os.path.join(module_path, 'finance_client/settings.json'), 'r') as f:
@@ -25,22 +26,16 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-try:
-    with open(os.path.join(os.path.dirname(__file__), './env.test.json'), 'r') as f:
-        env = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-
-fx = FOREX(env["vantage"]["api_key"], logger)
-stock = STOCK(env["vantage"]["api_key"], logger)
-digital = DIGITAL(env["vantage"]["api_key"], logger)
+dotenv.load_dotenv(".env")
+fx = FOREX(os.environ["vantage_api_key"], logger)
+stock = STOCK(os.environ["vantage_api_key"], logger)
+digital = DIGITAL(os.environ["vantage_api_key"], logger)
 
 ##fx client
-client = VantageClient(env["vantage"]["api_key"], symbol=("USD", "JPY"))
+client = VantageClient(os.environ["vantage_api_key"], symbol=("USD", "JPY"))
 
 ## bc client
-bc_client = VantageClient(api_key=env["vantage"]["api_key"], frame=30, finance_target=Target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
+bc_client = VantageClient(api_key=os.environ["vantage_api_key"], frame=30, finance_target=Target.CRYPTO_CURRENCY, symbol=('BTC', 'JPY'))
 
 class TestVantageClient(unittest.TestCase):
     

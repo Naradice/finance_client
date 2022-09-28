@@ -67,7 +67,7 @@ class Client:
             try:
                 current_all_rates = self.get_rates()
                 ##run process to initialize 
-                self.__run_processes(current_all_rates)
+                self.run_processes(current_all_rates)
             except Exception as e:
                 self.logger.error(f"error is occured on param initialization of processes")
                 self.logger.error(e)
@@ -187,7 +187,7 @@ class Client:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def __run_processes(self, data:pd.DataFrame) -> pd.DataFrame:
+    def run_processes(self, data:pd.DataFrame) -> pd.DataFrame:
         """
         Ex. you can define MACD as process. The results of the process are stored as dataframe[key] = values
         """
@@ -258,7 +258,7 @@ class Client:
             
         self.do_render = temp
         if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
-            data = self.__run_processes(ohlc)
+            data = self.run_processes(ohlc)
             if self.do_render:
                 self.__plot_data_width_indicaters(data)
             if interval is None:

@@ -9,6 +9,7 @@ from finance_client.mt5 import MT5Client
 import finance_client.frames as Frame
 from finance_client import utils
 from logging import getLogger, config
+import dotenv
 
 try:
     with open(os.path.join(module_path, 'finance_client/settings.json'), 'r') as f:
@@ -23,17 +24,9 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-try:
-    with open(os.path.join(os.path.dirname(__file__), './env.test.json'), 'r') as f:
-        env = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-
-mt5_settings = env['mt5']
-id = int(mt5_settings["id"])
+id = int(os.environ["mt5_id"])
 simulation = True
-client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=False, simulation=simulation, frame=Frame.MIN5, logger=logger)
+client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"],auto_index=False, simulation=simulation, frame=Frame.MIN5, logger=logger)
 
 class TestMT5Client(unittest.TestCase):
     
@@ -71,7 +64,7 @@ class TestMT5Client(unittest.TestCase):
     
     def test_auto_index_5min(self):
         "check when frame time past during run"
-        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger, simulation_seed=1111)
+        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger, simulation_seed=1111)
         
         count = 0
         next_time = None
@@ -87,7 +80,7 @@ class TestMT5Client(unittest.TestCase):
         
     def test_auto_index_1min(self):
         "check when wait time is longer than frame"
-        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN1, logger=logger)
+        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"],auto_index=True, simulation=True, frame=Frame.MIN1, logger=logger)
         
         count = 0
         next_time = None
@@ -102,7 +95,7 @@ class TestMT5Client(unittest.TestCase):
     
     def test_auto_index_H2(self):
         "check when week change"
-        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.H2, logger=logger, simulation_seed=1111)
+        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"],auto_index=True, simulation=True, frame=Frame.H2, logger=logger, simulation_seed=1111)
         
         count = 0
         next_time = None
@@ -116,7 +109,7 @@ class TestMT5Client(unittest.TestCase):
             count += 1
     
     def test_auto_index_5min_with_indicaters(self):
-        client = MT5Client(id=id, password=mt5_settings["password"], server=mt5_settings["server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger)
+        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"],auto_index=True, simulation=True, frame=Frame.MIN5, logger=logger)
         
         count = 0
         previouse_time = None

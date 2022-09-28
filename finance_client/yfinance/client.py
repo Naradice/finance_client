@@ -22,7 +22,9 @@ class YahooClient(CSVClient):
     
     max_range = {
         '1m': datetime.timedelta(days=29),
-        '5m': datetime.timedelta(days=59)
+        '5m': datetime.timedelta(days=59),
+        '15m': datetime.timedelta(days=59),
+        '60m':datetime.timedelta(days=729),
     }    
     available_frames = [
         Frame.MIN1, Frame.MIN5, Frame.MIN15, Frame.MIN30, Frame.H1, Frame.D1, Frame.W1, Frame.MO1
@@ -74,7 +76,7 @@ class YahooClient(CSVClient):
         self.debug = False
         
         if type(symbol) == list:
-            self.logger.warn(f"multi symbols is not supported on get_rates etc for now.")
+            print(f"multi symbols is not supported on get_rates etc for now.")
             self.symbols = symbol
         elif type(symbol) == str:
             self.symbols = [symbol]
@@ -168,6 +170,8 @@ class YahooClient(CSVClient):
                                 df = self.__tz_convert(df)
                             ticks_df = pd.concat([df, ticks_df])
                             ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
+                        else:
+                            isDataRemaining = False
                     ticks_df = ticks_df.sort_index()
                 
                 if len(ticks_df) > 0:
