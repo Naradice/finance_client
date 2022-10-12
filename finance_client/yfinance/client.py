@@ -4,6 +4,7 @@ import pandas as pd
 from finance_client.csv.client import CSVClient
 import finance_client.frames as Frame
 import yfinance as yf
+from finance_client.utils.csvrw import write_df_to_csv, read_csv, get_file_path
 
 class YahooClient(CSVClient):
     
@@ -40,7 +41,7 @@ class YahooClient(CSVClient):
     
     def create_filename(self, symbol:str):
         file_name = f"yfinance_{symbol}_{Frame.to_str(self.frame)}.csv"
-        return os.path.join(self.data_folder, file_name)
+        return file_name
     
     def get_additional_params(self):
         return {}
@@ -83,9 +84,6 @@ class YahooClient(CSVClient):
         else:
             raise TypeError("symbol must be str or list.")
         
-        self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/yfinance/"))
-        if os.path.exists(self.data_folder) == False:
-            os.makedirs(self.data_folder)
         #TODO: initialize logger 
         self.__get_all_rates()
         file_path = self.create_filename(self.symbols[0])
@@ -109,15 +107,17 @@ class YahooClient(CSVClient):
             DFS = {}
             existing_last_date = datetime.datetime.min.date()
             for symbol in self.symbols:
-                file_path = self.create_filename(symbol)
-                existing_rate_df = None
-                if os.path.exists(file_path):
-                    existing_rate_df = pd.read_csv(file_path, parse_dates=[self.TIME_INDEX_NAME], index_col=self.TIME_INDEX_NAME)
-                    if self.frame < Frame.D1:
-                        existing_rate_df = self.__tz_convert(existing_rate_df)
-                    existing_rate_df = existing_rate_df.sort_index()
-                    # get last date of existing data
-                    existing_last_date = existing_rate_df.index[-1].date()
+                file_name = self.create_filename(symbol)
+                existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col":self.TIME_INDEX_NAME})
+                if existing_last_date is not None:
+                    if len(existing_rate_df) > 0:
+                        if self.frame < Frame.D1:
+                            existing_rate_df = self.__tz_convert(existing_rate_df)
+                        existing_rate_df = existing_rate_df.sort_index()
+                        # get last date of existing data
+                        existing_last_date = existing_rate_df.index[-1].date()
+                    else:
+                        existing_rate_df = None
                         
                 end = datetime.datetime.utcnow().date()
                 delta = None
@@ -179,7 +179,7 @@ class YahooClient(CSVClient):
                         ticks_df = pd.concat([existing_rate_df, ticks_df])
                         ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
                         ticks_df = ticks_df.sort_index()
-                ticks_df.to_csv(file_path, index_label=self.TIME_INDEX_NAME)
+                write_df_to_csv(ticks_df, self.kinds, file_name, panda_option={"index_label":self.TIME_INDEX_NAME})
                 DFS[symbol] = ticks_df
                 
             if len(DFS) > 1:

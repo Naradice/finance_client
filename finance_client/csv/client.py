@@ -7,6 +7,7 @@ import datetime
 import json
 import finance_client.frames as Frame
 from finance_client.client_base import Client
+from finance_client.utils.csvrw import write_df_to_csv, read_csv
 
 class CSVClient(Client):
     kinds = 'csv'
@@ -224,7 +225,7 @@ class CSVClient(Client):
                     self.data = rolled_data
                 else:
                     rolled_data = self.__rolling_frame(self.data.copy(), from_frame=frame, to_frame=to_frame)
-                    rolled_data.to_csv(rolled_file_name)
+                    write_df_to_csv(rolled_data, self.kinds, rolled_file_name)
                     self.data = rolled_data
                     self.frame = to_frame
             elif to_frame == frame:

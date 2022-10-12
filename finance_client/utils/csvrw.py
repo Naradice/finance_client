@@ -24,14 +24,18 @@ def add_csv_extension(file_name:str) -> str:
         return f"{''.join(names)}{ext}"
     else:
         return f"{file_name}{ext}"
-
-def write_df_to_csv(df:pd.DataFrame, provider:str, file_name:str, panda_option:dict=None):
+    
+def get_file_path(provider:str, file_name:str, create_dirs=False):
     data_folder_base = get_datafolder_path()
     file = add_csv_extension(file_name)
     data_folder = os.path.join(data_folder_base, provider)
-    if os.path.exists(data_folder) is False:
+    if os.path.exists(data_folder) is False and create_dirs:
         os.makedirs(data_folder)
     file_path = os.path.join(data_folder, file)
+    return file_path
+
+def write_df_to_csv(df:pd.DataFrame, provider:str, file_name:str, panda_option:dict=None):
+    file_path = get_file_path(provider, file_name, True)
     if panda_option:
         df.to_csv(file_path, **panda_option)
     else:
@@ -49,10 +53,7 @@ def write_multi_symbol_df_to_csv(df:pd.DataFrame, provider:str, base_file_name:s
             write_df_to_csv(symbol_df, provider, symbol_file_base, panda_option)
 
 def read_csv(provider:str, file_name:str, parse_dates_columns:list=None, pandas_option:dict=None):
-    data_folder_base = get_datafolder_path()
-    file = add_csv_extension(file_name)
-    data_folder = os.path.join(data_folder_base, provider)
-    file_path = os.path.join(data_folder, file)
+    file_path = get_file_path(provider, file_name, True)
     if os.path.exists(file_path):
         kwargs = {
             "filepath_or_buffer": file_path
@@ -64,7 +65,7 @@ def read_csv(provider:str, file_name:str, parse_dates_columns:list=None, pandas_
         df = pd.read_csv(**kwargs)
         return df
     else:
-        print(f"file not found: {file_path}")
+        #print(f"file not found: {file_path}")
         return None
 
 def read_csvs(provider:str, base_file_name:str, symbols:list, parse_dates_columns:list=None, panda_option:dict=None):

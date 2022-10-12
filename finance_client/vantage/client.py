@@ -3,6 +3,7 @@ import pandas as pd
 from finance_client.csv.client import CSVClient
 import finance_client.frames as Frame
 import finance_client.vantage as vantage
+from finance_client.utils.csvrw import write_df_to_csv, read_csv, get_file_path
 
 class VantageClient(CSVClient):
     
@@ -76,16 +77,12 @@ class VantageClient(CSVClient):
         
         self.client = finance_target.create_client(api_key, logger)
         self.function_name = finance_target.to_function_name(finance_target, frame)
-        file_name = f"vantage_{symbol_name}_{self.function_name}_{Frame.to_str(frame)}.csv"
-        
-        self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/alpha-vantage/"))
-        if os.path.exists(self.data_folder) == False:
-            os.makedirs(self.data_folder)
-            
-        self.file_path = os.path.join(self.data_folder, file_name)
+        self.file_name = f"vantage_{symbol_name}_{self.function_name}_{Frame.to_str(frame)}.csv"
+                    
         self.__get_all_rates()
         self.__updated_time = datetime.datetime.now()
-        super().__init__(auto_step_index=auto_step_index, file=self.file_path, frame=frame, provider="Vantage", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
+        file_path = get_file_path(self.kinds, self.file_name)
+        super().__init__(auto_step_index=auto_step_index, file=file_path, frame=frame, provider="Vantage", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
     
     def __convert_response_to_df(self, data_json:dict):
         # handle meta data and series column
@@ -175,11 +172,7 @@ class VantageClient(CSVClient):
         return data_df
     
     def __get_all_rates(self):
-        existing_rate_df = None
-        if os.path.exists(self.file_path):
-            existing_rate_df = pd.read_csv(self.file_path, parse_dates=[self.TIME_INDEX_NAME], index_col=self.TIME_INDEX_NAME)
-            existing_rate_df.index = existing_rate_df.index.tz_convert("UTC")
-            
+        existing_rate_df = read_csv(self.kinds, self.file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col":self.TIME_INDEX_NAME})            
         MAX_LENGTH = 950#not accurate
     
         if existing_rate_df is None:
@@ -206,7 +199,7 @@ class VantageClient(CSVClient):
             new_data_df = pd.concat([existing_rate_df, new_data_df])
             new_data_df = new_data_df[~new_data_df.index.duplicated(keep="first")]
             new_data_df = new_data_df.sort_index()
-        new_data_df.to_csv(self.file_path, index_label=self.TIME_INDEX_NAME)
+        write_df_to_csv(new_data_df, self.kinds, self.file_name, panda_option={"index_label":self.TIME_INDEX_NAME})
         return new_data_df
     
     def update_rates(self):

@@ -1,11 +1,11 @@
 import datetime, os
-from multiprocessing.sharedctypes import Value
 import MetaTrader5 as mt5
 import numpy
 import pandas as pd
 import random
 from finance_client.client_base import Client
 import finance_client.frames as Frame
+from finance_client.utils.csvrw import write_df_to_csv, read_csv
 
 class MT5Client(Client):
     
@@ -62,9 +62,7 @@ class MT5Client(Client):
         super().__init__( budget=budget, frame=frame, provider=server, do_render=do_render, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
         self.back_test = back_test
         self.debug = False
-        self.data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data_source/mt5/{server}"))
-        if os.path.exists(self.data_folder) == False:
-            os.makedirs(self.data_folder)
+        self.provider = server
         self.isWorking = mt5.initialize()
         if not self.isWorking:
             err_txt = f"initialize() failed, error code = {mt5.last_error()}"
@@ -311,13 +309,11 @@ class MT5Client(Client):
     def __get_all_rates(self):
         existing_rate_df = None
         file_name = f"mt5_{self.SYMBOL}_{self.AVAILABLE_FRAMES_STR[self.frame]}.csv"
-        file_path = os.path.join(self.data_folder, file_name)
-        if os.path.exists(file_path):
-            existing_rate_df = pd.read_csv(file_path, parse_dates=["time"])
+        existing_rate_df = read_csv(self.kinds, file_name, ["time"])
             
         MAX_LENGTH = 12*24*345#not accurate, may depend on server
             
-        if type(existing_rate_df) == type(None):
+        if existing_rate_df is None:
             interval = MAX_LENGTH
         else:
             delta = datetime.datetime.now() - existing_rate_df["time"].iloc[-1]
@@ -352,7 +348,7 @@ class MT5Client(Client):
         rate_df = rate_df.sort_values("time")
         rate_df = rate_df.drop_duplicates()
         
-        rate_df.to_csv(file_path, mode="w", index=False, header=True)
+        write_df_to_csv(rate_df, os.path.join(self.kinds, self.provider), file_name, panda_option={"mode":"w", "index":False, "header":True})
         return rate_df
     
     def __get_rates(self, interval, start = None):
