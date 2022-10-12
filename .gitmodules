@@ -1,0 +1,3 @@
+[submodule "finance_client/sbi/sbi_util"]
+	path = finance_client/sbi/sbi_util
+	url = https://github.com/Naradice/sbi_util.git
