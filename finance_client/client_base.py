@@ -15,8 +15,6 @@ class Client:
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
-        self.__timer_thread = None
-        self.__data_queue_length = None
         self.do_render = do_render
         if self.do_render:
             self.__rendere = graph.Rendere()
@@ -59,11 +57,11 @@ class Client:
         self.__idc_processes = []
         self.__additional_length_for_prc = 0
         self.add_indicaters(indicater_processes)
-        self.__postprocesses = []
-        self.add_postprocesses(post_processes)
+        self.__preprocesses = []
+        self.add_preprocesses(post_processes)
         
     def initialize_process_params(self):
-        if len(self.__postprocesses) > 0:
+        if len(self.__preprocesses) > 0:
             try:
                 current_all_rates = self.get_rates()
                 ##run process to initialize 
@@ -187,13 +185,15 @@ class Client:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def run_processes(self, data:pd.DataFrame) -> pd.DataFrame:
+    def run_processes(self, data:pd.DataFrame, symbols:list = []) -> pd.DataFrame:
         """
-        Ex. you can define MACD as process. The results of the process are stored as dataframe[key] = values
+        Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
         """
         data_cp = data.copy()
         columns_dict = self.get_ohlc_columns()
         date_data = None
+        if len(symbols) > 0:
+            symbols[""]
         
         for process in self.__idc_processes:
             values_dict = process.run(data_cp)
@@ -208,7 +208,7 @@ class Client:
             columns.remove(date_column)
             data_cp = data_cp[columns]
                     
-        for process in self.__postprocesses:
+        for process in self.__preprocesses:
             values_dict = process.run(data_cp)
             for column, values in values_dict.items():
                 data_cp[column] = values
@@ -234,84 +234,70 @@ class Client:
         for process in processes:
             self.add_indicater(process)
     
-    def __add_postprocess(self, process: utils.ProcessBase):
+    def __add_preprocess(self, process: utils.ProcessBase):
         if self.have_process(process) == False:
-            self.__postprocesses.append(process)
+            self.__preprocesses.append(process)
             additional_length = process.get_minimum_required_length()
             self.__additional_length_for_prc += additional_length
         else:
             self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
     
-    def add_postprocesses(self, processes: list):
+    def add_preprocesses(self, processes: list):
         for process in processes:
-            self.__add_postprocess(process)
-        
-    def get_rate_with_indicaters(self, interval=None) -> pd.DataFrame:
-        temp = self.do_render
-        self.do_render = False
-        if interval is None:
-            required_length = 1
-            ohlc = self.get_rates()
-        else:
-            required_length = interval + self.__additional_length_for_prc
-            ohlc = self.get_rates(required_length)
-            
-        self.do_render = temp
-        if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
-            data = self.run_processes(ohlc)
-            if self.do_render:
-                self.__plot_data_width_indicaters(data)
-            if interval is None:
-                return data
-            else:
-                return data.iloc[-interval:]
-        else:
-            self.logger.error(f"data length is insufficient to caliculate indicaters.")
-            return ohlc
-        
-    def get_data_queue(self, data_length = int):
-        if self.__data_queue == None:
-            self.__timer_thread = threading.Thread(target=self.__timer, daemon=True)
-            self.__timer_thread.start()
-            self.__data_queue = queue.Queue()
-        if data_length > 0:
-            self.__data_queue_length = data_length
-        else:
+            self.__add_preprocess(process)
+          
+    def get_data_queue(self, symbols:list, data_length:int, frame:int):
+        """
+            to get data when frame time past
+            when this function is called multiple times
+        Args:
+            symbols (list): _description_
+            data_length (int, optional): data length of rates. get all rates are not allowed. Defaults to .
+
+        Returns:
+            Queue: Queue return data by Queue.get() when frame time past
+        """
+        if data_length <= 0:
             self.logger.warning(f"data_length must be greater than 1. change length to 1")
-            self.__data_queue_length = 1
+            
+            if self.__data_queue == None:
+                self.__data_queue = queue.Queue()    
+            timer_thread = threading.Thread(target=self.__timer, args=(symbols, data_length, frame), daemon=True)
+            timer_thread.start()
         return self.__data_queue
         
-    def __timer(self):
+    def __timer(self, symbols:list, data_length:int, frame:int):
         next_time = 0
-        interval = self.frame*60
-
-        if self.frame <= 60:
+        frame_seconds = frame*60
+        sleep_time = 0
+        
+        if frame <= 60:
             base_time = datetime.datetime.now()
-            target_min = datetime.timedelta(minutes=(self.frame- base_time.minute % self.frame))
+            target_min = datetime.timedelta(minutes=(frame- base_time.minute % frame))
             target_time = base_time + target_min
             sleep_time = datetime.datetime.timestamp(target_time) - datetime.datetime.timestamp(base_time) - base_time.second
         if sleep_time > 0:
             time.sleep(sleep_time)
         base_time = time.time()
         while self.__data_queue != None:
-            t = threading.Thread(target=self.__put_data_to_queue, daemon=True)
+            t = threading.Thread(target=self.__put_data_to_queue, args=(symbols, data_length, frame), daemon=True)
             t.start()
-            next_time = ((base_time - time.time()) % interval) or interval
+            next_time = ((base_time - time.time()) % frame_seconds) or frame_seconds
             time.sleep(next_time)
             
     def stop_quing(self):
         self.__data_queue = None
         
-    def __put_data_to_queue(self):
+    def __put_data_to_queue(self, symbols:list, data_length:int, frame:int):
         if len(self.__idc_processes) > 0:
-            data = self.get_rate_with_indicaters(self.__data_queue_length)
+            data = self.get_rate_with_indicaters(symbols, data_length, frame)
         else:
-            data = self.get_rates(self.__data_queue_length)
+            data = self.get_rates(symbols, data_length, frame)
         self.__data_queue.put(data)
     
     def get_client_params(self):
         idc_params = utils.indicaters_to_params(self.__idc_processes)
-        pps_params = utils.postprocess_to_params(self.__postprocesses)
+        pps_params = utils.preprocess_to_params(self.__preprocesses)
         common_args = { "budget": self.market.budget, "indicater_processes": idc_params, "post_processes": pps_params, "frame": self.frame, "provider": self.market.provider }
         add_params = self.get_additional_params()
         common_args.update(add_params)
@@ -365,7 +351,7 @@ class Client:
                     else:
                         self.logger.error(f"unkown order_type: {position.order_type}")
 
-    def __plot_data(self, data_df: pd.DataFrame):
+    def __plot_data(self, symbols:list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
             ohlc_columns = self.get_ohlc_columns()
             args_dict = {
@@ -376,14 +362,14 @@ class Client:
                     ohlc_columns['Close']
                 )
             }
-            result = self.__rendere.register_ohlc(data_df, **args_dict)
+            result = self.__rendere.register_ohlc(symbols, data_df, **args_dict)
             self.__ohlc_index = result
             self.__is_graph_initialized = True
         else:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
     
-    def __plot_data_width_indicaters(self, data_df: pd.DataFrame):
+    def __plot_data_width_indicaters(self, symbols:list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
             ohlc_columns = self.get_ohlc_columns()
             args_dict = {
@@ -396,36 +382,60 @@ class Client:
                 "idc_processes": self.__idc_processes,
                 "index": self.__ohlc_index
             }
-            result = self.__rendere.register_ohlc_with_indicaters(data_df, **args_dict)
+            result = self.__rendere.register_ohlc_with_indicaters(symbols, data_df, **args_dict)
             self.__ohlc_index = result
             self.__is_graph_initialized = True
         else:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_rates(self, interval:int = None) -> pd.DataFrame:
-        """ get ohlc data with interval length
+    def get_rates(self, symbols:list=None, length:int = None, frame:int=None) -> pd.DataFrame:
+        """ get ohlc data with length length
 
         Args:
-            interval (int | None): specify data length > 1. If None is provided, return all date.
-            data is sorted from older to latest. data are returnes with length from latest data
-            Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
+            symbols (list<str> | None):
+            length (int | None): specify data length > 1. If None is provided, return all date.
+            
         Returns:
-            pd.DataFrame: ohlc data.
+            pd.DataFrame: ohlc data which is sorted from older to latest. data are returned with length from latest data
+            Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
-        rates = self.get_rates_from_client(interval=interval)
-        t = threading.Thread(target=self.__check_order_completion, args=(rates,), daemon=True)
+        rates = self.get_rates_from_client(symbols=symbols, length=length)
+        t = threading.Thread(target=self.__check_order_completion, args=(rates, symbols), daemon=True)
         t.start()
         if self.do_render:
-            self.__plot_data(rates)
+            self.__plot_data(symbols, rates)
         return rates
-        
+
+    def get_rate_with_indicaters(self, symbols:list, data_length=None, frame=None) -> pd.DataFrame:
+        temp = self.do_render
+        self.do_render = False
+        if data_length is None:
+            required_length = 1#to skip the later condition
+            ohlc = self.get_rates(symbols, data_length, frame)
+        else:
+            required_length = data_length + self.__additional_length_for_prc
+            ohlc = self.get_rates(required_length)
+            
+        self.do_render = temp
+        if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
+            data = self.run_processes(ohlc)
+            if self.do_render:
+                self.__plot_data_width_indicaters(symbols, data)
+            if data_length is None:
+                return data
+            else:
+                return data.iloc[-data_length:]
+        else:
+            self.logger.error(f"data length is insufficient to caliculate indicaters.")
+            return ohlc
+      
     ## Need to implement in the actual client ##
     
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, interval:int):
+    def get_rates_from_client(self, symbols:list, length:int):
         return {}
     
     def get_future_rates(self, interval) -> pd.DataFrame:
@@ -586,7 +596,7 @@ class Client:
             self.ohlc_columns = columns
         return self.ohlc_columns
     
-    def revert_postprocesses(self, data: pd.DataFrame=None):
+    def revert_preprocesses(self, data: pd.DataFrame=None):
         if data is None:
             data = self.get_rates()
         data = data.copy()
@@ -600,6 +610,6 @@ class Client:
                 #df = df.set_index(date_column)
                 columns.remove(date_column)
                 data = data[columns]
-        for ps in self.__postprocesses:
+        for ps in self.__preprocesses:
             data = ps.revert(data)
         return data

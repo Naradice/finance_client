@@ -13,11 +13,11 @@ def get_available_processes() -> dict:
     }
     return processes
 
-def postprocess_to_params(processes:list) -> dict:
+def preprocess_to_params(processes:list) -> dict:
     """convert procese list to dict for saving params as file
 
     Args:
-        processes (list: ProcessBase): postprocess defiend in postprocess.py
+        processes (list: ProcessBase): preprocess defiend in preprocess.py
 
     Returns:
         dict: {key: params}
