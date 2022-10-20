@@ -10,6 +10,7 @@ import finance_client.frames as Frame
 from finance_client import utils
 from logging import getLogger, config
 import dotenv
+dotenv.load_dotenv(".env")
 
 try:
     with open(os.path.join(module_path, 'finance_client/settings.json'), 'r') as f:

@@ -85,8 +85,10 @@ class YahooClient(CSVClient):
             raise TypeError("symbol must be str or list.")
         
         #TODO: initialize logger 
+        file_name = self.create_filename(self.symbols[0])
+        file_path = get_file_path(self.kinds, file_name=file_name)
+        print(f"data is stored on {file_path}")
         self.__get_all_rates()
-        file_path = self.create_filename(self.symbols[0])
         #TODO: support multi symbols on CSV Client
         super().__init__(auto_step_index=auto_step_index, file=file_path, frame=frame, provider="yfinance", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
     
@@ -109,7 +111,7 @@ class YahooClient(CSVClient):
             for symbol in self.symbols:
                 file_name = self.create_filename(symbol)
                 existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col":self.TIME_INDEX_NAME})
-                if existing_last_date is not None:
+                if existing_rate_df is not None:
                     if len(existing_rate_df) > 0:
                         if self.frame < Frame.D1:
                             existing_rate_df = self.__tz_convert(existing_rate_df)
