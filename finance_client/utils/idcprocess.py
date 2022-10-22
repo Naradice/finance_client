@@ -93,7 +93,7 @@ class MACDpreProcess(ProcessBase):
         long_window = option['long_window']
         signal_window = option['signal_window']
         
-        short_ema, long_ema, MACD, Signal = indicaters.MACD_from_ohlc(data, target_column, short_window, long_window, signal_window)
+        short_ema, long_ema, MACD, Signal = indicaters.MACDFromOHLC(data, target_column, short_window, long_window, signal_window)
         
         cs_ema = self.columns['S_EMA']
         cl_ema = self.columns['L_EMA']
@@ -322,7 +322,7 @@ class ATRpreProcess(ProcessBase):
         target_columns = option['ohlc_column']
         window = option['window']
         
-        atr_series = indicaters.ATR_from_ohlc(data, target_columns, window=window)
+        atr_series = indicaters.ATRFromOHLC(data, target_columns, window=window)
         self.last_data = data.iloc[-self.get_minimum_required_length():].copy()
         last_atr = atr_series.iloc[-self.get_minimum_required_length():].values
         
