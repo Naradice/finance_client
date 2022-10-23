@@ -66,7 +66,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(result_array[-1], (11+12+13+20)/window)
     
     def test_bolinger(self):
-        #print(utils.indicaters.bolinger_from_ohlc([1,2,3,4,5,6,7,8,9,10,11,12,13,20],window=5))
+        #print(utils.indicaters.BolingerFromOHLC([1,2,3,4,5,6,7,8,9,10,11,12,13,20],window=5))
         pass
         
     def test_revert_ema(self):

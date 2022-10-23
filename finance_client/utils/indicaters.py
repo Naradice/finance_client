@@ -203,20 +203,20 @@ def MACDFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', short_
         pd.DataFrame: DataFrame of ShortEMA, LongEMA, MACD and Signal for symbols
     """
     if grouped_by_symbol:
-        short_ema = EMA(df_m["Close"], 12)
-        long_ema = EMA(df_m["Close"], 26)
+        short_ema = EMA(data[column], short_window)
+        long_ema = EMA(data[column], long_window)
         macd = short_ema - long_ema
-        signal = SMA(macd, 9)
+        signal = SMA(macd, signal_window)
         
         short_ema_columns = [("ShortEMA", symbol) for symbol in symbols]
         long_ema_columns = [("LongEMA", symbol) for symbol in symbols]
         macd_ema_columns = [("MACD", symbol) for symbol in symbols]
         signal_ema_columns = [("Signal", symbol) for symbol in symbols]
     else:
-        short_ema = EMA(df[[(symbol, "Close") for symbol in symbols]], 12)
-        long_ema = EMA(df[[(symbol, "Close") for symbol in symbols]], 26)
+        short_ema = EMA(data[[(symbol, column) for symbol in symbols]], short_window)
+        long_ema = EMA(data[[(symbol, column) for symbol in symbols]], long_window)
         macd = short_ema - long_ema
-        signal = SMA(macd, 9)
+        signal = SMA(macd, signal_window)
         
         short_ema_columns = [(symbol, "ShortEMA") for symbol in symbols]
         long_ema_columns = [(symbol, "LongEMA") for symbol in symbols]
@@ -231,10 +231,10 @@ def MACDFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', short_
     macd_df = pd.concat([short_ema, long_ema, macd, signal], axis=1)
     if grouped_by_symbol:
         macd_df.columns = macd_df.columns.swaplevel(0, 1)
-        macd_df.sort_index(level=0, axis=1, inplace=True)
+    macd_df.sort_index(level=0, axis=1, inplace=True)
     return macd_df
 
-def bolinger_from_series(data: pd.Series, window = 14, alpha=2):
+def BolingerFromSeries(data: pd.Series, window = 14, alpha=2):
     stds = data.rolling(window).std(ddof=0)
     mas = data.rolling(window).mean()
     b_high = mas + stds*alpha
@@ -243,15 +243,15 @@ def bolinger_from_series(data: pd.Series, window = 14, alpha=2):
     width = b_high - b_low
     return mas, b_high, b_low, width
 
-def bolinger_from_array(data, window = 14,  alpha=2):
+def BolingerFromArray(data, window = 14,  alpha=2):
     if type(data) == list:
         data = pd.Series(data)
     else:
-        raise Exception(f'data type {type(data)} is not supported in bolinger_from_array')
-    return bolinger_from_series(data, window=window, alpha=alpha)
+        raise Exception(f'data type {type(data)} is not supported in BolingerFromArray')
+    return BolingerFromSeries(data, window=window, alpha=alpha)
 
-def bolinger_from_ohlc(data: pd.DataFrame, column = 'Close', window = 14, alpha=2):
-    return bolinger_from_series(data[column], window=window, alpha=alpha)
+def BolingerFromOHLC(data: pd.DataFrame, column = 'Close', window = 14, alpha=2):
+    return BolingerFromSeries(data[column], window=window, alpha=alpha)
 
 def ATRFromMultiOHLC(symbols:list, data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), window = 14, grouped_by_symbol=False):
     """caliculate ATR for multiIndex columns

@@ -246,7 +246,7 @@ class BBANDpreProcess(ProcessBase):
         window = option['window']
         alpha = option['alpha']
         
-        ema, ub, lb, bwidth = indicaters.bolinger_from_ohlc(data, target_column, window=window, alpha=alpha)
+        ema, ub, lb, bwidth = indicaters.BolingerFromOHLC(data, target_column, window=window, alpha=alpha)
         
         c_ema = self.columns['MV']
         c_ub = self.columns['UV']
