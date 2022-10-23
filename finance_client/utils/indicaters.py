@@ -197,7 +197,7 @@ def MACDFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', short_
         short_window (int, optional): window size for short EMA. Defaults to 12.
         long_window (int, optional): window size for long EMA. Defaults to 26.
         signal_window (int, optional): window size for Signals. Defaults to 9.
-        grouped_by_symbol (bool, optional): If True, return a result with (symbol, ATR column). Defaults to False.
+        grouped_by_symbol (bool, optional): If True, return a result with (symbol, column). Defaults to False.
         
     Returns:
         pd.DataFrame: DataFrame of ShortEMA, LongEMA, MACD and Signal for symbols
@@ -251,7 +251,54 @@ def BolingerFromArray(data, window = 14,  alpha=2):
     return BolingerFromSeries(data, window=window, alpha=alpha)
 
 def BolingerFromOHLC(data: pd.DataFrame, column = 'Close', window = 14, alpha=2):
-    return BolingerFromSeries(data[column], window=window, alpha=alpha)
+    """Caliculate Bolinger band from ohlc dataframe for a symbol
+
+    Args:
+        data (pd.DataFrame): ohlc data of a symbol
+        column (str, optional): target column name. Defaults to 'Close'.
+        window (int, optional): window size for bolinger band. Defaults to 14.
+        alpha (int, optional): alph to caliculate band. Defaults to 2.
+
+    Returns:
+        pd.DataFrame: B_MA, B_Hig, B_Low, B_Width, B_Std for a symbol
+    """
+    ma, b_high, b_low, width, stds = BolingerFromSeries(data[column], window=window, alpha=alpha)
+    b_df = pd.concat([ma, b_high, b_low, width, stds], axis=1)
+    b_df.columns = ("B_MA", "B_High", "B_Low", "B_Width", "B_Std")
+    return b_df
+
+def BolingerFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', window = 14, alpha=2, grouped_by_sygnal=False):
+    """Caliculate Bolinger band from ohlc dataframe for symbols
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        data (pd.DataFrame): ohlc data of symbols
+        column (str, optional): target column name. Defaults to 'Close'.
+        window (int, optional): window size for bolinger band. Defaults to 14.
+        alpha (int, optional): alph to caliculate band. Defaults to 2.
+        grouped_by_symbol (bool, optional): If True, return a result with (symbol, column). Defaults to False.
+
+    Returns:
+        pd.DataFrame: B_MA, B_Hig, B_Low, B_Width, B_Std for symbols
+    """
+    if grouped_by_sygnal:
+        ohlc_dfs = data[[(symbol, column) for symbol in symbols]]
+    else:
+        ohlc_dfs = data[column]
+        
+    ma, b_high, b_low, width, stds = BolingerFromSeries(ohlc_dfs, window=window, alpha=alpha)
+    b_df = pd.concat([ma, b_high, b_low, width, stds], axis=1)
+    b_df.columns = pd.MultiIndex.from_tuples([
+        *((symbol, "B_MA") for symbol in symbols), 
+        *((symbol, "B_High")  for symbol in symbols),
+        *((symbol, "B_Low") for symbol in symbols),
+        *((symbol, "B_Width") for symbol in symbols),
+        *((symbol, "B_Std") for symbol in symbols)
+    ])
+    if grouped_by_sygnal == False:
+        b_df.columns = b_df.columns.swaplevel(0, 1)
+    b_df.sort_index(level=0, axis=1, inplace=True)
+    return b_df
 
 def ATRFromMultiOHLC(symbols:list, data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), window = 14, grouped_by_symbol=False):
     """caliculate ATR for multiIndex columns
