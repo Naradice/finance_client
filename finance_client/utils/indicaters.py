@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
-from stocktrends import Renko
 import statsmodels.api as sm
-import copy
 from .convert import concat_df_symbols
 
 #TODO: unify output format
