@@ -506,24 +506,28 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size):
         return trend, brick_size, next_criteria_index
     
     CONST_INDEX_PLUS = 30
+    TOTAL_BRICK_NUM_KEY = "Renko"
+    BRICK_NUM_KEY = "Brick"
     
     criteria_index = sr[pd.notna(sr)].index[0]
     current_criteria = sr.iloc[criteria_index]
-    brick_num_sr = pd.Series(0, index=sr.index)
+    total_brick_num_sr = pd.Series(0, index=sr.index)
+    brick_value_sr = pd.Series(0, index=sr.index)
 
     trend = None
     start_index = criteria_index
     to_index = criteria_index + CONST_INDEX_PLUS
     while trend is None and to_index < len(sr):
-        temp_df = get_check_df(sr, brick_size, start_index, to_index, current_criteria)
-        uptrend = temp_df[temp_df >= 1]
-        downtrend = temp_df[temp_df <= -1]
-        trend, block_num, next_criteria_index = trendy(uptrend, downtrend)
-        if trend is None:
+        temp_brick_num_sr = get_check_df(sr, brick_size, start_index, to_index, current_criteria)
+        brick_value_sr.iloc[start_index:to_index] = temp_brick_num_sr
+        uptrend = temp_brick_num_sr[temp_brick_num_sr >= 1]
+        downtrend = temp_brick_num_sr[temp_brick_num_sr <= -1]
+        #if trend is None:
+        if len(uptrend) == 0 and len(downtrend) == 0:
             start_index = to_index
             to_index = start_index + CONST_INDEX_PLUS
         else:
-            break
+            trend, block_num, next_criteria_index = trendy(uptrend, downtrend)
     if trend is None:
         raise Exception("can't initialize renko.")
     
@@ -531,20 +535,20 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size):
     while True:
         trend, new_brick_num, next_criteria_index = trendy(uptrend, downtrend)        
         if trend is None:#didn't changed renko value
-            brick_num = brick_num_sr.iloc[criteria_index]
-            brick_num_sr.iloc[criteria_index:to_index] = brick_num
+            brick_num = total_brick_num_sr.iloc[criteria_index]
+            total_brick_num_sr.iloc[criteria_index:to_index] = brick_num
             next_criteria_index = criteria_index
             next_start_index = to_index
         else:
             global_trend = trend
-            brick_num = brick_num_sr.iloc[criteria_index]
+            brick_num = total_brick_num_sr.iloc[criteria_index]
             if brick_num/trend >= 0:#continuaus trend
                 next_brick_num = brick_num + new_brick_num
             else:
-                next_brick_num = new_brick_num
+                next_brick_num = brick_num + new_brick_num
 
-            brick_num_sr.iloc[criteria_index: next_criteria_index] = brick_num
-            brick_num_sr.iloc[next_criteria_index] = next_brick_num
+            total_brick_num_sr.iloc[criteria_index: next_criteria_index] = brick_num
+            total_brick_num_sr.iloc[next_criteria_index] = next_brick_num
             criteria_index = next_criteria_index
             next_start_index = next_criteria_index + 1
             
@@ -554,13 +558,16 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size):
                 to_index = len(sr)
 
             current_criteria = sr.iloc[next_criteria_index]
-            temp_df = get_check_df(sr, brick_size, next_start_index, to_index, current_criteria)
-            uptrend = temp_df[temp_df >=  -global_trend/2 + 3/2]
-            downtrend = temp_df[temp_df <= -global_trend/2 - 3/2]
+            temp_brick_num_sr = get_check_df(sr, brick_size, next_start_index, to_index, current_criteria)
+            brick_value_sr.iloc[next_start_index:to_index] = temp_brick_num_sr
+            uptrend = temp_brick_num_sr[temp_brick_num_sr >=  -global_trend/2 + 3/2]
+            downtrend = temp_brick_num_sr[temp_brick_num_sr <= -global_trend/2 - 3/2]
         else:
             break
-    brick_num_sr.index = org_index
-    return brick_num_sr
+    #total_brick_num_sr.index = org_index
+    renko_df = pd.DataFrame.from_dict({TOTAL_BRICK_NUM_KEY:total_brick_num_sr, BRICK_NUM_KEY:brick_value_sr})
+    renko_df.index = org_index
+    return renko_df
 
 def RenkoFromOHLC(df:pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), brick_column_name=None, brick_size=None):
     """ Caliculate Renko from Close column of ohlc dataframe
@@ -584,10 +591,10 @@ def RenkoFromOHLC(df:pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close
                 brick_size = atr_df["ATR"]
             else:
                 brick_size = df[brick_column_name]
-            renko_sr = RenkoFromSeries(df[ohlc_columns[3]], brick_size=brick_size)
+            renko_df = RenkoFromSeries(df[ohlc_columns[3]], brick_size=brick_size)
         else:
-            renko_sr = RenkoFromSeries(df[ohlc_columns[3]], brick_size=brick_size)
-        return pd.DataFrame(renko_sr, columns=["brick_num"])
+            renko_df = RenkoFromSeries(df[ohlc_columns[3]], brick_size=brick_size)
+        return renko_df
     else:
         raise Exception(f"specified ohlc_columns {ohlc_columns} doen't match with df.columns {df.columns}")
 
