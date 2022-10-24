@@ -550,8 +550,8 @@ class CCIProcess(ProcessBase):
 
         is_input = params["input"]
         is_out = params["output"]
-        macd = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
-        return macd
+        cci = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
+        return cci
         
     def run(self, data:pd.DataFrame):
         self.data = data
@@ -562,7 +562,7 @@ class CCIProcess(ProcessBase):
         
         cci = indicaters.CommodityChannelIndex(data, window, ohlc_column)
         
-        return {out_column: cci}
+        return {out_column: cci["CCI"]}
     
     def update(self, tick: pd.Series):
         if type(self.data) != type(None):
