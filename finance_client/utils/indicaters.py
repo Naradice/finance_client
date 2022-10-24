@@ -156,7 +156,7 @@ def MACDFromOHLC(data, column = 'Close', short_window=12, long_window=26, signal
     """caliculate MACD and Signal indicaters from OHLC. Close is used by default.
 
     Args:
-        data (pd.DataFrame): ohlc data of symbols
+        data (pd.DataFrame): ohlc data of a symbol
         column (str, optional): target column name. Defaults to 'Close'.
         short_window (int, optional): window size for short EMA. Defaults to 12.
         long_window (int, optional): window size for long EMA. Defaults to 26.
@@ -696,6 +696,7 @@ def SlopeFromOHLCMulti(symbols:list, ohlc_dfs: pd.DataFrame, window: int, column
     """function to calculate the slope of n consecutive points on a plot
 
     Args:
+        symbols (list<str>): symbol list. Each element should match with column.
         ser (pd.DataFrame): OHLC time series data of symbols
         window (int): window size for the slope
         column (str): target column name
@@ -716,6 +717,17 @@ def SlopeFromOHLCMulti(symbols:list, ohlc_dfs: pd.DataFrame, window: int, column
         slope_dfs.columns = slope_dfs.columns.swaplevel(0, 1)
     return slope_dfs
 
+def __CCI(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')):
+    close_column = ohlc_columns[3]
+    low_column = ohlc_columns[2]
+    high_column = ohlc_columns[1]
+    
+    tp = (ohlc[high_column] + ohlc[low_column] + ohlc[close_column])/3
+    ma = EMA(ohlc[close_column], window)
+    md = (tp - ma).std()
+    cci = (tp-ma) / (0.015 * md)
+    return cci
+
 def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')) -> pd.DataFrame:
     """ represents how much close value is far from mean value. If over 100, strong long trend for example.
 
@@ -727,12 +739,30 @@ def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open
     Returns:
         pd.DataFrame: CCI value on CCI column
     """
-    close_column = ohlc_columns[3]
-    low_column = ohlc_columns[2]
-    high_column = ohlc_columns[1]
+    cci = __CCI(ohlc, window, ohlc_columns)
+    return pd.DataFrame(cci, columns=["CCI"])
+
+def CommodityChannelIndexMulti(symbols:list, ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close'), grouped_by_sygnal:bool=False) -> pd.DataFrame:
+    """ represents how much close value is far from mean value. If over 100, strong long trend for example.
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        ohlc (pd.DataFrame): Open High Low Close values
+        window (int, optional): window size to caliculate EMA. Defaults to 14.
+        ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
+        grouped_by_symbol (bool, optional): Flag for group handling of Input and Output. Defaults to False.
+
+    Returns:
+        pd.DataFrame: CCI value on CCI column
+    """
+    if grouped_by_sygnal:
+        ohlc = ohlc.copy()
+        ohlc.columns = ohlc.columns.swaplevel(0, 1)
+
+    cci = __CCI(ohlc, window, ohlc_columns)
+    cci.columns = pd.MultiIndex.from_tuples([("CCI", symbol) for symbol in symbols])
     
-    tp = (ohlc[high_column] + ohlc[low_column] + ohlc[close_column])/3
-    ma = EMA(ohlc[close_column], window)
-    md = (tp - ma).std()
-    cci = (tp-ma) / (0.015 * md)
-    return pd.DataFrame.from_dict({"CCI":cci})
+    if grouped_by_sygnal:
+        cci.columns = cci.columns.swaplevel(0, 1)
+    
+    return cci
