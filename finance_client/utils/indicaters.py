@@ -3,8 +3,6 @@ import pandas as pd
 import statsmodels.api as sm
 from .convert import concat_df_symbols
 
-#TODO: unify output format
-
 def sum(data):
     amount = 0
     if type(data) == list:
@@ -657,8 +655,16 @@ def RenkoFromMultiOHLC(symbols:list, dfs:pd.DataFrame, ohlc_columns = ('Open', '
     #RenkoDF = pd.DataFrame.from_dict(DFS)
     return RenkoDF
 
-def slope(ser: pd.Series, window):
-    "function to calculate the slope of n consecutive points on a plot"
+def SlopeFromSeries(ser: pd.Series, window: int):
+    """function to calculate the slope of n consecutive points on a plot
+
+    Args:
+        ser (pd.Series): time series data
+        window (int): window size for the slope
+
+    Returns:
+        pd.Series: slope values
+    """
     slopes = [0 for i in range(window-1)]
     for i in range(window, len(ser)+1):
         y = ser.iloc[i-window:i]
@@ -670,9 +676,47 @@ def slope(ser: pd.Series, window):
         results = model.fit()
         slopes.append(results.params[-1])
     slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
-    return pd.Series({"slope":np.array(slope_angle)})
+    return pd.Series(np.array(slope_angle))
 
-def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')) -> pd.Series:
+def SlopeFromOHLC(ohlc_df: pd.DataFrame, window: int, column="Close"):
+    """function to calculate the slope of n consecutive points on a plot
+
+    Args:
+        ser (pd.DataFrame): OHLC time series data of a symbol
+        window (int): window size for the slope
+        column (str): target column name
+
+    Returns:
+        pd.DataFrame: slope value on Slope column
+    """
+    slope_sr = SlopeFromSeries(ohlc_df[column], window)
+    return pd.DataFrame(slope_sr, columns=["Slope"])
+
+def SlopeFromOHLCMulti(symbols:list, ohlc_dfs: pd.DataFrame, window: int, column:str="Close", grouped_by_sygnal:bool=False):
+    """function to calculate the slope of n consecutive points on a plot
+
+    Args:
+        ser (pd.DataFrame): OHLC time series data of symbols
+        window (int): window size for the slope
+        column (str): target column name
+        grouped_by_symbol (bool, optional): Flag for group handling of Input and Output. Defaults to False.
+        
+    Returns:
+        pd.DataFrame: slope value on Slope column
+    """
+    DFS = {}
+    if grouped_by_sygnal:
+        for symbol in symbols:
+            DFS[symbol] = SlopeFromOHLC(ohlc_dfs, window, (symbol, column))
+    else:
+        for symbol in symbols:
+            DFS[symbol] = SlopeFromOHLC(ohlc_dfs, window, (column, symbol))
+    slope_dfs = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+    if grouped_by_sygnal == False:
+        slope_dfs.columns = slope_dfs.columns.swaplevel(0, 1)
+    return slope_dfs
+
+def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')) -> pd.DataFrame:
     """ represents how much close value is far from mean value. If over 100, strong long trend for example.
 
     Args:
@@ -681,7 +725,7 @@ def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open
         ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame: CCI value on CCI column
     """
     close_column = ohlc_columns[3]
     low_column = ohlc_columns[2]
@@ -691,4 +735,4 @@ def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open
     ma = EMA(ohlc[close_column], window)
     md = (tp - ma).std()
     cci = (tp-ma) / (0.015 * md)
-    return cci
+    return pd.DataFrame.from_dict({"CCI":cci})

@@ -504,10 +504,10 @@ class SlopeProcess(ProcessBase):
         option = self.option
         column = option["target_column"]
         window = option['window']
-        idc_out_column = "slope"
+        idc_out_column = "Slope"
         out_column = self.columns["Slope"]
         
-        slope_df = indicaters.slope(data[column], window=window)
+        slope_df = indicaters.SlopeFromOHLC(data, window=window, column=column)
         slopes = slope_df[idc_out_column]
         return {out_column: slopes}
         
