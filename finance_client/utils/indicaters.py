@@ -169,6 +169,7 @@ def MACDFromOHLC(data, column = 'Close', short_window=12, long_window=26, signal
     long_ema = EMA(data[column], long_window)
     MACD, Signal = MACDFromEMA(short_ema, long_ema, signal_window)
     macd_df = pd.concat([short_ema, long_ema, MACD, Signal], axis=1)
+    macd_df.columns = ["ShortEMA", "LongEMA", "MACD", "Signal"]
     return macd_df
 
 def MACDFromEMA(short_ema, long_ema, signal_window):
@@ -237,7 +238,7 @@ def BolingerFromSeries(data: pd.Series, window = 14, alpha=2):
     b_low = mas - stds*alpha
     #width = stds*alpha*2 ##deleted for test purpose as there is small error compared with diff
     width = b_high - b_low
-    return mas, b_high, b_low, width
+    return mas, b_high, b_low, width, stds
 
 def BolingerFromArray(data, window = 14,  alpha=2):
     if type(data) == list:

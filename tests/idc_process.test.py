@@ -33,13 +33,6 @@ date_column = "time"
 
 class TestIndicaters(unittest.TestCase):
     client = CSVClient(file=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False)
-    
-    def test_cci(self):
-        ohlc = self.client.get_rates(100)
-        cci = utils.indicaters.CommodityChannelIndex(ohlc, ohlc_columns=ohlc_columns)
-        self.assertEqual(len(cci), 100)
-        self.assertLess(cci.max(), 300)
-        self.assertGreater(cci.min(), -300)
         
     def test_cci_process(self):
         ohlc = self.client.get_rates(110)
@@ -116,7 +109,7 @@ class TestIndicaters(unittest.TestCase):
     
     def test_renko_process(self):
         client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, logger=logger)
-        prc = utils.RenkoProcess(window=120, date_column=date_column, ohlc_column=ohlc_columns)
+        prc = utils.RenkoProcess(window=120, ohlc_column=ohlc_columns)
         column = prc.columns["NUM"]
         client.add_indicater(prc)
         start_time = datetime.datetime.now()

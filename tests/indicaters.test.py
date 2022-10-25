@@ -103,6 +103,13 @@ class TestIndicaters(unittest.TestCase):
     #     end_time = datetime.datetime.now()
     #     logger.debug(f"slope took {end_time - start_time}")
     #     self.assertEqual(len(slope_df["slope"]) ,data_length)
+
+    def test_cci(self):
+        ohlc = self.client.get_rates(100)
+        cci = fc.utils.indicaters.CommodityChannelIndex(ohlc)
+        self.assertEqual(len(cci), 100)
+        self.assertLess(cci.max(), 300)
+        self.assertGreater(cci.min(), -300)
     
 if __name__ == '__main__':
     unittest.main()
