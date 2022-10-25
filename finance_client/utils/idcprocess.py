@@ -93,15 +93,16 @@ class MACDpreProcess(ProcessBase):
         long_window = option['long_window']
         signal_window = option['signal_window']
         
-        short_ema, long_ema, MACD, Signal = indicaters.MACD_from_ohlc(data, target_column, short_window, long_window, signal_window)
+        macd_df = indicaters.MACDFromOHLC(data, target_column, short_window, long_window, signal_window)
+        idc_columns = ["ShortEMA", "LongEMA", "MACD", "Signal"]
         
         cs_ema = self.columns['S_EMA']
         cl_ema = self.columns['L_EMA']
         c_macd = self.columns['MACD']
         c_signal = self.columns['Signal']
         
-        self.last_data = pd.DataFrame({cs_ema:short_ema, cl_ema: long_ema, c_macd:MACD, c_signal:Signal}).iloc[-self.get_minimum_required_length():]
-        return {cs_ema:short_ema, cl_ema: long_ema, c_macd:MACD, c_signal:Signal}
+        self.last_data = macd_df.iloc[-self.get_minimum_required_length():]
+        return {cs_ema:macd_df[idc_columns[0]], cl_ema: macd_df[idc_columns[1]], c_macd:macd_df[idc_columns[2]], c_signal:macd_df[idc_columns[3]]}
     
     def update(self, tick:pd.Series):
         option = self.option
@@ -110,6 +111,7 @@ class MACDpreProcess(ProcessBase):
         long_window = option['long_window']
         signal_window = option['signal_window']
         
+        idc_columns = ["ShortEMA", "LongEMA", "MACD", "Signal"]
         cs_ema = self.columns['S_EMA']
         cl_ema = self.columns['L_EMA']
         c_macd = self.columns['MACD']
@@ -118,10 +120,10 @@ class MACDpreProcess(ProcessBase):
         
         short_ema, long_ema, MACD = indicaters.update_macd(
             new_tick=tick,
-            short_ema_value=self.last_data[cs_ema].iloc[-1],
-            long_ema_value=self.last_data[cl_ema].iloc[-1],
+            short_ema_value=self.last_data[idc_columns[0]].iloc[-1],
+            long_ema_value=self.last_data[idc_columns[1]].iloc[-1],
             column=target_column, short_window = short_window, long_window = long_window)
-        Signal = (self.last_data[c_macd].iloc[-signal_window + 1:].sum() + MACD)/signal_window
+        Signal = (self.last_data[idc_columns[2]].iloc[-signal_window + 1:].sum() + MACD)/signal_window
         
         new_data = pd.Series({cs_ema:short_ema, cl_ema: long_ema, c_macd:MACD, c_signal:Signal})
         self.last_data = self.concat(self.last_data.iloc[1:], new_data)
@@ -245,16 +247,16 @@ class BBANDpreProcess(ProcessBase):
         target_column = option['column']
         window = option['window']
         alpha = option['alpha']
-        
-        ema, ub, lb, bwidth = indicaters.bolinger_from_ohlc(data, target_column, window=window, alpha=alpha)
+        idc_columns = ("B_MA", "B_High", "B_Low", "B_Width", "B_Std")
+        bb_df = indicaters.BolingerFromOHLC(data, target_column, window=window, alpha=alpha)
         
         c_ema = self.columns['MV']
         c_ub = self.columns['UV']
         c_lb = self.columns['LV']
         c_width = self.columns['Width']
         
-        self.last_data = pd.DataFrame({c_ema:ema, c_ub: ub, c_lb:lb, c_width:bwidth, target_column:data[target_column] }).iloc[-self.get_minimum_required_length():]
-        return {c_ema:ema, c_ub: ub, c_lb:lb, c_width:bwidth}
+        self.last_data = bb_df.iloc[-self.get_minimum_required_length():]
+        return {c_ema:bb_df[idc_columns[0]], c_ub: bb_df[idc_columns[1]], c_lb:bb_df[idc_columns[2]], c_width:bb_df[idc_columns[3]]}
     
     def update(self, tick:pd.Series):
         option = self.option
@@ -322,7 +324,7 @@ class ATRpreProcess(ProcessBase):
         target_columns = option['ohlc_column']
         window = option['window']
         
-        atr_series = indicaters.ATR_from_ohlc(data, target_columns, window=window)
+        atr_series = indicaters.ATRFromOHLC(data, target_columns, window=window)
         self.last_data = data.iloc[-self.get_minimum_required_length():].copy()
         last_atr = atr_series.iloc[-self.get_minimum_required_length():].values
         
@@ -423,14 +425,14 @@ class RSIpreProcess(ProcessBase):
 class RenkoProcess(ProcessBase):
     
     kinds = "Renko"
+    KEY_VALUE = "Value"
+    KEY_BRICK_NUM = "NUM"
     
-    def __init__(self, key: str = "renko", date_column = "Timestamp", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_date_index=False, is_input = True, is_output = True, option = None):
+    def __init__(self, key: str = "renko", ohlc_column = ('Open', 'High', 'Low', 'Close'), window=10, is_input = True, is_output = True, option = None):
         super().__init__(key)
         self.option = {
-            "date_column": date_column,
             "ohlc_column": ohlc_column,
-            "window": window,
-            "is_date_index": is_date_index
+            "window": window
         }
         if option != None:
             self.option.update(option)
@@ -438,32 +440,29 @@ class RenkoProcess(ProcessBase):
         self.is_output = is_output
         self.columns = {
             'NUM': f'{key}_block_num',
-            "TREND": f'{key}_trend',
+            "Value": f'{key}_value',
         }
         
     @classmethod
     def load(self, key:str, params:dict):
         window = params["window"]
-        date_column = tuple(params["date_column"])
         columns = tuple(params["ohlc_column"])
         is_input = params["input"]
         is_out = params["output"]
-        return RenkoProcess(key, date_column, columns, window, is_input, is_out)
+        return RenkoProcess(key, columns, window, is_input, is_out)
 
     def run(self, data: pd.DataFrame):
         option = self.option
-        date_column = option["date_column"]
         ohlc_column = option["ohlc_column"]
-        is_date_index = option["is_date_index"]
         window = option['window']
-        num_column = "bar_num"
-        trend_column = "uptrend"
+        TOTAL_BRICK_NUM_KEY = "Renko"
+        BRICK_NUM_KEY = "Brick"
         
         renko_block_num = self.columns["NUM"]
-        renko_trend = self.columns["TREND"]
+        renko_value = self.columns["Value"]
         
-        renko_df = indicaters.renko_time_scale(data, date_column=date_column, ohlc_columns=ohlc_column, window=window, is_date_index=is_date_index)
-        return {renko_block_num:renko_df[num_column].values, renko_trend: renko_df[trend_column].values}
+        renko_df = indicaters.RenkoFromOHLC(data, ohlc_columns=ohlc_column)
+        return {renko_block_num:renko_df[BRICK_NUM_KEY], renko_value: renko_df[TOTAL_BRICK_NUM_KEY]}
         
     def update(self, tick:pd.Series):
         raise Exception("update is not implemented yet on renko process")
@@ -504,12 +503,14 @@ class SlopeProcess(ProcessBase):
         option = self.option
         column = option["target_column"]
         window = option['window']
-        idc_out_column = "slope"
+        idc_out_column = "Slope"
         out_column = self.columns["Slope"]
         
-        slope_df = indicaters.slope(data[column], window=window)
-        slopes = slope_df[idc_out_column]
-        return {out_column: slopes}
+        slope_df = indicaters.SlopeFromOHLC(data, window=window, column=column)
+        #slope_df.columns = [out_column]
+        #data = pd.concat([data, slope_df], axis=1)
+        #return data
+        return {out_column: slope_df[idc_out_column]}
         
     def update(self, tick:pd.Series):
         raise Exception("update is not implemented yet on slope process")
@@ -550,8 +551,8 @@ class CCIProcess(ProcessBase):
 
         is_input = params["input"]
         is_out = params["output"]
-        macd = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
-        return macd
+        cci = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
+        return cci
         
     def run(self, data:pd.DataFrame):
         self.data = data
@@ -562,7 +563,7 @@ class CCIProcess(ProcessBase):
         
         cci = indicaters.CommodityChannelIndex(data, window, ohlc_column)
         
-        return {out_column: cci}
+        return {out_column: cci["CCI"]}
     
     def update(self, tick: pd.Series):
         if type(self.data) != type(None):

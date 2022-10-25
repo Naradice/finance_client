@@ -4,7 +4,6 @@ install_requires = [
     #for indicaters
     'numpy',
     'pandas',
-    'stocktrends',
     'statsmodels',
     #for rendere
     'matplotlib',

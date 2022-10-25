@@ -1,10 +1,7 @@
 import numpy as np
 import pandas as pd
-from stocktrends import Renko
 import statsmodels.api as sm
-import copy
-
-#TODO: unify output format
+from .convert import concat_df_symbols
 
 def sum(data):
     amount = 0
@@ -47,7 +44,6 @@ def update_EMA(last_ema_value:float, new_value, window:int, a=None):
     if a != None:
         alpha = a
     return last_ema_value * (1 - alpha) + new_value*alpha
-    
 
 def EMA(data, interval, a=None):
     '''
@@ -156,18 +152,27 @@ def update_ema(new_tick, ema_value, window, column='Close'):
     new_ema = ema_value* (1 - alpha) + new_data*alpha
     return new_ema
 
-def MACD_from_ohlc(data, column = 'Close', short_window=12, long_window=26, signal_window=9):
-    '''
-    caliculate MACD and Signal indicaters from OHLC. Close is used by default.
-    input: data (dataframe), column (string), short_windows (int), long_window (int), signal (int)
-    output: short_ema, long_ema, MACD, signal
-    '''
+def MACDFromOHLC(data, column = 'Close', short_window=12, long_window=26, signal_window=9):
+    """caliculate MACD and Signal indicaters from OHLC. Close is used by default.
+
+    Args:
+        data (pd.DataFrame): ohlc data of a symbol
+        column (str, optional): target column name. Defaults to 'Close'.
+        short_window (int, optional): window size for short EMA. Defaults to 12.
+        long_window (int, optional): window size for long EMA. Defaults to 26.
+        signal_window (int, optional): window size for Signals. Defaults to 9.
+
+    Returns:
+        pd.DataFrame: DataFrame of ShortEMA, LongEMA, MACD and Signal
+    """
     short_ema = EMA(data[column], short_window)
     long_ema = EMA(data[column], long_window)
-    MACD, Signal = MACD_from_EMA(short_ema, long_ema, signal_window)
-    return short_ema, long_ema, MACD, Signal
+    MACD, Signal = MACDFromEMA(short_ema, long_ema, signal_window)
+    macd_df = pd.concat([short_ema, long_ema, MACD, Signal], axis=1)
+    macd_df.columns = ["ShortEMA", "LongEMA", "MACD", "Signal"]
+    return macd_df
 
-def MACD_from_EMA(short_ema, long_ema, signal_window):
+def MACDFromEMA(short_ema, long_ema, signal_window):
     '''
     caliculate MACD and Signal indicaters from EMAs.
     output: macd, signal
@@ -179,26 +184,173 @@ def MACD_from_EMA(short_ema, long_ema, signal_window):
     signal = SMA(macd, signal_window)
     return macd, signal
 
-def bolinger_from_series(data: pd.Series, window = 14, alpha=2):
+def MACDFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', short_window=12, long_window=26, signal_window=9, grouped_by_symbol=False):
+    """caliculate MACD and Signal indicaters from OHLC. Close is used by default.
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        data (pd.DataFrame): ohlc data of symbols
+        column (str, optional): target column name. Defaults to 'Close'.
+        short_window (int, optional): window size for short EMA. Defaults to 12.
+        long_window (int, optional): window size for long EMA. Defaults to 26.
+        signal_window (int, optional): window size for Signals. Defaults to 9.
+        grouped_by_symbol (bool, optional): If True, return a result with (symbol, column). Defaults to False.
+        
+    Returns:
+        pd.DataFrame: DataFrame of ShortEMA, LongEMA, MACD and Signal for symbols
+    """
+    if grouped_by_symbol:
+        short_ema = EMA(data[column], short_window)
+        long_ema = EMA(data[column], long_window)
+        macd = short_ema - long_ema
+        signal = SMA(macd, signal_window)
+        
+        short_ema_columns = [("ShortEMA", symbol) for symbol in symbols]
+        long_ema_columns = [("LongEMA", symbol) for symbol in symbols]
+        macd_ema_columns = [("MACD", symbol) for symbol in symbols]
+        signal_ema_columns = [("Signal", symbol) for symbol in symbols]
+    else:
+        short_ema = EMA(data[[(symbol, column) for symbol in symbols]], short_window)
+        long_ema = EMA(data[[(symbol, column) for symbol in symbols]], long_window)
+        macd = short_ema - long_ema
+        signal = SMA(macd, signal_window)
+        
+        short_ema_columns = [(symbol, "ShortEMA") for symbol in symbols]
+        long_ema_columns = [(symbol, "LongEMA") for symbol in symbols]
+        macd_ema_columns = [(symbol, "MACD") for symbol in symbols]
+        signal_ema_columns = [(symbol, "Signal") for symbol in symbols]
+        
+    short_ema.columns = pd.MultiIndex.from_tuples(short_ema_columns)
+    long_ema.columns = pd.MultiIndex.from_tuples(long_ema_columns)
+    macd.columns = pd.MultiIndex.from_tuples(macd_ema_columns)
+    signal.columns = pd.MultiIndex.from_tuples(signal_ema_columns)
+    
+    macd_df = pd.concat([short_ema, long_ema, macd, signal], axis=1)
+    if grouped_by_symbol:
+        macd_df.columns = macd_df.columns.swaplevel(0, 1)
+    macd_df.sort_index(level=0, axis=1, inplace=True)
+    return macd_df
+
+def BolingerFromSeries(data: pd.Series, window = 14, alpha=2):
     stds = data.rolling(window).std(ddof=0)
     mas = data.rolling(window).mean()
     b_high = mas + stds*alpha
     b_low = mas - stds*alpha
     #width = stds*alpha*2 ##deleted for test purpose as there is small error compared with diff
     width = b_high - b_low
-    return mas, b_high, b_low, width
+    return mas, b_high, b_low, width, stds
 
-def bolinger_from_array(data, window = 14,  alpha=2):
+def BolingerFromArray(data, window = 14,  alpha=2):
     if type(data) == list:
         data = pd.Series(data)
     else:
-        raise Exception(f'data type {type(data)} is not supported in bolinger_from_array')
-    return bolinger_from_series(data, window=window, alpha=alpha)
+        raise Exception(f'data type {type(data)} is not supported in BolingerFromArray')
+    return BolingerFromSeries(data, window=window, alpha=alpha)
 
-def bolinger_from_ohlc(data: pd.DataFrame, column = 'Close', window = 14, alpha=2):
-    return bolinger_from_series(data[column], window=window, alpha=alpha)
+def BolingerFromOHLC(data: pd.DataFrame, column = 'Close', window = 14, alpha=2):
+    """Caliculate Bolinger band from ohlc dataframe for a symbol
 
-def ATR_from_ohlc(data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), window = 14):
+    Args:
+        data (pd.DataFrame): ohlc data of a symbol
+        column (str, optional): target column name. Defaults to 'Close'.
+        window (int, optional): window size for bolinger band. Defaults to 14.
+        alpha (int, optional): alph to caliculate band. Defaults to 2.
+
+    Returns:
+        pd.DataFrame: B_MA, B_Hig, B_Low, B_Width, B_Std for a symbol
+    """
+    ma, b_high, b_low, width, stds = BolingerFromSeries(data[column], window=window, alpha=alpha)
+    b_df = pd.concat([ma, b_high, b_low, width, stds], axis=1)
+    b_df.columns = ("B_MA", "B_High", "B_Low", "B_Width", "B_Std")
+    return b_df
+
+def BolingerFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', window = 14, alpha=2, grouped_by_sygnal=False):
+    """Caliculate Bolinger band from ohlc dataframe for symbols
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        data (pd.DataFrame): ohlc data of symbols
+        column (str, optional): target column name. Defaults to 'Close'.
+        window (int, optional): window size for bolinger band. Defaults to 14.
+        alpha (int, optional): alph to caliculate band. Defaults to 2.
+        grouped_by_symbol (bool, optional): If True, return a result with (symbol, column). Defaults to False.
+
+    Returns:
+        pd.DataFrame: B_MA, B_Hig, B_Low, B_Width, B_Std for symbols
+    """
+    if grouped_by_sygnal:
+        ohlc_dfs = data[[(symbol, column) for symbol in symbols]]
+    else:
+        ohlc_dfs = data[column]
+        
+    ma, b_high, b_low, width, stds = BolingerFromSeries(ohlc_dfs, window=window, alpha=alpha)
+    b_df = pd.concat([ma, b_high, b_low, width, stds], axis=1)
+    b_df.columns = pd.MultiIndex.from_tuples([
+        *((symbol, "B_MA") for symbol in symbols), 
+        *((symbol, "B_High")  for symbol in symbols),
+        *((symbol, "B_Low") for symbol in symbols),
+        *((symbol, "B_Width") for symbol in symbols),
+        *((symbol, "B_Std") for symbol in symbols)
+    ])
+    if grouped_by_sygnal == False:
+        b_df.columns = b_df.columns.swaplevel(0, 1)
+    b_df.sort_index(level=0, axis=1, inplace=True)
+    return b_df
+
+def ATRFromMultiOHLC(symbols:list, data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), window = 14, grouped_by_symbol=False):
+    """caliculate ATR for multiIndex columns
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        data (pd.DataFrame): ohlc data for symbols
+        ohlc_columns (tuple, optional): Specify ohlc column name. Defaults to ('Open', 'High', 'Low', 'Close').
+        window (int, optional): Window size for ATR. Defaults to 14.
+        grouped_by_symbol (bool, optional): If True, return a result with (symbol, ATR column). Defaults to False.
+
+    Returns:
+        pd.DataFrame: returns ATR, TR
+    """
+    high_cn = ohlc_columns[1]
+    low_cn = ohlc_columns[2]
+    close_cn = ohlc_columns[3]
+        
+    if grouped_by_symbol:
+        df = data.copy()
+        high_df = df[[(symbol, high_cn) for symbol in symbols]]
+        high_df.columns = symbols
+        low_df = df[[(symbol, low_cn) for symbol in symbols]]
+        low_df.columns = symbols
+        close_df = df[[(symbol, close_cn) for symbol in symbols]]
+        close_df.columns = symbols
+
+        hl_df = high_df - low_df
+        hpc_df = abs(high_df - close_df.shift(1))
+        lpc_df = abs(low_df - close_df.shift(1))
+
+        hl_df.columns = pd.MultiIndex.from_tuples([(symbol, "H-L") for symbol in symbols])
+        atr_df = concat_df_symbols(hl_df, hpc_df, symbols, "H-PC", grouped_by_symbol=True)
+        atr_df = concat_df_symbols(atr_df, lpc_df, symbols, "L-PC", grouped_by_symbol=True)
+        #tr_df = pd.DataFrame(index=atr_df.index)
+
+        for symbol in symbols:
+            atr_df[(symbol, "TR")] = atr_df[symbol].max(axis=1)
+        atr = EMA(atr_df[[(symbol, "TR") for symbol in symbols]], window)
+        atr_df = concat_df_symbols(atr_df, atr, symbols, "ATR", grouped_by_symbol=True)
+        atr_df = atr_df.sort_index(axis=1)
+        return atr_df[["ATR", "TR"]].copy()
+    else:
+        df = data[list(ohlc_columns)].copy()
+        df = concat_df_symbols(df, df[high_cn] - df[low_cn], symbols, "H-L")
+        df = concat_df_symbols(df, abs(df[high_cn] - df[close_cn].shift(1)), symbols, "H-PC")
+        df = concat_df_symbols(df, abs(df[low_cn] - df[close_cn].shift(1)), symbols, "L-PC")
+        for symbol in symbols:
+            columns = [("H-L", symbol), ("H-PC", symbol), ("L-PC", symbol)]
+            tr_df = df[columns].max(axis=1, skipna=True)
+            df[("TR", symbol)] = tr_df
+            df[("ATR", symbol)] = EMA(tr_df, window)
+        return df[["ATR", "TR"]].copy()
+
+def ATRFromOHLC(data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), window = 14):
     """
     function to calculate True Range and Average True Range
     
@@ -222,7 +374,7 @@ def ATR_from_ohlc(data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Cl
     #df["ATR"] = df["TR"].ewm(span=window, adjust=False).mean()#removed min_periods=window option
     df["ATR"] = EMA(df["TR"], interval=window)
     #df["ATR"] = df["TR"].rolling(window=n).mean()
-    return df["ATR"]
+    return df
 
 def update_ATR(pre_data:pd.Series, new_data: pd.Series, ohlc_columns = ('Open', 'High', 'Low', 'Close'), atr_column = 'ATR', window = 14):
     """ latest caliculate atr
@@ -259,7 +411,7 @@ def RSI_from_ohlc(data:pd.DataFrame, column = 'Close', window=14):
         window (int, optional): Defaults to 14.
 
     Returns:
-        _type_: 0 to 100
+        pd.DataFrame: 0 to 100
     """
     df = data.copy()
     df["change"] = df[column].diff()
@@ -299,61 +451,221 @@ def update_RSI(pre_data:pd.Series, new_data:pd.Series, columns = ("avgGain", "av
     rsi = 100 - (100/(1+rs))
     return avgGain, avgLoss, rsi
     
-def renko_from_ohlc(ohlc: pd.DataFrame, atr_length:int = 120, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close')):
-    "function to convert ohlc data into renko bricks. please note that length is depends on results of renko"
-    if len(ohlc[ohlc_columns[3]]) < atr_length:
-        raise Exception("Can't caliculate block size by atr as ohlc data length is less than atr_length.")
-    df = ohlc.copy()
-    df.reset_index(inplace=True)
-    #df = df.iloc[:,[0,1,2,3,4,5]]
-    #df.columns = ["date","open","close","high","low","volume"]
-    ohlc_columns = list(ohlc_columns)
-    required_columns = ohlc_columns
-    required_columns.insert(0, date_column)
-    df = df[required_columns]
-    ohlc_column_4_renko = ["open", "high", "low", "close"]
-    date_column_4_renko = "date"
-    columns_4_renko = ohlc_column_4_renko
-    columns_4_renko.insert(0, date_column_4_renko)
-    df.columns = columns_4_renko
-    df2 = Renko(df)
-    atr = ATR_from_ohlc(ohlc, ohlc_columns, atr_length).iloc[-1]
-    df2.brick_size = round(atr,4)
-    renko_df = df2.get_ohlc_data()
-    #renko_df["bar_num"] = np.where(renko_df["uptrend"]==True,1,np.where(renko_df["uptrend"]==False,-1,0))
-    bar_num = np.where(renko_df["uptrend"]==True,1,np.where(renko_df["uptrend"]==False,-1,0))
-    for i in range(1,len(bar_num)):
-        if bar_num[i]>0 and bar_num[i-1]>0:
-            bar_num[i]+=bar_num[i-1]
-        elif bar_num[i]<0 and bar_num[i-1]<0:
-            bar_num[i]+=bar_num[i-1]
-    renko_df["bar_num"] = bar_num
-    #when value rise up/down multiple bricks, renko (ohlc value as brick) is stored on same date. so we need to drop duplicates and keep last item only.
-    renko_df.drop_duplicates(subset="date",keep="last",inplace=True)
-    renko_df["uptrend"] = renko_df["uptrend"].astype(int).values
-    renko_df = renko_df[[date_column_4_renko,"uptrend", "bar_num"]].copy()
-    renko_df.columns = [date_column, "uptrend", "bar_num"]
+def RenkoFromSeries(data_sr:pd.Series, brick_size):
+    """ Caliculate brick number of Renko
+
+    Args:
+        data_sr (pd.Series): time series data like close values of a sygnal
+        brick_size (pd.Series|float, optional): brick_size to caliculate the Renko. If None, ATR is used. Defaults to None.
+        
+    Returns:
+        pd.Series: brick_num
+    """
+    def get_check_df_from_series(data_sr, brick_sr, start_index, to_index, criteria_value):
+        return (data_sr.iloc[start_index: to_index] - criteria_value)/brick_sr.iloc[start_index: to_index]
+    
+    def get_check_df_from_scalar(data_sr, brick_size, start_index, to_index, criteria_value):
+        return (data_sr.iloc[start_index: to_index] - criteria_value)/brick_size
+    
+    if type(brick_size) == pd.Series:
+        if len(data_sr) != len(brick_size):
+            raise Exception(f"sr and brick_size_sr should have same length.")
+        brick_size = brick_size.copy().reset_index(drop=True)
+        get_check_df = get_check_df_from_series
+    else:
+        get_check_df = get_check_df_from_scalar
+            
+    org_index = data_sr.index
+    sr = data_sr.copy().reset_index(drop=True)
+    
+    def trendy(uptrend, downtrend):
+        if len(uptrend) > 0 and len(downtrend) > 0:
+            if uptrend.index[0] > downtrend.index[0]:
+                #mark down until criteria_index to downtrend.index[0]
+                trend = -1
+                brick_size = int(downtrend.iloc[0])
+                next_criteria_index = downtrend.index[0]
+            else:
+                #mark up until criteria_index to uptrend.index[0]
+                trend = 1
+                brick_size = int(uptrend.iloc[0])
+                next_criteria_index = uptrend.index[0]
+        elif len(uptrend) > 0:
+            trend = 1
+            brick_size = int(uptrend.iloc[0])
+            next_criteria_index = uptrend.index[0]
+        elif len(downtrend) > 0:
+            trend = -1
+            brick_size = int(downtrend.iloc[0])
+            next_criteria_index = downtrend.index[0]
+        else:
+            trend = None
+            brick_size = None
+            next_criteria_index = None
+        return trend, brick_size, next_criteria_index
+    
+    CONST_INDEX_PLUS = 30
+    TOTAL_BRICK_NUM_KEY = "Renko"
+    BRICK_NUM_KEY = "Brick"
+    
+    criteria_index = sr[pd.notna(sr)].index[0]
+    current_criteria = sr.iloc[criteria_index]
+    total_brick_num_sr = pd.Series(0, index=sr.index)
+    brick_value_sr = pd.Series(0, index=sr.index)
+
+    trend = None
+    start_index = criteria_index
+    to_index = criteria_index + CONST_INDEX_PLUS
+    while trend is None and to_index < len(sr):
+        temp_brick_num_sr = get_check_df(sr, brick_size, start_index, to_index, current_criteria)
+        brick_value_sr.iloc[start_index:to_index] = temp_brick_num_sr
+        uptrend = temp_brick_num_sr[temp_brick_num_sr >= 1]
+        downtrend = temp_brick_num_sr[temp_brick_num_sr <= -1]
+        #if trend is None:
+        if len(uptrend) == 0 and len(downtrend) == 0:
+            start_index = to_index
+            to_index = start_index + CONST_INDEX_PLUS
+        else:
+            trend, block_num, next_criteria_index = trendy(uptrend, downtrend)
+    if trend is None:
+        raise Exception("can't initialize renko.")
+    
+    global_trend = trend
+    while True:
+        trend, new_brick_num, next_criteria_index = trendy(uptrend, downtrend)        
+        if trend is None:#didn't changed renko value
+            brick_num = total_brick_num_sr.iloc[criteria_index]
+            total_brick_num_sr.iloc[criteria_index:to_index] = brick_num
+            next_criteria_index = criteria_index
+            next_start_index = to_index
+        else:
+            global_trend = trend
+            brick_num = total_brick_num_sr.iloc[criteria_index]
+            if brick_num/trend >= 0:#continuaus trend
+                next_brick_num = brick_num + new_brick_num
+            else:
+                next_brick_num = brick_num + new_brick_num
+
+            total_brick_num_sr.iloc[criteria_index: next_criteria_index] = brick_num
+            total_brick_num_sr.iloc[next_criteria_index] = next_brick_num
+            criteria_index = next_criteria_index
+            next_start_index = next_criteria_index + 1
+            
+        if next_start_index < len(sr):
+            to_index = next_start_index + CONST_INDEX_PLUS
+            if to_index > len(sr):
+                to_index = len(sr)
+
+            current_criteria = sr.iloc[next_criteria_index]
+            temp_brick_num_sr = get_check_df(sr, brick_size, next_start_index, to_index, current_criteria)
+            brick_value_sr.iloc[next_start_index:to_index] = temp_brick_num_sr
+            uptrend = temp_brick_num_sr[temp_brick_num_sr >=  -global_trend/2 + 3/2]
+            downtrend = temp_brick_num_sr[temp_brick_num_sr <= -global_trend/2 - 3/2]
+        else:
+            break
+    #total_brick_num_sr.index = org_index
+    renko_df = pd.DataFrame.from_dict({TOTAL_BRICK_NUM_KEY:total_brick_num_sr, BRICK_NUM_KEY:brick_value_sr})
+    renko_df.index = org_index
     return renko_df
 
-def renko_time_scale(DF: pd.DataFrame, date_column = "Timestamp", ohlc_columns = ('Open', 'High', 'Low', 'Close'), is_date_index=False, window=120):
-    "function to merging renko df with original ohlc df"
-    df = copy.deepcopy(DF)
-    if is_date_index:
-        if type(date_column) != str:
-            date_column = "time"
-        df[date_column] = df.index
-    else:
-        if type(date_column) != str or date_column not in DF:
-            raise Exception("datetime index or columns is required to scale renko result to the datetime.")
-    renko = renko_from_ohlc(df, ohlc_columns=ohlc_columns, date_column=date_column, atr_length=window)
-    #merged_df = df.merge(renko.loc[:,[date_column, "uptrend", "bar_num"]], how="outer",on=date_column)
-    merged_df = df.merge(renko.loc[:,[date_column, "uptrend", "bar_num"]], how="outer",on=date_column)
-    merged_df["bar_num"].fillna(method='ffill',inplace=True)
-    merged_df["uptrend"].fillna(method='ffill',inplace=True)
-    return merged_df
+def RenkoFromOHLC(df:pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), brick_column_name=None, brick_size=None):
+    """ Caliculate Renko from Close column of ohlc dataframe
 
-def slope(ser: pd.Series, window):
-    "function to calculate the slope of n consecutive points on a plot"
+    Args:
+        df (pd.DataFrame): time series data of Open, High, Low and Close
+        ohlc_columns (tuple, optional): columns names of OHLC. Defaults to ('Open', 'High', 'Low', 'Close').
+        brick_column_name (str, optional): column name of brick_size. Defaults to None.
+        brick_size (pd.Series|float, optional): brick_size to caliculate the Renko. If None, ATR is used. Defaults to None.
+
+    Raises:
+        Exception: When ohlc_columns is not a subset of df.columns
+
+    Returns:
+        pd.DataFrame: brick numbers are stored on brick_num column
+    """
+    if(set(ohlc_columns).issubset(df.columns)):
+        if brick_size is None:
+            if brick_column_name is None:
+                atr_df = ATRFromOHLC(df, ohlc_columns)
+                brick_size = atr_df["ATR"]
+            else:
+                brick_size = df[brick_column_name]
+            renko_df = RenkoFromSeries(df[ohlc_columns[3]], brick_size=brick_size)
+        else:
+            renko_df = RenkoFromSeries(df[ohlc_columns[3]], brick_size=brick_size)
+        return renko_df
+    else:
+        raise Exception(f"specified ohlc_columns {ohlc_columns} doen't match with df.columns {df.columns}")
+
+def RenkoFromMultiOHLC(symbols:list, dfs:pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Close'), brick_column_name=None, brick_size=None, grouped_by_symbol=False):
+    """Caliculate Renko from Close column of ohlc dataframe of symbols
+
+    Args:
+        symbols (list): list of symbol names. It should match with column name of dfs
+        dfs (pd.DataFrame): ohlc data of symbols.
+        ohlc_columns (tuple, optional): columns names of OHLC. Defaults to ('Open', 'High', 'Low', 'Close').
+        brick_column_name (str, optional): column name of brick_size. Defaults to None.
+        brick_size (pd.DataFrame|float, optional): brick_size to caliculate the Renko. If None, ATR is used. Defaults to None.
+        grouped_by_symbol (bool, optional): Flag for group handling of Input and Output. Defaults to False.
+
+    Raises:
+        Exception: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    is_series_brick = False
+    if brick_size is None:
+        if brick_column_name is None:
+            atr_dfs = ATRFromMultiOHLC(symbols, dfs, ohlc_columns, grouped_by_symbol=grouped_by_symbol)
+            if grouped_by_symbol:
+                brick_sizes = atr_dfs[[(symbol, "ATR") for symbol in symbols]]
+                brick_sizes.columns = symbols
+            else:
+                brick_sizes = atr_dfs["ATR"]
+            is_series_brick = True
+        else:
+            if type(brick_column_name) is str:
+                if grouped_by_symbol:
+                    brick_sizes = dfs[[(symbol, brick_column_name) for symbol in symbols]]
+                else:
+                    brick_sizes = dfs[brick_column_name]
+                is_series_brick = True
+            else:
+                raise Exception(f"brick_column_name should be str. {type(brick_column_name)} is provided.")
+    DFS = {}
+    if grouped_by_symbol:
+        for symbol in symbols:
+            if is_series_brick:
+                DFS[symbol] = RenkoFromOHLC(dfs[symbol], ohlc_columns, brick_size=brick_sizes[symbol])
+            else:
+                DFS[symbol] = RenkoFromOHLC(dfs[symbol], ohlc_columns, brick_size=brick_size)
+    else:
+        for symbol in symbols:
+            _ohlc_columns = [(column, symbol) for column in ohlc_columns]
+            ohlc_df = dfs[_ohlc_columns]
+            if is_series_brick:
+                DFS[symbol] = RenkoFromOHLC(ohlc_df, _ohlc_columns, brick_size=brick_sizes[symbol])
+            else:
+                DFS[symbol] = RenkoFromOHLC(ohlc_df, _ohlc_columns, brick_size=brick_size)
+                
+    RenkoDF = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+    if grouped_by_symbol == False:
+        RenkoDF.columns = RenkoDF.columns.swaplevel(0, 1)
+        RenkoDF.sort_index(level=0, axis=1, inplace=True)
+    #RenkoDF = pd.DataFrame.from_dict(DFS)
+    return RenkoDF
+
+def SlopeFromSeries(ser: pd.Series, window: int):
+    """function to calculate the slope of n consecutive points on a plot
+
+    Args:
+        ser (pd.Series): time series data
+        window (int): window size for the slope
+
+    Returns:
+        pd.Series: slope values
+    """
     slopes = [0 for i in range(window-1)]
     for i in range(window, len(ser)+1):
         y = ser.iloc[i-window:i]
@@ -365,19 +677,48 @@ def slope(ser: pd.Series, window):
         results = model.fit()
         slopes.append(results.params[-1])
     slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
-    return pd.Series({"slope":np.array(slope_angle)})
+    return pd.Series(np.array(slope_angle))
 
-def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')) -> pd.Series:
-    """ represents how much close value is far from mean value. If over 100, strong long trend for example.
+def SlopeFromOHLC(ohlc_df: pd.DataFrame, window: int, column="Close"):
+    """function to calculate the slope of n consecutive points on a plot
 
     Args:
-        ohlc (pd.DataFrame): Open High Low Close values
-        window (int, optional): window size to caliculate EMA. Defaults to 14.
-        ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
+        ser (pd.DataFrame): OHLC time series data of a symbol
+        window (int): window size for the slope
+        column (str): target column name
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame: slope value on Slope column
     """
+    slope_sr = SlopeFromSeries(ohlc_df[column], window)
+    return pd.DataFrame(slope_sr, columns=["Slope"])
+
+def SlopeFromOHLCMulti(symbols:list, ohlc_dfs: pd.DataFrame, window: int, column:str="Close", grouped_by_sygnal:bool=False):
+    """function to calculate the slope of n consecutive points on a plot
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        ser (pd.DataFrame): OHLC time series data of symbols
+        window (int): window size for the slope
+        column (str): target column name
+        grouped_by_symbol (bool, optional): Flag for group handling of Input and Output. Defaults to False.
+        
+    Returns:
+        pd.DataFrame: slope value on Slope column
+    """
+    DFS = {}
+    if grouped_by_sygnal:
+        for symbol in symbols:
+            DFS[symbol] = SlopeFromOHLC(ohlc_dfs, window, (symbol, column))
+    else:
+        for symbol in symbols:
+            DFS[symbol] = SlopeFromOHLC(ohlc_dfs, window, (column, symbol))
+    slope_dfs = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+    if grouped_by_sygnal == False:
+        slope_dfs.columns = slope_dfs.columns.swaplevel(0, 1)
+    return slope_dfs
+
+def __CCI(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')):
     close_column = ohlc_columns[3]
     low_column = ohlc_columns[2]
     high_column = ohlc_columns[1]
@@ -386,4 +727,43 @@ def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open
     ma = EMA(ohlc[close_column], window)
     md = (tp - ma).std()
     cci = (tp-ma) / (0.015 * md)
+    return cci
+
+def CommodityChannelIndex(ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close')) -> pd.DataFrame:
+    """ represents how much close value is far from mean value. If over 100, strong long trend for example.
+
+    Args:
+        ohlc (pd.DataFrame): Open High Low Close values
+        window (int, optional): window size to caliculate EMA. Defaults to 14.
+        ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
+
+    Returns:
+        pd.DataFrame: CCI value on CCI column
+    """
+    cci = __CCI(ohlc, window, ohlc_columns)
+    return pd.DataFrame(cci, columns=["CCI"])
+
+def CommodityChannelIndexMulti(symbols:list, ohlc: pd.DataFrame, window = 14, ohlc_columns = ('Open', 'High', 'Low', 'Close'), grouped_by_sygnal:bool=False) -> pd.DataFrame:
+    """ represents how much close value is far from mean value. If over 100, strong long trend for example.
+
+    Args:
+        symbols (list<str>): symbol list. Each element should match with column.
+        ohlc (pd.DataFrame): Open High Low Close values
+        window (int, optional): window size to caliculate EMA. Defaults to 14.
+        ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
+        grouped_by_symbol (bool, optional): Flag for group handling of Input and Output. Defaults to False.
+
+    Returns:
+        pd.DataFrame: CCI value on CCI column
+    """
+    if grouped_by_sygnal:
+        ohlc = ohlc.copy()
+        ohlc.columns = ohlc.columns.swaplevel(0, 1)
+
+    cci = __CCI(ohlc, window, ohlc_columns)
+    cci.columns = pd.MultiIndex.from_tuples([("CCI", symbol) for symbol in symbols])
+    
+    if grouped_by_sygnal:
+        cci.columns = cci.columns.swaplevel(0, 1)
+    
     return cci

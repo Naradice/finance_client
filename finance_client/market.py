@@ -1,33 +1,52 @@
-from asyncio.log import logger
 from time import sleep
+from turtle import position
 import uuid
 import datetime
 import json
 import os
 from logging import getLogger, config
 import json
+import pickle
 
 class Position:
-    id = uuid.uuid4()
     
-    def __init__(self, order_type:str, symbol:str, price:float, amount: float,  tp:float, sl:float, option, result):
+    def __init__(self, order_type:str, symbol:str, price:float, amount: float,  tp:float, sl:float, option, result, id=None):
+        if id is None:
+            self.id = str(uuid.uuid4())
+        else:
+            self.id = id
         self.order_type = order_type
         self.price = price
         self.amount = amount
         self.option = option
+        if option == "null":
+            self.option = None
         self.result = result
+        if result == "null":
+            self.result = None
         self.symbol = symbol
         self.tp = tp
+        if tp == "null":
+            self.tp = None
         self.sl = sl
-        self.timestamp = datetime.datetime.now()
+        if sl == "null":
+            self.sl = None
+        self.timestamp = datetime.datetime.utcnow()
         
     def __str__(self) -> str:
         return f'(order_type:{self.order_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol})'
     
+    def to_dict(self):
+        return {"order_type": self.order_type, "price":self.price, "amount":self.amount, "option": json.dumps(self.option), 
+             "result": json.dumps(self.result), "symbol":self.symbol,
+             "tp":self.tp, "sl":self.sl, "timestamp":self.timestamp.isoformat(),
+             "id": self.id
+             }
 
 class Manager:
     
     positions = {
+        "budget": 0,
         "ask": {},
         "bid": {}
     }
@@ -38,10 +57,45 @@ class Manager:
     }
     
     listening_positions = {}
+
+    file_path = f'{os.getcwd()}/positions.json'
     
-    __locked = False
+    def __initialize_positions(self):
+        if os.path.exists(self.file_path):
+            with open(self.file_path, mode="r") as fp:
+                _positions = json.load(fp)
+                
+            budget = _positions["budget"]
+            self.positions["budget"] = budget
+            long_position_list = _positions["ask"]
+            short_position_list = _positions["bid"]
+            
+            for _position in long_position_list:
+                position = Position(_position["order_type"], _position["symbol"], _position["price"], _position["amount"], _position["tp"], _position["sl"], _position["option"], _position["result"], _position["id"])
+                self.positions["ask"][position.id] = position
+                if position.tp is not None or position.sl is not None:
+                    self.listening_positions[position.id] = position
+                    
+            for _position in short_position_list:
+                position = Position(_position["order_type"], _position["symbol"], _position["price"], _position["amount"], _position["tp"], _position["sl"], _position["option"], _position["result"], _position["id"])
+                self.positions["bid"][position.id] = position
+                if position.tp is not None or position.sl is not None:
+                    self.listening_positions[position.id] = position
+                
+                    
+    def __save_positions(self):
+        print(self.positions)
+        _position = {
+            "budget": self.positions["budget"],
+            "ask": [ self.positions["ask"][position_id].to_dict() for position_id in self.positions["ask"]],
+            "bid": [self.positions["bid"][position_id].to_dict() for position_id in self.positions["bid"]]
+        }
+        with open(self.file_path, mode="w") as fp:
+            json.dump(_position, fp)
     
-    def __init__(self, budget, provider="Default", logger = None):
+    def __init__(self, budget, provider="Default", logger = None):        
+        self.__locked = False
+        self.__initialize_positions()
         dir = os.path.dirname(__file__)
         try:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
@@ -67,7 +121,7 @@ class Manager:
         else:
             self.logger = logger
             
-        self.budget = budget
+        self.positions["budget"] = budget
         self.__start_budget = budget
         
         providers = settings["providers"]
@@ -85,10 +139,9 @@ class Manager:
     def initialize_budget(self, budget=None):
         if budget == None:
             budget = self.__start_budget
-        self.budget = budget
+        self.positions["budget"] = budget
         self.__start_budget = budget
         self.logger.info(f"MarketManager updated budget to {budget}")
-        
 
     def __wait_lock(self):
         while self.__locked:
@@ -105,25 +158,31 @@ class Manager:
                 raise Exception("unkown order_type: {order_type}")
         else:
             raise Exception(f"order_type should be specified: {order_type}")
-    
+        
+    def __store_position(self, position):
+        self.positions[position.order_type][position.id] = position
+        self.logger.debug(f"position is stored: {position}")
+        #insert position info to file
+        self.__save_positions()
+            
     def open_position(self, order_type:str, symbol:str, price:float, amount: float, tp=None, sl=None, option = None, result=None):
         order_type = self.__check_order_type(order_type)
         ## check if budget has enough amount
         required_budget = self.trade_unit * amount * price
         ## if enough, add position
-        if required_budget <= self.budget:
+        budget = self.positions["budget"]
+        if required_budget <= budget:
             position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
-            self.positions[order_type][position.id] = position
-            self.logger.debug(f"position is stored: {position}")
             ## then reduce budget
-            self.budget = self.budget - required_budget
+            self.positions["budget"] = budget - required_budget
+            self.__store_position(position)
             ## check if tp/sl exists
             if tp is not None or sl is not None:
                 self.listening_positions[position.id] = position
                 self.logger.debug(f"position is stored to listening list")
             return position
         else:
-            logger.info(f"current budget {self.budget} is less than required {required_budget}")
+            self.logger.info(f"current budget {budget} is less than required {required_budget}")
             
     def get_position(self, id):
         if id in self.positions["ask"]:
@@ -131,7 +190,6 @@ class Manager:
         elif id in self.positions["bid"]:
             return self.positions["bid"][id]
         return None
-            
     
     def get_open_positions(self, order_type:str = None) -> list:
         positions = []
@@ -150,7 +208,7 @@ class Manager:
             if amount == None:
                 amount = position.amount
             if position.amount < amount:
-                logger.info(f"specified amount is greater than position. use position value. {position.amount} < {amount}")
+                self.logger.info(f"specified amount is greater than position. use position value. {position.amount} < {amount}")
                 amount = position.amount
             if position.order_type == "ask":
                 price_diff = (price - position.price)
@@ -170,20 +228,21 @@ class Manager:
                         position.amount = position.amount - amount
                         self.positions[position.order_type][position.id] = position
                     self.logger.info(f"closed result:: profit {profit}, return_budget: {return_budget}")
-                    self.budget += return_budget
+                    self.positions["budget"] += return_budget
                     self.__locked = False
+                    self.__save_positions()
                     return price, position.price, price_diff, profit
                 else:
                     self.__locked = False
-                    logger.info("info: positionis already removed.")
+                    self.logger.info("info: positionis already removed.")
                     
                 ## remove position from listening
                 if position.id in self.listening_positions:
                     self.listening_positions.pop(position.id)
             else:
-                logger.debug("lock returned false somehow.")
+                self.logger.debug("lock returned false somehow.")
         else:
-            logger.warning(f"position amount is invalid: {position.amount}")
+            self.logger.warning(f"position amount is invalid: {position.amount}")
                 
     def check_order_in_tick(ask:float, bid:float):
         pass

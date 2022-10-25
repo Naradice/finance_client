@@ -215,7 +215,7 @@ class Client:
                 
         if type(date_data) != type(None):
             data_cp[date_column] = date_data
-        data_cp = data_cp.dropna(how = 'any')
+        #data_cp = data_cp.dropna(how = 'any')
         return data_cp
     
     def have_process(self, process: utils.ProcessBase):

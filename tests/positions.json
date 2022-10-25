@@ -1,0 +1,18 @@
+{
+    "budget": 999998.8809198409,
+    "ask": [
+        {
+            "order_type": "ask",
+            "price": 111.90801590611227,
+            "amount": 1,
+            "option": "null",
+            "result": "null",
+            "symbol": "USDJPY",
+            "tp": null,
+            "sl": null,
+            "timestamp": "2022-10-20T11:15:39.439585",
+            "id": "c1deff02-cef7-47ab-84a4-14c10d5c4318"
+        }
+    ],
+    "bid": []
+}

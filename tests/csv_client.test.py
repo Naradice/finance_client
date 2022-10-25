@@ -21,10 +21,11 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/csv/bitcoin_5_2017T0710-2021T103022.csv'))
+csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/csv/USDJPY_forex_min5.csv'))
+time_column = "Time"
 
 class TestCSVClient(unittest.TestCase):
-    client = CSVClient(file=csv_file, logger=logger)
+    client = CSVClient(file=csv_file, logger=logger, date_column=time_column)
     
     def test_get_rates(self):
         length = 10
@@ -42,7 +43,7 @@ class TestCSVClient(unittest.TestCase):
         
     def test_get_30min_rates(self):
         length = 10
-        client  = CSVClient(file=csv_file, out_frame=30, logger=logger)
+        client  = CSVClient(file=csv_file, frame=Frame.MIN5, logger=logger, date_column=time_column)
         rates = client.get_rates(length)
         self.assertEqual(len(rates.Close), length)
     
@@ -51,7 +52,7 @@ class TestCSVClient(unittest.TestCase):
         bband = utils.BBANDpreProcess()
         macd = utils.MACDpreProcess()
         processes = [bband, macd]
-        client = CSVClient(file=csv_file, out_frame=Frame.MIN5, idc_processes=processes, logger=logger)
+        client = CSVClient(file=csv_file, frame=Frame.MIN5, idc_processes=processes, logger=logger, date_column=time_column)
         data = client.get_rate_with_indicaters(length)
         print(data.columns)
         self.assertEqual(len(data.Close), length)
@@ -61,7 +62,7 @@ class TestCSVClient(unittest.TestCase):
         bband = utils.BBANDpreProcess()
         macd = utils.MACDpreProcess()
         processes = [bband, macd]
-        client = CSVClient(file=csv_file, out_frame=Frame.MIN5, idc_processes=processes, logger=logger)
+        client = CSVClient(file=csv_file, frame=Frame.MIN5, idc_processes=processes, logger=logger, date_column=time_column)
         data = client.get_rate_with_indicaters(length)
         print(data.columns)
         self.assertEqual(len(data.Close), length)
@@ -72,13 +73,13 @@ class TestCSVClient(unittest.TestCase):
         macd = utils.MACDpreProcess()
         processes = [bband, macd]
         post_prs = [utils.DiffPreProcess(), utils.MinMaxPreProcess()]
-        client = CSVClient(file=csv_file, out_frame=Frame.MIN5, idc_processes=processes, post_process=post_prs ,logger=logger)
+        client = CSVClient(file=csv_file, frame=Frame.MIN5, idc_processes=processes, post_process=post_prs ,logger=logger, date_column=time_column)
         data = client.get_rate_with_indicaters(length)
         print(data)
         self.assertEqual(len(data.Close), length)
         
     def test_get_diffs_minmax(self):
-        client = CSVClient(file=csv_file, out_frame=Frame.MIN5, logger=logger)
+        client = CSVClient(file=csv_file, frame=Frame.MIN5, logger=logger, date_column=time_column)
         diffs = client.get_diffs()
         self.assertEqual(sum(diffs), 0)
         diffs_mm = client.get_diffs_with_minmax()
