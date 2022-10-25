@@ -373,7 +373,7 @@ def ATRFromOHLC(data: pd.DataFrame, ohlc_columns = ('Open', 'High', 'Low', 'Clos
     #df["ATR"] = df["TR"].ewm(span=window, adjust=False).mean()#removed min_periods=window option
     df["ATR"] = EMA(df["TR"], interval=window)
     #df["ATR"] = df["TR"].rolling(window=n).mean()
-    return df["ATR"]
+    return df
 
 def update_ATR(pre_data:pd.Series, new_data: pd.Series, ohlc_columns = ('Open', 'High', 'Low', 'Close'), atr_column = 'ATR', window = 14):
     """ latest caliculate atr
