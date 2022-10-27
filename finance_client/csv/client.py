@@ -250,7 +250,7 @@ class CSVClient(Client):
     def update_rates(self) -> bool:
         return False
     
-    def get_rates_from_client(self, interval=1):
+    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
         if interval is None:
             self.update_rates()
             rates = self.data.copy()
@@ -270,12 +270,12 @@ class CSVClient(Client):
                     self.logger.error(e)
             else:
                 if self.update_rates():
-                    self.get_rates_from_client(interval)
+                    self.get_rates_from_client(symbols, interval, frame)
                 else:
                     if self.__auto_refresh:
                         self.__step_index = random.randint(0, len(self.data))
                         ## raise index change event
-                        return self.get_rates_from_client(interval)
+                        return self.get_rates_from_client(symbols, interval, frame)
                     else:
                         self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()

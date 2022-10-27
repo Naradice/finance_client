@@ -5,7 +5,6 @@ class Ticker():
     public API
     get latest tick
     '''
-    AVAILABLE_PAIRS = ['btc_jpy', 'plt_jpy']
     
     def __init__(self) -> None:
         self.baseUrl = '/api/ticker'

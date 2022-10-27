@@ -184,9 +184,12 @@ class CoinCheckClient(Client):
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, interval:int):
+    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
         if interval is None:
-            return self.data.copy()
+            if self.__return_intermidiate_data:
+                return pd.concat([self.data, self.frame_ohlcv])
+            else:
+                return self.data.copy()
         elif interval > 0:
             if self.__return_intermidiate_data:
                 return pd.concat([self.data, self.frame_ohlcv]).iloc[-interval:]

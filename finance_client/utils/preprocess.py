@@ -105,7 +105,7 @@ class MinMaxPreProcess(ProcessBase):
     
     kinds = 'MiniMax'
     
-    def __init__(self, key: str='minmax', scale=(-1, 1), params:dict=None, entire_mode=False, columns_to_ignore=[]):
+    def __init__(self, key: str='minmax', scale=(-1, 1), init_params:dict=None, columns_to_ignore=[]):
         """Apply minimax for each column of data.
         Note that if params are not specified, mini max values are detected by data on running once only.
         So if data is partial data, mini max values will be not correct.
@@ -113,21 +113,21 @@ class MinMaxPreProcess(ProcessBase):
         Args:
             key (str, optional): identification of this process. Defaults to 'minmax'.
             scale (tuple, optional): minimax scale. Defaults to (-1, 1).
-            params (dict, optional): {column_name: (min, max)}. Defaults to None and caliculate by provided data when run this process.
-            entire_mode (bool, optional): caliculate min/max from entire data (all columns). Defaults to False
+            init_params (dict, optional): {column_name: (min, max)}. Defaults to None and caliculate by provided data when run this process.
             columns_to_ignore (list, optional): specify column to ignore applying minimax or revert process. Defaults to []
         """
         self.option = {}
         self.option['scale'] = scale
-        self.option['entire_mode'] = entire_mode
         if type(columns_to_ignore) is str:
             columns_to_ignore = [columns_to_ignore]
         self.option['columns_to_ignore'] = columns_to_ignore
         self.entire_mode_column = '__minmax'
         self.columns = []
-        if type(params) == dict:
-            self.option.update(params)
         super().__init__(key)
+        self.initialization_required = True
+        if type(init_params) == dict:
+            self.option.update(init_params)
+            self.initialization_required = False
         
     @classmethod
     def load(self, key:str, params:dict):
@@ -141,12 +141,14 @@ class MinMaxPreProcess(ProcessBase):
         process = MinMaxPreProcess(key, scale, option)
         return process
     
+    def initialize(self, data: pd.DataFrame):
+        self.run(data)
+    
     def run(self, data: pd.DataFrame) -> dict:
         columns = list(set(data.columns) - set(self.option['columns_to_ignore']))
         self.columns = columns
         
         result = {}
-        e_mode = self.option['entire_mode']
         option = self.option
         if 'scale' in option:
             scale = option['scale']
@@ -154,26 +156,15 @@ class MinMaxPreProcess(ProcessBase):
             scale = (-1, 1)
             self.option['scale'] = scale
             
-        if e_mode:
-            if self.entire_mode_column in self.option:
-                _min, _max = self.option[self.entire_mode_column]
-            else:
-                _min = data.min().min()
-                _max = data.max().max()                
-                self.option[self.entire_mode_column] = (_min, _max)
-            #return standalization.mini_max(data, _min, _max, scale)#return dict...
-            for column in columns:
+        for column in columns:
+            if column in self.option:
+                _min, _max = self.option[column]
                 result[column], _, _ = standalization.mini_max_from_series(data[column], scale, (_min, _max))
-        else:
-            for column in columns:
-                if column in self.option:
-                    _min, _max = self.option[column]
-                    result[column], _, _ = standalization.mini_max_from_series(data[column], scale, (_min, _max))
-                else:
-                    result[column], _max, _min =  standalization.mini_max_from_series(data[column], scale)
-                    if column not in self.option:
-                        #if type(_max) != pd.Timestamp:
-                        self.option[column] = (_min, _max)
+            else:
+                result[column], _max, _min =  standalization.mini_max_from_series(data[column], scale)
+                if column not in self.option:
+                    #if type(_max) != pd.Timestamp:
+                    self.option[column] = (_min, _max)
         return result
     
     def update(self, tick:pd.Series, do_update_minmax=True):
@@ -277,6 +268,6 @@ class MinMaxPreProcess(ProcessBase):
                     return result
                 else:
                     raise Exception("number of data is different. row data or columns with same length data is supported for list")
-            
+
 class STDPreProcess(ProcessBase):
     pass

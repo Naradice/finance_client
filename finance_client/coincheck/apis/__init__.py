@@ -13,6 +13,6 @@ from finance_client.coincheck.apis.transfer import Transfer
 from finance_client.coincheck.apis.withdraw import Withdraw
 from finance_client.coincheck.apis.ws import TradeHistory, Orders
 from finance_client.coincheck.apis.order import *
-##TODO: make classes to one file
-###Done
-#from finance_client.coincheck.apis.order import Order
+
+AVAILABLE_PAIRS = ["btc_jpy" "etc_jpy" "mona_jpy" "plt_jpy" "lsk_jpy" "omg_jpy"]
+##TODO: make classes one file

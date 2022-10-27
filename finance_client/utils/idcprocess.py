@@ -55,6 +55,11 @@ class MACDpreProcess(ProcessBase):
     kinds = 'MACD'
     last_data = None
     
+    KEY_SHORT_EMA = 'S_EMA'
+    KEY_LONG_EMA = 'L_EMA'
+    KEY_MACD = 'MACD'
+    KEY_SIGNAL = 'Signal'
+    
     def __init__(self, key='macd', target_column = "Close", short_window=12, long_window=26, signal_window = 9, option=None, is_input=True, is_output=True):
         super().__init__(key)
         self.option = {
@@ -67,7 +72,7 @@ class MACDpreProcess(ProcessBase):
         if option != None:
             self.option.update(option)
         self.columns = {
-            'S_EMA': f'{key}_S_EMA', 'L_EMA':f'{key}_L_EMA', 'MACD':f'{key}_MACD', 'Signal':f'{key}_Signal'
+            self.KEY_SHORT_EMA: f'{key}_S_EMA', self.KEY_LONG_EMA:f'{key}_L_EMA', self.KEY_MACD:f'{key}_MACD', self.KEY_SIGNAL:f'{key}_Signal'
         }
         self.is_input = is_input
         self.is_output = is_output
@@ -85,49 +90,54 @@ class MACDpreProcess(ProcessBase):
         macd = MACDpreProcess(key, option=option, is_input=is_input, is_output=is_out)
         return macd
         
-
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         target_column = option['column']
         short_window = option['short_window']
         long_window = option['long_window']
         signal_window = option['signal_window']
         
-        macd_df = indicaters.MACDFromOHLC(data, target_column, short_window, long_window, signal_window)
-        idc_columns = ["ShortEMA", "LongEMA", "MACD", "Signal"]
+        cs_ema = self.columns[self.KEY_SHORT_EMA]
+        cl_ema = self.columns[self.KEY_LONG_EMA]
+        c_macd = self.columns[self.KEY_MACD]
+        c_signal = self.columns[self.KEY_SIGNAL]
         
-        cs_ema = self.columns['S_EMA']
-        cl_ema = self.columns['L_EMA']
-        c_macd = self.columns['MACD']
-        c_signal = self.columns['Signal']
+        if type(symbols) == list and len(symbols) > 0:
+            macd_df = indicaters.MACDFromOHLCMulti(symbols, data, target_column, short_window, long_window, signal_window, grouped_by_symbol,
+                                                   short_ema_name=cs_ema, long_ema_name=cl_ema, macd_name=c_macd, signal_name=c_signal)
+        else:
+            macd_df = indicaters.MACDFromOHLC(data, target_column, short_window, long_window, signal_window,
+                                              short_ema_name=cs_ema, long_ema_name=cl_ema, macd_name=c_macd, signal_name=c_signal)
         
         self.last_data = macd_df.iloc[-self.get_minimum_required_length():]
-        return {cs_ema:macd_df[idc_columns[0]], cl_ema: macd_df[idc_columns[1]], c_macd:macd_df[idc_columns[2]], c_signal:macd_df[idc_columns[3]]}
+        return macd_df
     
-    def update(self, tick:pd.Series):
-        option = self.option
-        target_column = option['column']
-        short_window = option['short_window']
-        long_window = option['long_window']
-        signal_window = option['signal_window']
-        
-        idc_columns = ["ShortEMA", "LongEMA", "MACD", "Signal"]
-        cs_ema = self.columns['S_EMA']
-        cl_ema = self.columns['L_EMA']
-        c_macd = self.columns['MACD']
-        c_signal = self.columns['Signal']
-        
-        
-        short_ema, long_ema, MACD = indicaters.update_macd(
-            new_tick=tick,
-            short_ema_value=self.last_data[idc_columns[0]].iloc[-1],
-            long_ema_value=self.last_data[idc_columns[1]].iloc[-1],
-            column=target_column, short_window = short_window, long_window = long_window)
-        Signal = (self.last_data[idc_columns[2]].iloc[-signal_window + 1:].sum() + MACD)/signal_window
-        
-        new_data = pd.Series({cs_ema:short_ema, cl_ema: long_ema, c_macd:MACD, c_signal:Signal})
-        self.last_data = self.concat(self.last_data.iloc[1:], new_data)
-        return new_data
+    def update(self, symbols:list, tick:pd.Series):
+        if type(symbols) == list and len(symbols) > 0:
+            print("update is not implemented for multi symbols yet")
+        else:
+            option = self.option
+            target_column = option['column']
+            short_window = option['short_window']
+            long_window = option['long_window']
+            signal_window = option['signal_window']
+            
+            cs_ema = self.columns[self.KEY_SHORT_EMA]
+            cl_ema = self.columns[self.KEY_LONG_EMA]
+            c_macd = self.columns[self.KEY_MACD]
+            c_signal = self.columns[self.KEY_SIGNAL]
+            
+            
+            short_ema, long_ema, MACD = indicaters.update_macd(
+                new_tick=tick,
+                short_ema_value=self.last_data[cs_ema].iloc[-1],
+                long_ema_value=self.last_data[cl_ema].iloc[-1],
+                column=target_column, short_window = short_window, long_window = long_window)
+            Signal = (self.last_data[c_macd].iloc[-signal_window + 1:].sum() + MACD)/signal_window
+            
+            new_data = pd.Series({cs_ema:short_ema, cl_ema: long_ema, c_macd:MACD, c_signal:Signal})
+            self.last_data = self.concat(self.last_data.iloc[1:], new_data)
+            return new_data
         
     def get_minimum_required_length(self):
         return self.option["long_window"] + self.option["signal_window"] - 2
@@ -148,6 +158,7 @@ class EMApreProcess(ProcessBase):
     
     kinds = 'EMA'
     last_data = None
+    KEY_EMA = "EMA"
     
     def __init__(self, key='ema', window = 12, column = 'Close', is_input=True, is_output=True, option = None):
         super().__init__(key)
@@ -159,7 +170,7 @@ class EMApreProcess(ProcessBase):
         if option != None:
             self.option.update(option)
         self.columns = {
-            "EMA":f'{key}_EMA'
+            self.KEY_EMA:f'{key}_EMA'
         }
         self.is_input = is_input
         self.is_output = is_output
@@ -173,17 +184,22 @@ class EMApreProcess(ProcessBase):
         indicater = EMApreProcess(key, window=window, column = column, is_input=is_input, is_output=is_out)
         return indicater
 
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         target_column = option['column']
         window = option['window']
         column = self.columns["EMA"]
         
-        ema = indicaters.EMA(data[target_column], window)
-        self.last_data = pd.DataFrame({column:ema}).iloc[-self.get_minimum_required_length():]
-        return {column:ema}
+        if type(symbols) == list and len(symbols) > 0:
+            ema = indicaters.EMAMulti(symbols, data, window, grouped_by_symbol=grouped_by_symbol, ema_name=column)
+        else:
+            ema = indicaters.EMA(data[target_column], window)
+            ema.columns = [column]
+            
+        self.last_data = ema.iloc[-self.get_minimum_required_length():]
+        return ema
     
-    def update(self, tick:pd.Series):
+    def update(self, symbols:list, tick:pd.Series):
         option = self.option
         target_column = option['column']
         window = option['window']
@@ -213,6 +229,10 @@ class BBANDpreProcess(ProcessBase):
     
     kinds = 'BBAND'
     last_data = None
+    KEY_MEAN_VALUE = "MV"
+    KEY_UPPER_VALUE = "UV"
+    KEY_LOWER_VALUE = "LV"
+    KEY_WIDTH_VALUE = "Width"
     
     def __init__(self, key='bolinger', window = 14, alpha=2, target_column = 'Close', is_input=True, is_output=True, option = None):
         super().__init__(key)
@@ -225,10 +245,10 @@ class BBANDpreProcess(ProcessBase):
         if option != None:
             self.option.update(option)
         self.columns = {
-            "MV": f"{key}_MV",
-            "UV": f"{key}_UV",
-            "LV": f"{key}_LV",
-            "Width": f"{key}_Width"
+            self.KEY_MEAN_VALUE: f"{key}_MV",
+            self.KEY_UPPER_VALUE: f"{key}_UV",
+            self.KEY_LOWER_VALUE: f"{key}_LV",
+            self.KEY_WIDTH_VALUE: f"{key}_Width"
         }
         self.is_input = is_input
         self.is_output = is_output
@@ -242,23 +262,27 @@ class BBANDpreProcess(ProcessBase):
         is_out = params["output"]
         return BBANDpreProcess(key, window, alpha, column, is_input, is_out)
     
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         target_column = option['column']
         window = option['window']
         alpha = option['alpha']
-        idc_columns = ("B_MA", "B_High", "B_Low", "B_Width", "B_Std")
-        bb_df = indicaters.BolingerFromOHLC(data, target_column, window=window, alpha=alpha)
+        c_ema = self.columns[self.KEY_MEAN_VALUE]
+        c_ub = self.columns[self.KEY_UPPER_VALUE]
+        c_lb = self.columns[self.KEY_LOWER_VALUE]
+        c_width = self.columns[self.KEY_WIDTH_VALUE]
         
-        c_ema = self.columns['MV']
-        c_ub = self.columns['UV']
-        c_lb = self.columns['LV']
-        c_width = self.columns['Width']
+        if type(symbols) == list and len(symbols) > 0:
+            bb_df = indicaters.BolingerFromOHLCMulti(symbols, data, window=window, alpha=alpha, grouped_by_symbol=grouped_by_symbol,
+                                                mean_name=c_ema, upper_name=c_ub, lower_name=c_lb, width_name=c_width, std_name=None)
+        else:
+            bb_df = indicaters.BolingerFromOHLC(data, target_column, window=window, alpha=alpha,
+                                                mean_name=c_ema, upper_name=c_ub, lower_name=c_lb, width_name=c_width, std_name=None)
         
         self.last_data = bb_df.iloc[-self.get_minimum_required_length():]
-        return {c_ema:bb_df[idc_columns[0]], c_ub: bb_df[idc_columns[1]], c_lb:bb_df[idc_columns[2]], c_width:bb_df[idc_columns[3]]}
+        return bb_df
     
-    def update(self, tick:pd.Series):
+    def update(self, symbols:list, tick:pd.Series):
         option = self.option
         target_column = option['column']
         window = option['window']
@@ -275,10 +299,10 @@ class BBANDpreProcess(ProcessBase):
         new_lb = new_sma - alpha * std
         new_width = alpha*2*std
         
-        c_ema = self.columns['MV']
-        c_ub = self.columns['UV']
-        c_lb = self.columns['LV']
-        c_width = self.columns['Width']
+        c_ema = self.columns[self.KEY_MEAN_VALUE]
+        c_ub = self.columns[self.KEY_UPPER_VALUE]
+        c_lb = self.columns[self.KEY_LOWER_VALUE]
+        c_width = self.columns[self.KEY_WIDTH_VALUE]
         
         new_data = pd.Series({c_ema:new_sma, c_ub: new_ub, c_lb:new_lb, c_width:new_width, target_column: tick[target_column]})
         self.last_data = self.concat(self.last_data.iloc[1:], new_data)
@@ -295,11 +319,11 @@ class ATRpreProcess(ProcessBase):
     
     kinds = 'ATR'
     last_data = None
-    
-    available_columns = ["ATR"]
+    KEY_ATR = "ATR"
     
     def __init__(self, key='atr', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True, option = None):
         super().__init__(key)
+        self.available_columns = [self.KEY_ATR]
         self.option = {
             "ohlc_column": ohlc_column_name,
             "window": window
@@ -307,7 +331,7 @@ class ATRpreProcess(ProcessBase):
         if option != None:
             self.option.update(option)
 
-        self.columns = {'ATR': f'{key}_ATR'}
+        self.columns = {self.KEY_ATR: f'{key}_ATR'}
         self.is_input = is_input
         self.is_output = is_output
         
@@ -319,24 +343,28 @@ class ATRpreProcess(ProcessBase):
         is_out = params["output"]
         return ATRpreProcess(key, window, columns, is_input, is_out)
 
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         target_columns = option['ohlc_column']
         window = option['window']
+        c_atr = self.columns[self.KEY_ATR]
+            
+        if type(symbols) == list and len(symbols) > 0:
+            atr_df = indicaters.ATRFromMultiOHLC(symbols, data, target_columns, window=window, grouped_by_symbol=grouped_by_symbol,
+                                                 tr_name=None, atr_name=c_atr)
+        else:
+            atr_df = indicaters.ATRFromOHLC(data, target_columns, window=window, tr_name=None, atr_name=c_atr)
+        last_ohlc = data.iloc[-self.get_minimum_required_length():]
+        last_atr = atr_df.iloc[-self.get_minimum_required_length():]
+    
+        self.last_data = pd.concat([last_ohlc, last_atr], axis=1)
+        return atr_df
         
-        atr_series = indicaters.ATRFromOHLC(data, target_columns, window=window)
-        self.last_data = data.iloc[-self.get_minimum_required_length():].copy()
-        last_atr = atr_series.iloc[-self.get_minimum_required_length():].values
-        
-        c_atr = self.columns['ATR']
-        self.last_data[c_atr] = last_atr
-        return {c_atr:atr_series.values}
-        
-    def update(self, tick:pd.Series):
+    def update(self, symbols:list, tick:pd.Series):
         option = self.option
         target_columns = option['ohlc_column']
         window = option['window']
-        c_atr = self.columns['ATR']
+        c_atr = self.columns[self.KEY_ATR]
         
         pre_data = self.last_data.iloc[-1]
         new_atr_value = indicaters.update_ATR(pre_data, tick, target_columns, c_atr, window)
@@ -356,10 +384,14 @@ class RSIpreProcess(ProcessBase):
     
     kinds = 'RSI'
     last_data = None
-    available_columns = ["RSI", "AVG_GAIN", "AVG_LOSS"]
+    
+    KEY_RSI = "RSI"
+    KEY_GAIN = "GAIN"
+    KEY_LOSS = "LOSS"
     
     def __init__(self, key='rsi', window = 14, ohlc_column_name = ('Open', 'High', 'Low', 'Close'), is_input=True, is_output=True, option = None):
         super().__init__(key)
+        self.available_columns = ["RSI", "AVG_GAIN", "AVG_LOSS"]
         self.option = {
             "ohlc_column": ohlc_column_name,
             "window": window
@@ -369,9 +401,9 @@ class RSIpreProcess(ProcessBase):
             self.option.update(option)
 
         self.columns = {
-            "RSI": f'{key}_RSI',
-            "GAIN": f'{key}_AVG_GAIN',
-            "LOSS": f'{key}_AVG_LOSS'
+            self.KEY_RSI: f'{key}_RSI',
+            self.KEY_GAIN: f'{key}_AVG_GAIN',
+            self.KEY_LOSS: f'{key}_AVG_LOSS'
         }
         self.is_input = is_input
         self.is_output = is_output
@@ -384,27 +416,34 @@ class RSIpreProcess(ProcessBase):
         is_out = params["output"]
         return RSIpreProcess(key, window, columns, is_input, is_out)
 
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         target_column = option['ohlc_column'][0]
         window = option['window']
-        c_rsi = self.columns['RSI']
-        c_gain = self.columns['GAIN']
-        c_loss = self.columns['LOSS']
         
-        atr_series = indicaters.RSI_from_ohlc(data, target_column, window=window)
-        atr_series.columns = [c_gain, c_loss, c_rsi]
-        self.last_data = data.iloc[-self.get_minimum_required_length():]
-        self.last_data[c_rsi] = atr_series.iloc[-self.get_minimum_required_length():]
-        return {"atr":atr_series[c_rsi].values}
+        c_rsi = self.columns[self.KEY_RSI]
+        c_gain = self.columns[self.KEY_GAIN]
+        c_loss = self.columns[self.KEY_LOSS]
         
-    def update(self, tick:pd.Series):
+        if type(symbols) == list and len(symbols) > 0:
+            rsi_df = indicaters.RSIFromOHLCMulti(symbols, data, target_column, window=window, grouped_by_symbol=grouped_by_symbol,                                 
+                                                mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi)
+        else:
+            rsi_df = indicaters.RSIFromOHLC(data, target_column, window=window,
+                                                mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi)
+            
+        last_ohlc = data.iloc[-self.get_minimum_required_length():]
+        last_rsi = rsi_df.iloc[-self.get_minimum_required_length():]
+        self.last_data = pd.concat([last_ohlc, last_rsi], axis=1)
+        return rsi_df
+        
+    def update(self,symbols:list, tick:pd.Series):
         option = self.option
         target_column = option['ohlc_column'][0]
         window = option['window']
-        c_rsi = self.columns['RSI']
-        c_gain = self.columns['GAIN']
-        c_loss = self.columns['LOSS']
+        c_rsi = self.columns[self.KEY_RSI]
+        c_gain = self.columns[self.KEY_GAIN]
+        c_loss = self.columns[self.KEY_LOSS]
         columns = (c_gain, c_loss, c_rsi, target_column)
         
         pre_data = self.last_data.iloc[-1]
@@ -439,8 +478,8 @@ class RenkoProcess(ProcessBase):
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
-            'NUM': f'{key}_block_num',
-            "Value": f'{key}_value',
+            self.KEY_BRICK_NUM: f'{key}BrickNum',
+            self.KEY_VALUE: f'{key}Value',
         }
         
     @classmethod
@@ -451,20 +490,23 @@ class RenkoProcess(ProcessBase):
         is_out = params["output"]
         return RenkoProcess(key, columns, window, is_input, is_out)
 
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         ohlc_column = option["ohlc_column"]
         window = option['window']
         TOTAL_BRICK_NUM_KEY = "Renko"
         BRICK_NUM_KEY = "Brick"
         
-        renko_block_num = self.columns["NUM"]
-        renko_value = self.columns["Value"]
+        renko_block_num = self.columns[self.KEY_BRICK_NUM]
+        renko_value = self.columns[self.KEY_VALUE]
+        if type(symbols) == list and len(symbols) > 0:
+            renko_df = indicaters.RenkoFromMultiOHLC(symbols, data, ohlc_columns=ohlc_column, atr_window=window, grouped_by_symbol=grouped_by_symbol,
+                                                     total_brick_name=renko_value, brick_num_name=renko_block_num)
+        else:
+            renko_df = indicaters.RenkoFromOHLC(data, ohlc_columns=ohlc_column, atr_window=window, total_brick_name=renko_value, brick_num_name=renko_block_num)
+        return renko_df
         
-        renko_df = indicaters.RenkoFromOHLC(data, ohlc_columns=ohlc_column)
-        return {renko_block_num:renko_df[BRICK_NUM_KEY], renko_value: renko_df[TOTAL_BRICK_NUM_KEY]}
-        
-    def update(self, tick:pd.Series):
+    def update(self, symbols:list, tick:pd.Series):
         raise Exception("update is not implemented yet on renko process")
         
     def get_minimum_required_length(self):
@@ -477,6 +519,7 @@ class RenkoProcess(ProcessBase):
 class SlopeProcess(ProcessBase):
     
     kinds = "Slope"
+    KEY_SLOPE = "Slope"
     
     def __init__(self, key: str = "slope", target_column = "Close", window = 10, is_input = True, is_output = True, option = None):
         super().__init__(key)
@@ -488,7 +531,7 @@ class SlopeProcess(ProcessBase):
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
-            'Slope': f'{key}_slope'
+            self.KEY_SLOPE: f'{key}_slope'
         }
         
     @classmethod
@@ -499,20 +542,22 @@ class SlopeProcess(ProcessBase):
         is_out = params["output"]
         return SlopeProcess(key, target_column=column, window=window, is_input=is_input, is_output=is_out)
 
-    def run(self, data: pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         option = self.option
         column = option["target_column"]
         window = option['window']
-        idc_out_column = "Slope"
-        out_column = self.columns["Slope"]
+        out_column = self.columns[self.KEY_SLOPE]
         
-        slope_df = indicaters.SlopeFromOHLC(data, window=window, column=column)
+        if type(symbols) == list and len(symbols) > 0:
+            slope_df = indicaters.SlopeFromOHLCMulti(symbols, data, window=window, column=column, grouped_by_sygnal=grouped_by_symbol, slope_name=out_column)
+        else:
+            slope_df = indicaters.SlopeFromOHLC(data, window=window, column=column, slope_name=out_column)
         #slope_df.columns = [out_column]
         #data = pd.concat([data, slope_df], axis=1)
         #return data
-        return {out_column: slope_df[idc_out_column]}
+        return slope_df
         
-    def update(self, tick:pd.Series):
+    def update(self, symbols:list, tick:pd.Series):
         raise Exception("update is not implemented yet on slope process")
         
     def get_minimum_required_length(self):
@@ -525,6 +570,7 @@ class SlopeProcess(ProcessBase):
 class CCIProcess(ProcessBase):
     
     kinds = "CCI"
+    KEY_CCI = "CCI"
     
     def __init__(self, key: str = "cci", window=14, ohlc_column = ('Open', 'High', 'Low', 'Close'), is_input = True, is_output = False, option = None):
         super().__init__(key)
@@ -539,7 +585,7 @@ class CCIProcess(ProcessBase):
         self.is_input = is_input
         self.is_output = is_output
         self.columns = {
-            'CCI': f'{key}_cci'
+            self.KEY_CCI: f'{key}_cci'
         }
 
     @classmethod
@@ -554,20 +600,23 @@ class CCIProcess(ProcessBase):
         cci = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
         return cci
         
-    def run(self, data:pd.DataFrame):
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
         self.data = data
         window = self.options["window"]
         ohlc_column = self.options["ohlc_column"]
         
-        out_column = self.columns["CCI"]
+        out_column = self.columns[self.KEY_CCI]
+        if type(symbols) == list and len(symbols) > 0:
+            cci_df = indicaters.CommodityChannelIndexMulti(symbols, data, window, ohlc_column, grouped_by_sygnal=grouped_by_symbol,
+                                                        cci_name=out_column)
+        else:
+            cci_df = indicaters.CommodityChannelIndex(data, window, ohlc_column, cci_name=out_column)
         
-        cci = indicaters.CommodityChannelIndex(data, window, ohlc_column)
-        
-        return {out_column: cci["CCI"]}
+        return cci_df
     
-    def update(self, tick: pd.Series):
+    def update(self, symbols:list, tick: pd.Series):
         if type(self.data) != type(None):
-            out_column = self.columns["CCI"]
+            out_column = self.columns[self.KEY_CCI]
             self.data = self.concat(self.data, tick)
             cci = self.run(self.data)
             return cci[out_column].iloc[-1]
@@ -587,8 +636,8 @@ class RangeTrendProcess(ProcessBase):
     
     kinds = "rtp"
     available_mode = ["bband"]
-    TREND_KEY = "trend"
-    RANGE_KEY = "range"
+    KEY_TREND = "trend"
+    KEY_RANGE = "range"
     
     def __init__(self, key: str = "rtp", mode="bband", required_columns=[], slope_window=4,use_sample_param=False, is_input=True, is_output=True, option=None):
         """Process to caliculate likelyfood of market state
@@ -609,7 +658,8 @@ class RangeTrendProcess(ProcessBase):
         if mode not in self.available_mode:
             raise ValueError(f"{mode} is not supported. Please specify one of {self.available_mode}")
         self.initialized = False
-        ## params for default. This is caliculated by daily USDJPY. So need to add more samples, or this process must be run with entire data
+        self.initialization_required = True
+        ## params for default. This is caliculated by daily USDJPY.
         self.params = {
             "bband":{
                 "slope_std": 0.193937,
@@ -625,6 +675,7 @@ class RangeTrendProcess(ProcessBase):
             if len(required_columns) > 1:
                 self.options["required_columns"] = required_columns
             self.run = self.__range_trand_by_bb
+            self.initialize = self.__bb_initialization
                 
         if option != None and type(option) == dict:
             self.options.update(option)
@@ -635,11 +686,11 @@ class RangeTrendProcess(ProcessBase):
         self.use_sample_param = use_sample_param
         self.slope_window = slope_window
         self.columns = {
-            self.RANGE_KEY: f'{key}_range',
-            self.TREND_KEY: f'{key}_trend'
+            self.KEY_RANGE: f'{key}_range',
+            self.KEY_TREND: f'{key}_trend'
         }
         
-    def __bb_initialization(self, data:pd.DataFrame):
+    def __bb_initialization(self,symbols:list, data:pd.DataFrame, grouped_by_symbol):
         close_column = None
         if "required_columns" not in self.options:
             default_required_columns = ["bolinger_Width", "bolinger_MV"]
@@ -675,9 +726,13 @@ class RangeTrendProcess(ProcessBase):
                 "slope_std": slope.std()*2,
                 "slope_mean": slope.mean(),
                 "pct_thread":range_possibility_df.std()
-            }
-                
+            } 
         self.initialized = True
+        #common
+        self.initialization_required = False
+    
+    def initialize(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+        pass
     
     def __range_trand_by_bb(self, data:pd.DataFrame, max_period=1, thresh = 0.8):
         #currentry max_period > 1 don't work well
@@ -732,7 +787,7 @@ class RangeTrendProcess(ProcessBase):
         slope = slope.clip(smean-sstd, smean+sstd)
         slope = slope/(smean+sstd)
         
-        return {self.columns[self.RANGE_KEY]:range_possibility_df, self.columns[self.TREND_KEY]:slope}
+        return {self.columns[self.KEY_RANGE]:range_possibility_df, self.columns[self.KEY_TREND]:slope}
 
     @classmethod
     def load(self, key:str, params:dict):
@@ -758,7 +813,7 @@ class RangeTrendProcess(ProcessBase):
 
 ####
 # Not implemented as I can't caliculate required length
-####
+"""
 class RollingProcess(ProcessBase):
     kinds = 'Roll'
     last_tick:pd.DataFrame = None
@@ -789,4 +844,4 @@ class RollingProcess(ProcessBase):
     
     def revert(self, data_set: tuple):
         raise NotImplemented
-    
+"""

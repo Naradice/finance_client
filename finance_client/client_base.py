@@ -11,7 +11,7 @@ import time
 
 class Client:
     
-    def __init__(self, budget=1000000.0, indicater_processes:list=[], post_processes: list=[], frame:int=Frame.MIN5, provider="Default", do_render=True, logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, provider="Default", out_ohlc_columns = ("Open", "High", "Low", "Close"), do_render=True, logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
@@ -49,27 +49,8 @@ class Client:
         else:
             self.logger = logger
             self.market = market.Manager(budget, logger=logger, provider=provider)
-        try:
-            self.frame = int(frame)
-        except Exception as e:
-            self.logger.error(e)
         
-        self.__idc_processes = []
-        self.__additional_length_for_prc = 0
-        self.add_indicaters(indicater_processes)
-        self.__preprocesses = []
-        self.add_preprocesses(post_processes)
-        
-    def initialize_process_params(self):
-        if len(self.__preprocesses) > 0:
-            try:
-                current_all_rates = self.get_rates()
-                ##run process to initialize 
-                self.run_processes(current_all_rates)
-            except Exception as e:
-                self.logger.error(f"error is occured on param initialization of processes")
-                self.logger.error(e)
-                exit()
+        self.out_ohlc_columns = out_ohlc_columns
     
     def initialize_budget(self, budget):
         self.market(budget)
@@ -185,18 +166,25 @@ class Client:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def run_processes(self, data:pd.DataFrame, symbols:list = []) -> pd.DataFrame:
+    def __get_required_length(processes:list) -> int:
+        required_length_list = [0]
+        for process in processes:
+            required_length_list.append(process.get_minimum_required_length())
+        return max(required_length_list)
+    
+    def run_processes(self, data:pd.DataFrame, symbols:list = [], idc_processes = [], pre_processes=[], grouped_by_symbol=False) -> pd.DataFrame:
         """
         Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
         """
         data_cp = data.copy()
         columns_dict = self.get_ohlc_columns()
         date_data = None
+        multi_mode = False
         if len(symbols) > 0:
-            symbols[""]
-        
-        for process in self.__idc_processes:
-            values_dict = process.run(data_cp)
+            multi_mode = True
+                    
+        for process in idc_processes:
+            values_dict = process.run(symbols, data_cp, grouped_by_symbol)
             for column, values in values_dict.items():
                 data_cp[column] = values
         
@@ -208,7 +196,7 @@ class Client:
             columns.remove(date_column)
             data_cp = data_cp[columns]
                     
-        for process in self.__preprocesses:
+        for process in pre_processes:
             values_dict = process.run(data_cp)
             for column, values in values_dict.items():
                 data_cp[column] = values
@@ -217,35 +205,7 @@ class Client:
             data_cp[date_column] = date_data
         #data_cp = data_cp.dropna(how = 'any')
         return data_cp
-    
-    def have_process(self, process: utils.ProcessBase):
-        return process in self.__idc_processes
-        
-    def add_indicater(self, process: utils.ProcessBase):
-        if self.have_process(process) == False:
-            self.__idc_processes.append(process)
-            required_length = process.get_minimum_required_length()
-            if self.__additional_length_for_prc < required_length:
-                self.__additional_length_for_prc = required_length
-        else:
-            self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
-            
-    def add_indicaters(self, processes: list):
-        for process in processes:
-            self.add_indicater(process)
-    
-    def __add_preprocess(self, process: utils.ProcessBase):
-        if self.have_process(process) == False:
-            self.__preprocesses.append(process)
-            additional_length = process.get_minimum_required_length()
-            self.__additional_length_for_prc += additional_length
-        else:
-            self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
-    
-    def add_preprocesses(self, processes: list):
-        for process in processes:
-            self.__add_preprocess(process)
-          
+              
     def get_data_queue(self, symbols:list, data_length:int, frame:int):
         """
             to get data when frame time past
@@ -288,11 +248,8 @@ class Client:
     def stop_quing(self):
         self.__data_queue = None
         
-    def __put_data_to_queue(self, symbols:list, data_length:int, frame:int):
-        if len(self.__idc_processes) > 0:
-            data = self.get_rate_with_indicaters(symbols, data_length, frame)
-        else:
-            data = self.get_rates(symbols, data_length, frame)
+    def __put_data_to_queue(self, symbols:list, data_length:int, frame:int, idc_processes=[], pre_processes=[]):
+        data = self.get_rates(symbols, data_length, frame, idc_processes, pre_processes)
         self.__data_queue.put(data)
     
     def get_client_params(self):
@@ -389,46 +346,47 @@ class Client:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_rates(self, symbols:list=None, length:int = None, frame:int=None) -> pd.DataFrame:
+    def get_rates(self, symbols:list=[], length:int = None, frame:int=None, idc_processes=[], pre_processes=[]) -> pd.DataFrame:
         """ get ohlc data with length length
 
         Args:
-            symbols (list<str> | None):
-            length (int | None): specify data length > 1. If None is provided, return all date.
+            symbols (list<str>): list of symbols. Defaults to [].
+            length (int | None): specify data length > 1. If None is specified, return all date.
+            frame (int | None): specify frame to get time series data. If None, default value is used instead.
             
         Returns:
-            pd.DataFrame: ohlc data which is sorted from older to latest. data are returned with length from latest data
+            pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
             Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
-        rates = self.get_rates_from_client(symbols=symbols, length=length)
-        t = threading.Thread(target=self.__check_order_completion, args=(rates, symbols), daemon=True)
+        do_run_process = False
+        if len(idc_processes) > 0 or len(pre_processes) > 0:
+            do_run_process = True
+        
+        if length is None:
+            ohlc_df = self.get_rates_from_client(symbols=symbols, length=length, frame=frame)
+        else:
+            required_length = length
+            if do_run_process:
+                required_length = length + self.__get_required_length(idc_processes + pre_processes)
+            ohlc_df = self.get_rates_from_client(symbols=symbols, length=required_length, frame=frame)
+        
+        t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
-        if self.do_render:
-            self.__plot_data(symbols, rates)
-        return rates
-
-    def get_rate_with_indicaters(self, symbols:list, data_length=None, frame=None) -> pd.DataFrame:
-        temp = self.do_render
-        self.do_render = False
-        if data_length is None:
-            required_length = 1#to skip the later condition
-            ohlc = self.get_rates(symbols, data_length, frame)
-        else:
-            required_length = data_length + self.__additional_length_for_prc
-            ohlc = self.get_rates(required_length)
-            
-        self.do_render = temp
-        if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
-            data = self.run_processes(ohlc)
-            if self.do_render:
-                self.__plot_data_width_indicaters(symbols, data)
-            if data_length is None:
-                return data
+        
+        if do_run_process:
+            if type(ohlc_df) == pd.DataFrame and len(ohlc_df) >= required_length:
+                data = self.run_processes(ohlc_df)
+                if self.do_render:
+                    self.__plot_data_width_indicaters(symbols, data)
+                if length is None:
+                    return data
+                else:
+                    return data.iloc[-length:]
             else:
-                return data.iloc[-data_length:]
-        else:
-            self.logger.error(f"data length is insufficient to caliculate indicaters.")
-            return ohlc
+                self.logger.error(f"data length is insufficient to caliculate indicaters.")
+        elif self.do_render:
+            self.__plot_data(symbols, ohlc_df)
+        return ohlc_df
       
     ## Need to implement in the actual client ##
     

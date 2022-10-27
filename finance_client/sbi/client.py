@@ -40,8 +40,8 @@ class SBIClient(Client):
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, interval:int):
-        return self.client.get_rates_from_client(interval)
+    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+        return self.client.get_rates_from_client(symbols, interval, frame)
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         return self.client.get_future_rates(interval)

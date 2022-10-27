@@ -10,12 +10,17 @@ class ProcessBase:
    
     def __init__(self, key:str):
         self.key = key
+        self.initialization_required = False
     
     @classmethod
     def load(self, key:str, params:dict):
         raise Exception("Need to implement")
     
-    def run(self, data: pd.DataFrame) -> dict:
+    def initialize(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+        print("initialization of base class is called. please create initialize function on your process.")
+        pass
+    
+    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False) -> dict:
         """ process to apply additionally. if an existing key is specified, overwrite existing values
 
         Args:
