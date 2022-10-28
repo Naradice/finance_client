@@ -54,7 +54,7 @@ class TestMT5Client(unittest.TestCase):
     def test_get_rate_with_indicaters(self):
         columns = client.get_ohlc_columns()
         close_column = columns["Close"]
-        macd_p = utils.MACDpreProcess(target_column=close_column)
+        macd_p = utils.MACDProcess(target_column=close_column)
         macd_column = macd_p.columns["MACD"]
         client.add_indicater(macd_p)
         data = client.get_rate_with_indicaters(100)

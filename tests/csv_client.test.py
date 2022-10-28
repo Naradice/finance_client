@@ -49,8 +49,8 @@ class TestCSVClient(unittest.TestCase):
     
     def test_get_indicaters(self):
         length = 10
-        bband = utils.BBANDpreProcess()
-        macd = utils.MACDpreProcess()
+        bband = utils.BBANDProcess()
+        macd = utils.MACDProcess()
         processes = [bband, macd]
         client = CSVClient(file=csv_file, frame=Frame.MIN5, idc_processes=processes, logger=logger, date_column=time_column)
         data = client.get_rate_with_indicaters(length)
@@ -59,8 +59,8 @@ class TestCSVClient(unittest.TestCase):
         
     def test_get_indicaters(self):
         length = 10
-        bband = utils.BBANDpreProcess()
-        macd = utils.MACDpreProcess()
+        bband = utils.BBANDProcess()
+        macd = utils.MACDProcess()
         processes = [bband, macd]
         client = CSVClient(file=csv_file, frame=Frame.MIN5, idc_processes=processes, logger=logger, date_column=time_column)
         data = client.get_rate_with_indicaters(length)
@@ -69,8 +69,8 @@ class TestCSVClient(unittest.TestCase):
         
     def test_get_standalized_indicaters(self):
         length = 10
-        bband = utils.BBANDpreProcess()
-        macd = utils.MACDpreProcess()
+        bband = utils.BBANDProcess()
+        macd = utils.MACDProcess()
         processes = [bband, macd]
         post_prs = [utils.DiffPreProcess(), utils.MinMaxPreProcess()]
         client = CSVClient(file=csv_file, frame=Frame.MIN5, idc_processes=processes, post_process=post_prs ,logger=logger, date_column=time_column)

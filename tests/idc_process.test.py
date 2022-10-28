@@ -57,7 +57,7 @@ class TestIndicaters(unittest.TestCase):
         macd = short_ema - long_ema
         signal = macd.rolling(9).mean()
         
-        process = utils.MACDpreProcess(target_column=ohlc_columns[3])
+        process = utils.MACDProcess(target_column=ohlc_columns[3])
         macd_dict = process.run(ds)
         short_column = process.columns["S_EMA"]
         long_column = process.columns["L_EMA"]
@@ -72,7 +72,7 @@ class TestIndicaters(unittest.TestCase):
     def test_macd_update(self):
         ### prerequisites
         ds = pd.DataFrame({ohlc_columns[3]:[120.000 + i*0.1 for i in range(30)]})
-        process = utils.MACDpreProcess(target_column=ohlc_columns[3])
+        process = utils.MACDProcess(target_column=ohlc_columns[3])
         macd_dict = process.run(ds)
         
         ###input
@@ -85,7 +85,7 @@ class TestIndicaters(unittest.TestCase):
         
         ###expect
         ex_data_org = process.concat(ds, new_data)
-        another_ps = utils.MACDpreProcess(target_column=ohlc_columns[3])
+        another_ps = utils.MACDProcess(target_column=ohlc_columns[3])
         macd_dict = another_ps.run(ex_data_org)
         
         short_column = process.columns["S_EMA"]
@@ -133,7 +133,7 @@ class TestIndicaters(unittest.TestCase):
         
     def test_macdslope_process(self):
         client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, logger=logger)
-        macd = utils.MACDpreProcess(target_column=ohlc_columns[3])
+        macd = utils.MACDProcess(target_column=ohlc_columns[3])
         macd_column = macd.columns["MACD"]
         signal_column = macd.columns["Signal"]
         prc = utils.SlopeProcess(key="m",window=5, target_column=macd_column)
@@ -155,7 +155,7 @@ class TestIndicaters(unittest.TestCase):
         client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, auto_refresh_index=False,logger=logger)
         slope_window = 4
         range_p = utils.RangeTrendProcess(slope_window=slope_window)
-        bband_p = utils.BBANDpreProcess(alpha=2, target_column=ohlc_columns[3])
+        bband_p = utils.BBANDProcess(alpha=2, target_column=ohlc_columns[3])
         client.add_indicaters([bband_p, range_p])
         start_time = datetime.datetime.now()
         client.get_rate_with_indicaters()

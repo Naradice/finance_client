@@ -10,11 +10,11 @@ from finance_client.utils.process import ProcessBase
 #TODO: make output DataFrame
 def get_available_processes() -> dict:
     processes = {
-        'MACD': MACDpreProcess,
-        'EMA': EMApreProcess,
-        'BBAND': BBANDpreProcess,
-        'ATR': ATRpreProcess,
-        'RSI': RSIpreProcess,
+        'MACD': MACDProcess,
+        'EMA': EMAProcess,
+        'BBAND': BBANDProcess,
+        'ATR': ATRProcess,
+        'RSI': RSIProcess,
         #'Roll': RollingProcess,
         'Renko': RenkoProcess,
         'Slope': SlopeProcess
@@ -50,7 +50,7 @@ def load_indicaters(params:dict) -> list:
         ids.append(idc)
     return ids
 
-class MACDpreProcess(ProcessBase):
+class MACDProcess(ProcessBase):
     
     kinds = 'MACD'
     last_data = None
@@ -87,10 +87,10 @@ class MACDpreProcess(ProcessBase):
         }
         is_input = params["input"]
         is_out = params["output"]
-        macd = MACDpreProcess(key, option=option, is_input=is_input, is_output=is_out)
+        macd = MACDProcess(key, option=option, is_input=is_input, is_output=is_out)
         return macd
         
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         target_column = option['column']
         short_window = option['short_window']
@@ -154,7 +154,7 @@ class MACDpreProcess(ProcessBase):
         out = indicaters.revert_EMA(short_ema, short_window)
         return True, out
 
-class EMApreProcess(ProcessBase):
+class EMAProcess(ProcessBase):
     
     kinds = 'EMA'
     last_data = None
@@ -181,10 +181,10 @@ class EMApreProcess(ProcessBase):
         column = params['column']
         is_input = params['input']
         is_out = params['output']
-        indicater = EMApreProcess(key, window=window, column = column, is_input=is_input, is_output=is_out)
+        indicater = EMAProcess(key, window=window, column = column, is_input=is_input, is_output=is_out)
         return indicater
 
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         target_column = option['column']
         window = option['window']
@@ -225,7 +225,7 @@ class EMApreProcess(ProcessBase):
         out = indicaters.revert_EMA(ema, window)
         return True, out
 
-class BBANDpreProcess(ProcessBase):
+class BBANDProcess(ProcessBase):
     
     kinds = 'BBAND'
     last_data = None
@@ -260,9 +260,9 @@ class BBANDpreProcess(ProcessBase):
         alpha = params["alpha"]
         is_input = params["input"]
         is_out = params["output"]
-        return BBANDpreProcess(key, window, alpha, column, is_input, is_out)
+        return BBANDProcess(key, window, alpha, column, is_input, is_out)
     
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         target_column = option['column']
         window = option['window']
@@ -315,7 +315,7 @@ class BBANDpreProcess(ProcessBase):
         #pass
         return False, None
 
-class ATRpreProcess(ProcessBase):
+class ATRProcess(ProcessBase):
     
     kinds = 'ATR'
     last_data = None
@@ -341,9 +341,9 @@ class ATRpreProcess(ProcessBase):
         columns = tuple(params["ohlc_column"])
         is_input = params["input"]
         is_out = params["output"]
-        return ATRpreProcess(key, window, columns, is_input, is_out)
+        return ATRProcess(key, window, columns, is_input, is_out)
 
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         target_columns = option['ohlc_column']
         window = option['window']
@@ -380,7 +380,7 @@ class ATRpreProcess(ProcessBase):
         #pass
         return False, None
 
-class RSIpreProcess(ProcessBase):
+class RSIProcess(ProcessBase):
     
     kinds = 'RSI'
     last_data = None
@@ -414,9 +414,9 @@ class RSIpreProcess(ProcessBase):
         columns = tuple(params["ohlc_column"])
         is_input = params["input"]
         is_out = params["output"]
-        return RSIpreProcess(key, window, columns, is_input, is_out)
+        return RSIProcess(key, window, columns, is_input, is_out)
 
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         target_column = option['ohlc_column'][0]
         window = option['window']
@@ -490,12 +490,10 @@ class RenkoProcess(ProcessBase):
         is_out = params["output"]
         return RenkoProcess(key, columns, window, is_input, is_out)
 
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         ohlc_column = option["ohlc_column"]
         window = option['window']
-        TOTAL_BRICK_NUM_KEY = "Renko"
-        BRICK_NUM_KEY = "Brick"
         
         renko_block_num = self.columns[self.KEY_BRICK_NUM]
         renko_value = self.columns[self.KEY_VALUE]
@@ -542,7 +540,7 @@ class SlopeProcess(ProcessBase):
         is_out = params["output"]
         return SlopeProcess(key, target_column=column, window=window, is_input=is_input, is_output=is_out)
 
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         option = self.option
         column = option["target_column"]
         window = option['window']
@@ -600,7 +598,7 @@ class CCIProcess(ProcessBase):
         cci = CCIProcess(key, option=option, is_input=is_input, is_output=is_out)
         return cci
         
-    def run(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         self.data = data
         window = self.options["window"]
         ohlc_column = self.options["ohlc_column"]
@@ -639,7 +637,7 @@ class RangeTrendProcess(ProcessBase):
     KEY_TREND = "trend"
     KEY_RANGE = "range"
     
-    def __init__(self, key: str = "rtp", mode="bband", required_columns=[], slope_window=4,use_sample_param=False, is_input=True, is_output=True, option=None):
+    def __init__(self, key: str = "rtp", mode="bband", required_columns=[], slope_window=4, is_input=True, is_output=True, option=None):
         """Process to caliculate likelyfood of market state
         {key}_trend: from -1 to 1. 1 then bull (long position) state is strong, -1 then cow (short position) is strong
         {key}_range: from 0 to 1. possibility of market is in range trading
@@ -650,7 +648,6 @@ class RangeTrendProcess(ProcessBase):
             required_columns (list, optional): columns which needs to caliculate the results. Defaults to None then columns are obtained from data
             is_input (bool, optional): client/env use this to handle in/out. Defaults to True.
             is_output (bool, optional): client/env use this to handle in/out. Defaults to True.
-            use_sample_param (bool, optional): Use SAMPLE params caliculated by daily USDJPY. Defaults to False. Recommend to run with entire data if False
             option (dict, optional): option to update params. Mostly used by load func. Defaults to None.
 
         """
@@ -659,14 +656,6 @@ class RangeTrendProcess(ProcessBase):
             raise ValueError(f"{mode} is not supported. Please specify one of {self.available_mode}")
         self.initialized = False
         self.initialization_required = True
-        ## params for default. This is caliculated by daily USDJPY.
-        self.params = {
-            "bband":{
-                "slope_std": 0.193937,
-                "slope_mean": -0.002998,
-                "pct_thread":0.359497
-            }
-        }
         self.required_length = slope_window + 14 + 1
         self.options = {
             "mode": mode
@@ -683,111 +672,164 @@ class RangeTrendProcess(ProcessBase):
         self.is_input = is_input
         self.is_output = is_output
         self.__preprocess = None
-        self.use_sample_param = use_sample_param
         self.slope_window = slope_window
         self.columns = {
             self.KEY_RANGE: f'{key}_range',
             self.KEY_TREND: f'{key}_trend'
         }
         
-    def __bb_initialization(self,symbols:list, data:pd.DataFrame, grouped_by_symbol):
-        close_column = None
-        if "required_columns" not in self.options:
-            default_required_columns = ["bolinger_Width", "bolinger_MV"]
-            required_columns = list(set(data.columns) & set(default_required_columns))
-            if len(required_columns) == 2:
-                self.options["required_columns"] = default_required_columns
-            else:
-                required_columns = ["temp", "temp"]
-                for column in data.columns:
-                    if "_MV" in column:
-                        required_columns[1] = column
-                    elif "_Width" in column:
-                        required_columns[0] = column
-                    elif "close" in column.lower():
-                        close_column = column
-                if "temp" in required_columns and close_column:
-                    self.__preprocess = BBANDpreProcess(target_column=close_column)
-                    required_columns = default_required_columns
-                self.options["required_columns"] = required_columns
-        if self.use_sample_param is False:
-            print("assume enough data length is provided to caliculate std etc.")
-            if close_column is None:
-                for column in data.columns:
-                    if "close" in column.lower():
-                        close_column = column
-            width_column = required_columns[1]
-            pct_change = (data[width_column].diff()+1).pct_change(periods=1)
-            pct_normalized = pct_change/pct_change.std()
-            range_possibility_df = 1/(1+pct_normalized.abs())
-            mean_column = required_columns[1]
-            slope = (data[mean_column] - data[mean_column].shift(periods=self.slope_window))/self.slope_window
-            self.params["bband"] = {
-                "slope_std": slope.std()*2,
-                "slope_mean": slope.mean(),
-                "pct_thread":range_possibility_df.std()
-            } 
+    def __bb_initialization(self, symbols:list, df:pd.DataFrame, grouped_by_symbol):
+        data = df.copy()
+        self.is_multi_mode = False
+        if type(symbols) == list and len(symbols) > 0:
+            if grouped_by_symbol == False:
+                data.columns = data.columns.swaplevel(0, 1)
+            self.is_multi_mode = True
+            columns = data[symbols[0]]
+        else:
+            columns = data.columns
+            data.columns = pd.MultiIndex.from_tuples([("Dummy", column) for column in columns])
+            symbols = ["Dummy"]
+            
+        default_required_columns = ["BBand_Width", "BBand_MV"]
+        ## check required columns of default value exists in data columns
+        required_columns = list(set(columns) & set(default_required_columns))
+        if len(required_columns) == 2:
+            self.options["required_columns"] = default_required_columns
+        else:
+            ## check modified columns of bb exist
+            required_columns = ["temp", "temp"]
+            for column in columns:
+                if "_MV" in column:##check {key}_MV
+                    required_columns[1] = column
+                elif "_Width" in column:##check {key}_Width
+                    required_columns[0] = column
+                elif "close" == column.lower():
+                    close_column = column
+            if "temp" in required_columns:
+                ## If bband column doesn't exists, prepare Process to add bband values in run process
+                if close_column is None:
+                    for column in columns:
+                        if "close" in column.lower():
+                            close_column = column
+                if close_column:
+                    self.__preprocess = BBANDProcess(target_column=close_column)
+                    bb_df = self.__preprocess.run(symbols, data, grouped_by_symbol=True)
+                    data = pd.concat([data, bb_df], axis=1)
+                    required_columns = [self.__preprocess.columns[self.__preprocess.KEY_MEAN_VALUE], self.__preprocess.columns[self.__preprocess.KEY_WIDTH_VALUE]]
+                else:
+                    raise Exception("Neither close column nor BBand columns are missing")
+            self.options["required_columns"] = required_columns
+            
+        data.columns = data.columns.swaplevel(0, 1)
+        width_column = required_columns[0]
+        width_diff = data[width_column].diff()
+        width_diff[width_diff == 0] = pd.NA
+        pct_change = width_diff.pct_change(periods=1)
+        pct_normalized = pct_change/pct_change.std()
+        range_possibility_df = 1/(1+pct_normalized.abs())
+        mean_column = required_columns[1]
+        slope = (data[mean_column] - data[mean_column].shift(periods=self.slope_window))/self.slope_window
+        
+        self.options["bband"] = {
+            "slope_std": slope.std()*2,
+            "slope_mean": slope.mean(),
+            "pct_thread":range_possibility_df.std()
+        }
         self.initialized = True
         #common
         self.initialization_required = False
     
-    def initialize(self, symbols:list, data: pd.DataFrame, grouped_by_symbol=False):
+    def initialize(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False):
         pass
     
-    def __range_trand_by_bb(self, data:pd.DataFrame, max_period=1, thresh = 0.8):
-        #currentry max_period > 1 don't work well
-        max_period=3
-        if self.initialized == False:
-            self.__bb_initialization(data)
-        if self.__preprocess is not None:
-            data = data.copy()
-            result_dict = self.__preprocess.run(data)
-            for key, value in result_dict.items():
-                data[key] = value
-        required_columns = self.options["required_columns"]
+    def __range_trand_by_bb(self, df:pd.DataFrame, symbols=[], grouped_by_symbol=False, max_period=3, thresh = 0.8):
+        data = df.copy()
+        if self.initialized == False or self.initialization_required:
+            self.initialize(df, symbols, grouped_by_symbol)
+            
+        params = self.options
+        required_columns = params["required_columns"]
         
+        if self.is_multi_mode == False:
+            columns = data.columns
+            data.columns = pd.MultiIndex.from_tuples([(column, "Dummy") for column in columns])
+            symbols = ["Dummy"]
+        elif grouped_by_symbol:    
+            data.columns = data.columns.swaplevel(0, 1)
+
+        if "bb_process" in params:
+            process = params["bb_process"]
+            bb_df = process.run(data, symbols, False)
+            data = pd.concat([data, bb_df], axis=1)
+            
+        required_columns = params["required_columns"]
         width_column = required_columns[0]
         mean_column = required_columns[1]
-        
+
         # caliculate a width is how differ from previous width
         period = 1
-        pct_change = (data[width_column].diff()+1).pct_change(periods=period)
+        width_diff = data[width_column].diff()
+        width_diff[width_diff == 0] = pd.NA
+        pct_change = width_diff.pct_change(periods=period)
         pct_normalized = pct_change/pct_change.std()
-        range_possibility_df = 1/(1+pct_normalized.abs())
+        range_possibility_dfs = 1/(1+pct_normalized.abs())
+        
         #remove indicies if latest tick is not a range
-        range_market = (pct_change <= thresh) & (pct_change >= -thresh)
-        range_count_df = range_market
-        range_data = data[range_market]
-        indices = range_data.index
+        range_markets = (pct_change <= thresh) & (pct_change >= -thresh)
+        
+        data.columns = data.columns.swaplevel(0, 1)
+        
+        slope_df_list = []
+        possibility_df_list = []
 
-        while len(indices) > 0 and period < max_period:
-            period+=1
-            pct_change = (data[width_column].shift(periods=period-1).diff()+1).pct_change(periods=period)
-            pct_normalized = pct_change/pct_change.std()
-            pct_change= 1/(1+pct_normalized.abs())
-            cont_pct_change = pct_change[indices]
-            range_market = (cont_pct_change <= thresh) & (cont_pct_change >= -thresh)
-            range_data = cont_pct_change[range_market]
+        for symbol in symbols:
+            period = 1
+            range_count_df = range_markets[symbol]
+            range_data = data[symbol][range_markets[symbol]]
             indices = range_data.index
-            new_pos = range_possibility_df.copy()
-            range_cont_num = range_count_df.copy()
-            new_pos += pct_change
-            range_cont_num = range_cont_num[indices] + 1
-            range_possibility_df = new_pos
-            range_count_df = range_cont_num
-        range_possibility_df = range_possibility_df/max_period
-        
-        # caliculate slope by mean value
-        window_for_slope = self.slope_window
-        #window_for_slope = 14#bolinger window size
-        shifted = data[mean_column].shift(periods=window_for_slope)
-        slope = (data[mean_column] - shifted)/window_for_slope
-        smean = self.params["bband"]["slope_mean"]
-        sstd = self.params["bband"]["slope_std"]
-        slope = slope.clip(smean-sstd, smean+sstd)
-        slope = slope/(smean+sstd)
-        
-        return {self.columns[self.KEY_RANGE]:range_possibility_df, self.columns[self.KEY_TREND]:slope}
+            data_ = data[symbol]
+            range_possibility_df = range_possibility_dfs[symbol]
+            while len(indices) > 0 and period < max_period:
+                period+=1
+                width_dff = (data_[width_column].shift(periods=period-1).diff())
+                width_dff[width_dff == 0] = pd.NA
+                pct_change = width_dff.pct_change(periods=period)
+                pct_normalized = pct_change/pct_change.std()
+                pct_change= 1/(1+pct_normalized.abs())
+                cont_pct_change = pct_change[indices]
+                range_market = (cont_pct_change <= thresh) & (cont_pct_change >= -thresh)
+                range_data = cont_pct_change[range_market]
+                indices = range_data.index
+                new_pos = range_possibility_df.copy()
+                range_cont_num = range_count_df.copy()
+                new_pos += pct_change
+                range_cont_num = range_cont_num[indices] + 1
+                range_possibility_df = new_pos
+                range_count_df = range_cont_num
+            range_possibility_df = range_possibility_df/max_period
+
+            # caliculate slope by mean value
+            window_for_slope = self.slope_window
+            #window_for_slope = 14#bolinger window size
+            shifted = data_[mean_column].shift(periods=window_for_slope)
+            slope = (data_[mean_column] - shifted)/window_for_slope
+            smean = params["bband"]["slope_mean"][symbol]
+            sstd = params["bband"]["slope_std"][symbol]
+            slope = slope.clip(smean-sstd, smean+sstd)
+            slope = slope/(smean+sstd)
+            slope_df_list.append(slope)
+            possibility_df_list.append(range_possibility_df)
+        slope_dfs = pd.concat(slope_df_list, axis=1)
+        possibility_dfs = pd.concat(possibility_df_list, axis=1)
+        cls = [self.columns[self.KEY_TREND], self.columns[self.KEY_RANGE]]
+        elements, columns = indicaters.create_multi_out_lists(symbols, [slope_dfs, possibility_dfs], cls, grouped_by_symbol=grouped_by_symbol)
+        out_df = pd.concat(elements, axis=1)
+        if self.is_multi_mode:
+            out_df.columns = columns
+        else:
+            out_df.columns = cls
+        return out_df
 
     @classmethod
     def load(self, key:str, params:dict):

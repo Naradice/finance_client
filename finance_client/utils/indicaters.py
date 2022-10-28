@@ -12,7 +12,7 @@ def __create_out_lists(elements, column_names):
             out_columns.append(column_names[index])
     return out_elements, out_columns
 
-def __create_multi_out_lists(symbols, elements, columns, grouped_by_symbol=False):
+def create_multi_out_lists(symbols, elements, columns, grouped_by_symbol=False):
     out_columns = []
     out_eles = []
         
@@ -97,7 +97,7 @@ def EMAMulti(symbols:list, data:pd.DataFrame, interval:int, alpha=None, grouped_
         df.columns = df.columns.swaplevel(0, 1)
     df = df[symbols]
     ema_df = EMA(df, interval, alpha)
-    elements, columns = __create_multi_out_lists(symbols, [ema_df], [ema_name], grouped_by_symbol)
+    elements, columns = create_multi_out_lists(symbols, [ema_df], [ema_name], grouped_by_symbol)
     ema_df.columns = columns
     return ema_df
     
@@ -248,7 +248,7 @@ def MACDFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', short_
     macd = short_ema - long_ema
     signal = SMA(macd, signal_window)
         
-    elements, columns = __create_multi_out_lists(symbols, [short_ema, long_ema, macd, signal], [short_ema_name, long_ema_name, macd_name, signal_name], grouped_by_symbol)
+    elements, columns = create_multi_out_lists(symbols, [short_ema, long_ema, macd, signal], [short_ema_name, long_ema_name, macd_name, signal_name], grouped_by_symbol)
     macd_df = pd.concat(elements, axis=1)
     macd_df.columns = columns
     macd_df.sort_index(level=0, axis=1, inplace=True)
@@ -309,11 +309,9 @@ def BolingerFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', wi
     ohlc_dfs = df[[(symbol, column) for symbol in symbols]]
         
     ma, b_high, b_low, width, stds = BolingerFromSeries(ohlc_dfs, window=window, alpha=alpha)
-    elements, columns = __create_multi_out_lists(symbols, [ma, b_high, b_low, width, stds], [mean_name, upper_name, lower_name, width_name, std_name], grouped_by_symbol)
+    elements, columns = create_multi_out_lists(symbols, [ma, b_high, b_low, width, stds], [mean_name, upper_name, lower_name, width_name, std_name], grouped_by_symbol)
     b_df = pd.concat(elements, axis=1)
     b_df.columns = columns
-    if grouped_by_symbol == False:
-        b_df.columns = b_df.columns.swaplevel(0, 1)
     b_df.sort_index(level=0, axis=1, inplace=True)
     return b_df
 
@@ -338,7 +336,7 @@ def ATRFromMultiOHLC(symbols:list, data: pd.DataFrame, ohlc_columns = ('Open', '
     for symbol in symbols:
         tr_df[symbol] = temp_df[symbol].max(axis=1)
     atr_df = EMA(tr_df, window)
-    elements, columns = __create_multi_out_lists(symbols, [tr_df, atr_df], [tr_name, atr_name], grouped_by_symbol)
+    elements, columns = create_multi_out_lists(symbols, [tr_df, atr_df], [tr_name, atr_name], grouped_by_symbol)
     out_df = pd.concat(elements, axis=1)
     out_df.columns = columns
     out_df.sort_index(level=0, axis=1, inplace=True)
@@ -435,7 +433,7 @@ def RSIFromOHLCMulti(symbols:list, data:pd.DataFrame, column = 'Close', window=1
     avgloss_df = loss_df.ewm(alpha=1/window, adjust=False).mean()
     rs_df = avgain_df/avgloss_df
     rsi_df = 100 - (100/ (1 + rs_df))
-    elements, columns = __create_multi_out_lists(symbols, [avgain_df, avgloss_df, rsi_df], [mean_gain_name, mean_loss_name, rsi_name], grouped_by_symbol)
+    elements, columns = create_multi_out_lists(symbols, [avgain_df, avgloss_df, rsi_df], [mean_gain_name, mean_loss_name, rsi_name], grouped_by_symbol)
     out_df = pd.concat(elements, axis=1)
     out_df.columns = columns
     out_df.sort_index(level=0, axis=1, inplace=True)

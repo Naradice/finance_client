@@ -15,7 +15,7 @@ class Rendere:
         self.__data = {}
         self.__is_shown = False
         self.__indicater_process_info = {
-            utils.BBANDpreProcess.kinds : {
+            utils.BBANDProcess.kinds : {
                     "function": self.overlap_bolinger_band,
                     "columns":("MV", "Width"),
                     "option": ('alpha',)
