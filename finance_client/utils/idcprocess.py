@@ -112,7 +112,7 @@ class MACDProcess(ProcessBase):
         self.last_data = macd_df.iloc[-self.get_minimum_required_length():]
         return macd_df
     
-    def update(self, symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         if type(symbols) == list and len(symbols) > 0:
             print("update is not implemented for multi symbols yet")
         else:
@@ -199,7 +199,7 @@ class EMAProcess(ProcessBase):
         self.last_data = ema.iloc[-self.get_minimum_required_length():]
         return ema
     
-    def update(self, symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         option = self.option
         target_column = option['column']
         window = option['window']
@@ -282,7 +282,7 @@ class BBANDProcess(ProcessBase):
         self.last_data = bb_df.iloc[-self.get_minimum_required_length():]
         return bb_df
     
-    def update(self, symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         option = self.option
         target_column = option['column']
         window = option['window']
@@ -360,7 +360,7 @@ class ATRProcess(ProcessBase):
         self.last_data = pd.concat([last_ohlc, last_atr], axis=1)
         return atr_df
         
-    def update(self, symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         option = self.option
         target_columns = option['ohlc_column']
         window = option['window']
@@ -437,7 +437,7 @@ class RSIProcess(ProcessBase):
         self.last_data = pd.concat([last_ohlc, last_rsi], axis=1)
         return rsi_df
         
-    def update(self,symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         option = self.option
         target_column = option['ohlc_column'][0]
         window = option['window']
@@ -504,7 +504,7 @@ class RenkoProcess(ProcessBase):
             renko_df = indicaters.RenkoFromOHLC(data, ohlc_columns=ohlc_column, atr_window=window, total_brick_name=renko_value, brick_num_name=renko_block_num)
         return renko_df
         
-    def update(self, symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         raise Exception("update is not implemented yet on renko process")
         
     def get_minimum_required_length(self):
@@ -555,7 +555,7 @@ class SlopeProcess(ProcessBase):
         #return data
         return slope_df
         
-    def update(self, symbols:list, tick:pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         raise Exception("update is not implemented yet on slope process")
         
     def get_minimum_required_length(self):
@@ -612,7 +612,7 @@ class CCIProcess(ProcessBase):
         
         return cci_df
     
-    def update(self, symbols:list, tick: pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         if type(self.data) != type(None):
             out_column = self.columns[self.KEY_CCI]
             self.data = self.concat(self.data, tick)
@@ -843,7 +843,7 @@ class RangeTrendProcess(ProcessBase):
     def run(self, data:pd.DataFrame):
         return data
     
-    def update(self, tick: pd.Series):
+    def update(self, tick:pd.Series, symbols:list=[]):
         print("not supported for now")
         
     def get_minimum_required_length(self):
