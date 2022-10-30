@@ -346,13 +346,15 @@ class Client:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_rates(self, symbols:list=[], length:int = None, frame:int=None, idc_processes=[], pre_processes=[]) -> pd.DataFrame:
+    def get_rates(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[]) -> pd.DataFrame:
         """ get ohlc data with length length
 
         Args:
-            symbols (list<str>): list of symbols. Defaults to [].
             length (int | None): specify data length > 1. If None is specified, return all date.
+            symbols (list<str>): list of symbols. Defaults to [].
             frame (int | None): specify frame to get time series data. If None, default value is used instead.
+            idc_processes (Process, optional) : list of indicater process. Dafaults to []
+            pre_processes (Process, optional) : list of pre process. Defaults to []
             
         Returns:
             pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data

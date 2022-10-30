@@ -1,19 +1,16 @@
 import numpy
 import pandas as pd
-import random
-import os
-import uuid
-import datetime
-import json
+import random, difflib, os, datetime, math
 import finance_client.frames as Frame
 from finance_client.client_base import Client
 from finance_client.utils.csvrw import write_df_to_csv, read_csv
 
 class CSVClient(Client):
     kinds = 'csv'
+    available_slip_type = ["random", "none", "percentage"]
     
     def __update_columns(self, columns:list):
-        if self.ohlc_columns == None:
+        if self.ohlc_columns is None:
             self.ohlc_columns = {}
         temp_columns = {}
         for column in columns:
@@ -29,22 +26,130 @@ class CSVClient(Client):
             elif "time" in column_:#assume time, timestamp or datetime
                 temp_columns["Time"] = column
         self.ohlc_columns.update(temp_columns)
+    
+    def __initialize_file_name_func(self, file_names:list):
+        def has_strings(file_name:str, strs_list):
+            if len(strs_list) > 0:
+                for strs in strs_list:
+                    if file_name.find(strs) ==-1:
+                        return False
+                return True
+            return False
+        
+        indices = random.sample(range(0, len(file_names)), k=len(file_names))
+        base_file_name = file_names[indices[0]]
 
-    def __read_csv__(self, columns, date_col=None):
-        #super().__init__()
-        if self.frame in self.files:
-            file = self.files[self.frame]
-            usecols = list(columns)
-            if date_col != None:
-                if date_col not in usecols:
-                    usecols.append(date_col)
-                self.data = pd.read_csv(file, header=0, parse_dates=[date_col], usecols = usecols)
-                self.data = self.data.sort_index(ascending=True)
+        same_strs = []
+        for index in indices[1:]:
+            file_name = file_names[index]
+            if has_strings(file_name ,same_strs):
+                break
+            differ = difflib.Differ()
+            ans = differ.compare(base_file_name, file_name)
+            same_strs = []
+            same_str = ""
+
+            for diff in ans:
+                d = list(diff)
+                if d[0] == '-' or d[0] == '+':
+                    if same_str != "":
+                        same_strs.append(same_str)
+                        same_str = ""
+                else:
+                    same_str += d[2]
+                    
+            if same_str != "":
+                same_strs.append(same_str)
+        self.__get_symbol_from_filename = lambda file_name: file_name[:4]
+        if len(same_strs) > 0:
+            if len(same_strs) > 1:
+                prefix = same_strs[0]
+                suffix = same_strs[-1]
+                self.__get_symbol_from_filename = lambda file_name: file_name.replace(prefix, "").replace(suffix, "")[:4]
             else:
-                self.data = pd.read_csv(file, header=0, usecols = usecols)
-            self.__update_columns(usecols)
+                suffix = same_strs[-1]
+                self.__get_symbol_from_filename = lambda file_name: file_name.replace(suffix, "")[:4]
+            
+    def __read_csv__(self, files, columns=None, date_col=None, start_index=None, start_date=None, chunksize=None, ascending=True):
+        DFS = {}
+        kwargs = {}
+        is_multi_mode = False
+        if len(files) > 1:
+            is_multi_mode = True
+            
+        usecols = columns
+        if date_col is not None:
+            if usecols is not None:
+                usecols = set(usecols)
+                usecols.add(date_col)
+                kwargs["usecols"] = usecols
+            kwargs["parse_dates"] = [date_col]
+            kwargs["index_col"] = date_col
+        self.__chunk_mode = False
+        if chunksize is not None:
+            kwargs["chunksize"] = chunksize
+            self.__is_chunk_mode = True
+        if is_multi_mode and start_index is not None:
+            #assume index 0 is column
+            kwargs["skiprows"] = range(1, start_index+1)
+            
+        for file in files:
+            symbol = self.__get_symbol_from_filename(file)
+            df = pd.read_csv(file, header=0, **kwargs)
+            DFS[symbol] = df.copy()
+        if self.__is_chunk_mode:
+            #when chunksize is specified, TextReader is stored instead of DataFrame
+            TRS = DFS.copy()
+            self.__chunk_mode_params = {"TRS": TRS}
+            DFS = {}
+            for key, tr in TRS.items():
+                df = tr.get_chunk()
+                DFS[key] = df
+        if is_multi_mode:
+            self.data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
         else:
-            raise Exception(f"{self.frame} is not available in CSV Client.")
+            self.data = df.copy()
+        del df
+        
+        if start_index is not None:
+            self.data = self.data.iloc[start_index:].copy()
+            
+        self.__update_columns(self.data.columns)
+        is_date_index = False
+        if date_col is not None:
+            is_date_index = True
+            self.data = self.data.sort_index(ascending=ascending)
+            if ascending:
+                delta = self.data.index[1] - self.data.index[0]
+            else:
+                delta = self.data.index[0] - self.data.index[1]
+            self.frame = int(delta.total_seconds()/60)
+            if start_date is not None and type(start_date) is datetime:
+                self.data = self.data[self.data.index >= start_date]
+            
+            if delta < datetime.timedelta(days=1):
+                self.data.index = pd.to_datetime(self.data.index, utc=True)
+        elif "Time" in self.ohlc_columns:
+            time_column = self.ohlc_columns["Time"]
+            if time_column in self.data.columns:
+                self.data.set_index(time_column, inplace=True)
+                self.data.index = pd.to_datetime(self.data.index, utc=True)
+                self.data = self.data.sort_index(ascending=ascending)
+                is_date_index = True
+        if is_date_index:
+            if self.__is_chunk_mode and is_multi_mode:
+                min_last_time = datetime.datetime.utcnow()
+                min_time_symbol = ""
+                for key, df in DFS.items():
+                    last_time = df.index[-1]
+                    TIMES = {key: (df.index[0], last_time)}
+                    if min_last_time > last_time:
+                        min_last_time = last_time
+                        min_time_symbol = key
+                self.__chunk_mode_params["TIMES"] = TIMES
+                self.__chunk_mode_params["min_last_time"] = (min_time_symbol, min_last_time)
+        else:
+            print("Couldn't daterming date column")
 
     def __past_date(self, target_date, from_frame, to_frame):
         diff_date = target_date.day % datetime.timedelta(minutes=to_frame).days
@@ -144,18 +249,6 @@ class CSVClient(Client):
         rolled_data = pd.DataFrame({self.date_column:Timestamp, high_column: Highs, low_column:Lows, open_column:Opens, close_column:Closes})
         return rolled_data
     
-    def __get_rolled_file_name(self, org_file_name:str, from_frame, to_frame, addNan=False) -> str:
-        separator = '.csv'
-        names = org_file_name.split(separator)
-        if len(names) > 1:
-            rolled_file_name = "".join(names)
-            rolled_file_name = f"{rolled_file_name}_{from_frame}_{to_frame}"
-            if addNan:
-                rolled_file_name = f"{rolled_file_name}_withNaN"
-            rolled_file_name += separator
-            return rolled_file_name
-        raise Exception(f"{org_file_name} isn't csv.")
-    
     def get_additional_params(self):
         args = {
             "auto_step_index":self.auto_step_index, "file":self.files[self.frame]
@@ -163,94 +256,137 @@ class CSVClient(Client):
         args.update(self.__args)
         return args
 
-    ##TODO: add ascending=False option
-    def __init__(self, auto_step_index=False, file = None, frame: int= Frame.MIN5, provider="bitflayer", out_frame:int=None, columns = ['Open', 'High', 'Low', 'Close'], date_column = "Timestamp", start_index = None, auto_refresh_index=False, slip_type="random", do_render=False, seed=1017, idc_processes = [], post_process = [], budget=1000000, logger=None):
+    def __init__(self, files:list = None, columns = ['Open', 'High', 'Low', 'Close'], date_column = "Timestamp", 
+                 file_name_func=None, out_frame:int=None,
+                 start_index = 0, start_date = None, start_random_index=False, auto_step_index=False, auto_reset_index=False, slip_type="random", 
+                 idc_processes = [], pre_process = [], ascending=True, chunksize=None, budget=1000000, 
+                 do_render=False, seed=1017,logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
         Args:
-            auto_step_index (bool, options): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
-            file (str, optional): You can directly specify the file name. Defaults to None.
-            file_frame (int, optional): You can specify the frame of data. CSV need to exist. Defaults to 5.
-            provider (str, optional): Provider of data to load csv file. Defaults to "bitflayer".
-            out_frame (int, optional): output frame. Ex F_5MIN can convert to F_30MIN. Defaults to None.
-            columns (list, optional): ohlc columns name. Defaults to ['High', 'Low','Open','Close'].
-            date_column (str, optional): If specified, time is parsed. Otherwise ignored. Defaults to Timestamp
-            start_index (int, options): specify start index. If not specified, randm index is used. Defauls to None.
-            auto_refresh_index ( bool, options): refreh the index with random value when index reach the end. Defaults False
-            seed (int, options): specify random seed. Defaults to 1017
-            idc_processes (Process, options) : list of indicater process. Dafaults to []
+            files (list<str>, optional): You can directly specify the file names. Defaults to None.
+            file_name_func (function, optional): function to create file name from symbol. Ex) lambda symbol: f'D:\\warehouse\\stock_D1_{symbol}.csv'
+            out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
+            columns (list, optional): column names to read from CSV files. Defaults to ['Open', 'High', 'Low', 'Close'].
+            date_column (str, optional): If specified, try to parse time columns. Otherwise search time column. Defaults to Timestamp
+            start_index (int, optional): specify minimum index. If not specified, start from 0. Defauls to None.
+            start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
+            start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
+            auto_step_index (bool, optional): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
+            auto_reset_index ( bool, optional): refreh the index when index reach the end. Defaults False
+            slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. percentage: slip_rate=0.1 is applied. none: no slip.
+            do_render (bool, optional): If true, plot OHLC and supported indicaters. 
+            seed (int, optional): specify random seed. Defaults to 1017
+            ascending (bool, optional): You can control order of get_rates result
+            chunksize (int, optional): To load huge file partially, you can specify chunk size. Defaults to None.
+            idc_processes (Process, optional) : list of indicater process. Dafaults to []
+            pre_processes (Process, optional) : list of pre process. Defaults to []
         """
-        super().__init__(budget=budget,do_render=do_render, indicater_processes=idc_processes, post_processes= post_process, frame=frame, provider=provider, logger_name=__name__, logger=logger)
+        super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, provider="csv", logger_name=__name__, logger=logger)
         self.auto_step_index = auto_step_index
-        available_slip_type = ["random", "none", "percentage"]
-        if slip_type in available_slip_type:
+        slip_type = slip_type.lower()
+        if slip_type in self.available_slip_type:
             self.slip_type = slip_type
             if slip_type == "percentage":
                 self.slip_rate = 0.1
         else:
-            self.logger.warn(f"{slip_type} is not in availble values: {available_slip_type}")
+            self.logger.warn(f"{slip_type} is not in availble values: {self.available_slip_type}")
             self.logger.info(f"use random as slip_type")
             self.slip_type = "random"
         random.seed(seed)
-        self.__args = {"out_frame": out_frame, "olumns": columns, "date_column": date_column, "start_index": start_index, "seed": seed}
-        if type(file) == str:
-            file = os.path.abspath(file)
+        # store args so that we can reproduce CSV client by loading args file
+        self.__args = {"out_frame": out_frame, "olumns": columns, "date_column": date_column, "start_index": start_index, "start_date":start_date,
+                       "start_random_index":start_random_index, "auto_step_index": auto_step_index, "auto_reset_index":auto_reset_index, "slip_type":slip_type,
+                       "ascending":ascending, "chunksize": chunksize,"seed": seed}
         self.ask_positions = {}
-        if file == None:
-            file_name = 'files.json'
-            with open(file_name, 'r', encoding='utf-8') as f:
-                self.files = json.load(f)
-        elif type(file) == str:
-            self.files = {
-                self.frame: file,
-                'provider': provider
-            }
-        else:
-            raise Exception(f"unexpected file type is specified. {type(file)}")
         self.base_point = 0.01
-        self.__read_csv__(columns, date_column)
-        self.date_column = date_column
+        self.frame = None
         
-        if out_frame != None and frame != out_frame:
-            try:
-                to_frame = int(out_frame)
-            except Exception as e:
-                self.logger.error(e)
-            if frame < to_frame:
-                source_file = self.files[self.frame]
-                rolled_file_name = self.__get_rolled_file_name(source_file, frame, to_frame)
-                if os.path.exists(rolled_file_name):
-                    rolled_data = pd.read_csv(rolled_file_name)
-                    self.data = rolled_data
-                else:
-                    rolled_data = self.__rolling_frame(self.data.copy(), from_frame=frame, to_frame=to_frame)
-                    write_df_to_csv(rolled_data, self.kinds, rolled_file_name)
-                    self.data = rolled_data
-                    self.frame = to_frame
-            elif to_frame == frame:
-                self.logger.info("file_frame and frame are same value. row file_frame is used.")
+        if files is not None:
+            if type(files) == str:
+                files = [os.path.abspath(files)]
             else:
-                raise Exception("frame should be greater than file_frame as we can't decrease the frame.")
-            self.out_frames = to_frame
-        else:
-            self.out_frames = self.frame
+                if type(files) != list:
+                    try:
+                        files = list(files)
+                    except Exception as e:
+                        raise Exception(f"files is specified, but can't be casted to list: {e}")
+                self.files = set(files)
+                files = list(self.files)
+                files = [os.path.abspath(file) for file in files]
+            self.__initialize_file_name_func(files)
+            self.__read_csv__(files, columns, date_column, start_index, start_date, chunksize, ascending)
+            start_index = 0
+            if out_frame != None:
+                to_frame = int(out_frame)
+                if self.frame < to_frame:
+                    rolled_data = self.__rolling_frame(self.data.copy(), from_frame=self.frame, to_frame=to_frame)
+                    if type(rolled_data) is pd.DataFrame and len(rolled_data) > 0:
+                        self.data = rolled_data
+                        self.frame = to_frame
+                elif to_frame == self.frame:
+                    self.logger.info("file_frame and frame are same value. row file is used.")
+                else:
+                    raise Exception("frame should be greater than file_frame as we can't decrease the frame.")
+                self.out_frames = to_frame
+                
         if start_index:
             self.__step_index = start_index
         else:
             self.__step_index = random.randint(0, len(self.data))
-        self.__auto_refresh = auto_refresh_index
+        self.__auto_reset = auto_reset_index
         high_column = self.ohlc_columns["High"]
         low_column = self.ohlc_columns["Low"]
         self.__high_max = self.get_min_max(column = high_column)[1]
         self.__low_min = self.get_min_max(column = low_column)[0]
-        self.initialize_process_params()
     
     #overwrite if needed
     def update_rates(self) -> bool:
         return False
     
-    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+    def __get_rates_by_chunk(self, symbols:list=[], interval:int=None, frame:int=None):
+        DFS = {}
+        chunk_size = self.__args["chunksize"]
+        if len(dfs[min_time_code]) - self.__step_index < interval:
+            temp_df = dfs[min_time_code].dropna()
+            short_length = interval - len(temp_df) + self.__step_index
+            short_chunk_count = math.ceil(short_length/chunk_size)
+            tr = TRS[min_time_code]
+            temp_dfs = [temp_df]
+            for count in range(0, short_chunk_count):
+                temp_df = tr.get_chunk()##may happen error
+                temp_dfs.append(temp_df)
+            temp_df = pd.concat(temp_dfs, axis=0)
+            required_last_time = temp_df.index[self.__step_index + interval -1]
+            temp_df = temp_df.dropna()
+            DFS[min_time_code] = temp_df
+            TIMES[min_time_code] = (temp_df.index[0], temp_df.index[-1])
+            min_last_time = temp_df.index[-1]
+            
+            remaining_codes = set(TRS.keys()) - {min_time_code}
+            for code in remaining_codes:
+                date_set = TIMES[code]
+                code_last_date = date_set[1]
+                tr = TRS[code]
+                temp_dfs = [dfs[code].dropna()]
+                while code_last_date < required_last_time:
+                    temp_df = tr.get_chunk()
+                    temp_dfs.append(temp_df)
+                    code_last_date = temp_df.index[-1]
+                if len(temp_df) > 1:
+                    temp_df = pd.concat(temp_dfs, axis=0)
+                    temp_df = temp_df.dropna()
+                    DFS[code] = temp_df
+                    TIMES[code] = (temp_df.index[0], temp_df.index[-1])
+                    if min_last_time > temp_df.index[-1]:
+                        min_last_time = temp_df.index[-1]
+                        min_time_code = code
+                else:
+                    DFS[code] = dfs[min_time_code].dropna()
+            dfs = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+    
+    def __get_rates(self, symbols:list=[], interval:int=None, frame:int=None):
         if interval is None:
             self.update_rates()
             rates = self.data.copy()
@@ -272,7 +408,7 @@ class CSVClient(Client):
                 if self.update_rates():
                     self.get_rates_from_client(symbols, interval, frame)
                 else:
-                    if self.__auto_refresh:
+                    if self.__auto_reset:
                         self.__step_index = random.randint(0, len(self.data))
                         ## raise index change event
                         return self.get_rates_from_client(symbols, interval, frame)
@@ -281,6 +417,9 @@ class CSVClient(Client):
                     return pd.DataFrame()
         else:
             raise Exception("interval should be greater than 0.")
+           
+    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+        pass
 
     def get_future_rates(self,interval=1, back_interval=0):
         if interval > 1:
@@ -293,7 +432,7 @@ class CSVClient(Client):
                 except Exception as e:
                     self.logger.error(e)
             else:
-                if self.__auto_refresh:
+                if self.__auto_reset:
                     self.__step_index = random.randint(0, len(self.data))
                     ## raise index change event
                     return self.get_future_rates(interval)
@@ -373,7 +512,7 @@ class CSVClient(Client):
             ## raise index change event
             return tick, False
         else:
-            if self.__auto_refresh:
+            if self.__auto_reset:
                 self.__step_index = random.randint(0, len(self.data))
                 ## raise index change event
                 tick = self.data.iloc[self.__step_index]
@@ -410,35 +549,6 @@ class CSVClient(Client):
         return self.__step_index
     
     def get_params(self) -> dict:
-        param = {
-            'type':self.kinds,
-            'provider': self.files,
-            'source_frame': self.frame,
-            'out_frame': self.out_frames
-        }
+        self.__args["files"] = self.files
         
         return param
-
-class MultiFrameClient(CSVClient):
-    
-    kinds = "multi_csv"
-    
-    def __init__(self, file=None, frame: int = Frame.MIN5, provider="bitflayer", columns=['High', 'Low', 'Open', 'Close'], out_frames = [Frame.MIN30, Frame.H1], date_column="Timestamp", seed=1017):
-        out_frame =None
-        super().__init__(file, frame, provider, out_frame, columns, date_column, seed)
-        self.args = (file, frame, provider, out_frame, columns, out_frames, date_column, seed)
-        self.out_frames = out_frames
-        
-    def get_ohlc_columns(self):
-        columns = {}
-        for column in self.data.columns.values:
-            column_ = str(column).lower()
-            if column_ == 'open':
-                columns['Open'] = [f'{str(frame)}_column' for frame in self.out_frames]
-            elif column_ == 'high':
-                columns['High'] = column
-            elif column_ == 'low':
-                columns['Low'] = column
-            elif 'close' in column_:
-                columns['Close'] = column
-        return columns

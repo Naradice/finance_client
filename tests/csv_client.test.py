@@ -24,6 +24,7 @@ logger = getLogger("finance_client.test")
 csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/csv/USDJPY_forex_min5.csv'))
 time_column = "Time"
 
+"""
 class TestCSVClient(unittest.TestCase):
     client = CSVClient(file=csv_file, logger=logger, date_column=time_column)
     
@@ -93,6 +94,16 @@ class TestCSVClient(unittest.TestCase):
         self.assertEqual(type(diffs_mm), list)
         self.assertNotEqual(sum(diffs_mm), 0)
     
+"""
+
+file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/yfinance'))
+symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
+csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
+
+class TestCSVClientMulti(unittest.TestCase):
     
+    def test_initialize_with_files(self):
+        client = CSVClient(files=csv_files, date_column="Datetime")
+        
 if __name__ == '__main__':
     unittest.main()
