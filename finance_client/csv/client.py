@@ -138,16 +138,10 @@ class CSVClient(Client):
                 is_date_index = True
         if is_date_index:
             if self.__is_chunk_mode and is_multi_mode:
-                min_last_time = datetime.datetime.utcnow()
-                min_time_symbol = ""
                 for key, df in DFS.items():
                     last_time = df.index[-1]
                     TIMES = {key: (df.index[0], last_time)}
-                    if min_last_time > last_time:
-                        min_last_time = last_time
-                        min_time_symbol = key
                 self.__chunk_mode_params["TIMES"] = TIMES
-                self.__chunk_mode_params["min_last_time"] = (min_time_symbol, min_last_time)
         else:
             print("Couldn't daterming date column")
 
@@ -257,7 +251,7 @@ class CSVClient(Client):
         return args
 
     def __init__(self, files:list = None, columns = ['Open', 'High', 'Low', 'Close'], date_column = "Timestamp", 
-                 file_name_func=None, out_frame:int=None,
+                 file_name_generator=None, out_frame:int=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=False, auto_reset_index=False, slip_type="random", 
                  idc_processes = [], pre_process = [], ascending=True, chunksize=None, budget=1000000, 
                  do_render=False, seed=1017,logger=None):
@@ -266,10 +260,10 @@ class CSVClient(Client):
         
         Args:
             files (list<str>, optional): You can directly specify the file names. Defaults to None.
-            file_name_func (function, optional): function to create file name from symbol. Ex) lambda symbol: f'D:\\warehouse\\stock_D1_{symbol}.csv'
-            out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
             columns (list, optional): column names to read from CSV files. Defaults to ['Open', 'High', 'Low', 'Close'].
             date_column (str, optional): If specified, try to parse time columns. Otherwise search time column. Defaults to Timestamp
+            file_name_generator (function, optional): function to create file name from symbol. Ex) lambda symbol: f'D:\\warehouse\\stock_D1_{symbol}.csv'
+            out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
             start_index (int, optional): specify minimum index. If not specified, start from 0. Defauls to None.
             start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
             start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
@@ -345,14 +339,29 @@ class CSVClient(Client):
     def update_rates(self) -> bool:
         return False
     
-    def __get_rates_by_chunk(self, symbols:list=[], interval:int=None, frame:int=None):
-        DFS = {}
-        chunk_size = self.__args["chunksize"]
-        if len(dfs[min_time_code]) - self.__step_index < interval:
-            temp_df = dfs[min_time_code].dropna()
+    def __update_chunkdata_with_time(self, chunk_size:int, symbols:list=[], interval:int=None):
+        min_last_time = datetime.datetime.utcnow()
+        TIMES = self.__chunk_mode_params["TIMES"]
+        for symbol in symbols:
+            if symbol not in TIMES:
+                # if file_name_generator is defined, initialize it
+                # else case, check symbol is a part of any column name
+                # and else, show warning
+                print(f"{symbol} is not initialized")
+                pass
+            first_time, last_time = TIMES[symbol]
+            if min_last_time > last_time:
+                min_last_time = last_time
+                min_time_symbol = symbol
+        
+        if len(self.data[min_time_symbol]) - self.__step_index < interval:
+            DFS = {}
+            TRS = self.__chunk_mode_params["TRS"]
+            TIMES = self.__chunk_mode_params["TIMES"]
+            temp_df = self.data[min_time_symbol].dropna()
             short_length = interval - len(temp_df) + self.__step_index
             short_chunk_count = math.ceil(short_length/chunk_size)
-            tr = TRS[min_time_code]
+            tr = TRS[min_time_symbol]
             temp_dfs = [temp_df]
             for count in range(0, short_chunk_count):
                 temp_df = tr.get_chunk()##may happen error
@@ -360,31 +369,65 @@ class CSVClient(Client):
             temp_df = pd.concat(temp_dfs, axis=0)
             required_last_time = temp_df.index[self.__step_index + interval -1]
             temp_df = temp_df.dropna()
-            DFS[min_time_code] = temp_df
-            TIMES[min_time_code] = (temp_df.index[0], temp_df.index[-1])
+            DFS[min_time_symbol] = temp_df
+            TIMES[min_time_symbol] = (temp_df.index[0], temp_df.index[-1])
             min_last_time = temp_df.index[-1]
             
-            remaining_codes = set(TRS.keys()) - {min_time_code}
-            for code in remaining_codes:
-                date_set = TIMES[code]
-                code_last_date = date_set[1]
-                tr = TRS[code]
-                temp_dfs = [dfs[code].dropna()]
-                while code_last_date < required_last_time:
+            remaining_symbols = set(TRS.keys()) - {min_time_symbol}
+            for symbol in remaining_symbols:
+                date_set = TIMES[symbol]
+                symbol_last_date = date_set[1]
+                tr = TRS[symbol]
+                temp_dfs = [self.data[symbol].dropna()]
+                while symbol_last_date < required_last_time:
                     temp_df = tr.get_chunk()
                     temp_dfs.append(temp_df)
-                    code_last_date = temp_df.index[-1]
+                    symbol_last_date = temp_df.index[-1]
                 if len(temp_df) > 1:
                     temp_df = pd.concat(temp_dfs, axis=0)
                     temp_df = temp_df.dropna()
-                    DFS[code] = temp_df
-                    TIMES[code] = (temp_df.index[0], temp_df.index[-1])
+                    DFS[symbol] = temp_df
+                    TIMES[symbol] = (temp_df.index[0], temp_df.index[-1])
                     if min_last_time > temp_df.index[-1]:
                         min_last_time = temp_df.index[-1]
-                        min_time_code = code
+                        min_time_symbol = symbol
                 else:
-                    DFS[code] = dfs[min_time_code].dropna()
+                    DFS[symbol] = self.data[min_time_symbol].dropna()
+            self.data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+    
+    def __update_chunkdata(self, chunk_size:int, symbols:list=[], interval:int=None):
+        DFS = {}
+        TRS = self.__chunk_mode_params["TRS"]
+        for symbol in symbols:
+            temp_df = self.data[symbol].dropna()
+            if len(temp_df) - self.__step_index < interval:
+                short_length = interval - len(temp_df) + self.__step_index
+                short_chunk_count = math.ceil(short_length/chunk_size)
+                tr = TRS[symbol]
+                temp_dfs = [temp_df]
+                for count in range(0, short_chunk_count):
+                    temp_df = tr.get_chunk()##may happen error
+                    temp_dfs.append(temp_df)
+                temp_df = pd.concat(temp_dfs, axis=0)
+                DFS[symbol] = temp_df
+            else:
+                DFS[symbol] = temp_df
+        if len(DFS) > 0:
             dfs = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+            all_columns = set(self.data.columns)
+            missing_columns = all_columns - set(symbols)
+            if len(missing_columns) > 0:
+                missing_data_df = self.data[list(missing_columns)]
+                dfs = pd.concat([dfs, missing_data_df])
+            self.data = dfs
+            
+    def __get_rates_by_chunk(self, symbols:list=[], interval:int=None, frame:int=None):
+        chunk_size = self.__args["chunksize"]
+        if "TIMES" in self.__chunk_mode_params:
+            self.__update_chunkdata_with_time(chunk_size, symbols, interval)
+        else:
+            self.__update_chunkdata(chunk_size, symbols, interval)
+            
     
     def __get_rates(self, symbols:list=[], interval:int=None, frame:int=None):
         if interval is None:
