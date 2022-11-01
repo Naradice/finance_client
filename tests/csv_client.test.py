@@ -98,12 +98,41 @@ class TestCSVClient(unittest.TestCase):
 
 file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/yfinance'))
 symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
+datetime_column = "Datetime"
+ohlc_columns = ["Open", "High", "Low", "Close"]
+additional_column = ["Adj Close"]
 csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
 
 class TestCSVClientMulti(unittest.TestCase):
     
     def test_initialize_with_files(self):
-        client = CSVClient(files=csv_files, date_column="Datetime")
+        files = csv_files[:2]
+        client = CSVClient(files=files)
+        del client
+        client = CSVClient(files=files, columns=ohlc_columns)
+        del client
+        client = CSVClient(files=files, date_column=datetime_column)
+        del client
+        #client = CSVClient(files=files, out_frame=30)
+        #del client
+        client = CSVClient(files=files, start_index=100)
+        del client
+        client = CSVClient(files=files, start_date=datetime.datetime(year=2005, month=4, day=1))
+        del client
+        client = CSVClient(files=files, start_random_index=True)
+        del client
+        client = CSVClient(files=files, auto_reset_index=True)
+        del client
+        client = CSVClient(files=files, slip_type="percent")
+        del client
+        client = CSVClient(files=files, chunksize=50)
+        del client
+        client = CSVClient(files=files, ascending=False)
+        del client
+        client = CSVClient(files=files, idc_processes=[utils.CCIProcess(ohlc_column=ohlc_columns)])
+        del client
+        client = CSVClient(files=files, pre_processes=[utils.MinMaxPreProcess()])
+        del client
         
 if __name__ == '__main__':
     unittest.main()

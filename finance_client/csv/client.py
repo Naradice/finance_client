@@ -7,7 +7,7 @@ from finance_client.utils.csvrw import write_df_to_csv, read_csv
 
 class CSVClient(Client):
     kinds = 'csv'
-    available_slip_type = ["random", "none", "percentage"]
+    available_slip_type = ["random", "none", "percent"]
     
     def __update_columns(self, columns:list):
         if self.ohlc_columns is None:
@@ -70,7 +70,7 @@ class CSVClient(Client):
                 suffix = same_strs[-1]
                 self.__get_symbol_from_filename = lambda file_name: file_name.replace(suffix, "")[:4]
             
-    def __read_csv__(self, files, columns=None, date_col=None, start_index=None, start_date=None, chunksize=None, ascending=True):
+    def __read_csv__(self, files, columns=[], date_col=None, start_index=None, start_date=None, chunksize=None, ascending=True):
         DFS = {}
         kwargs = {}
         is_multi_mode = False
@@ -79,13 +79,13 @@ class CSVClient(Client):
             
         usecols = columns
         if date_col is not None:
-            if usecols is not None:
+            if len(usecols) > 0:
                 usecols = set(usecols)
                 usecols.add(date_col)
                 kwargs["usecols"] = usecols
             kwargs["parse_dates"] = [date_col]
             kwargs["index_col"] = date_col
-        self.__chunk_mode = False
+        self.__is_chunk_mode = False
         if chunksize is not None:
             kwargs["chunksize"] = chunksize
             self.__is_chunk_mode = True
@@ -93,10 +93,19 @@ class CSVClient(Client):
             #assume index 0 is column
             kwargs["skiprows"] = range(1, start_index+1)
             
+        symbols = []
         for file in files:
             symbol = self.__get_symbol_from_filename(file)
-            df = pd.read_csv(file, header=0, **kwargs)
-            DFS[symbol] = df.copy()
+            try:
+                df = pd.read_csv(file, header=0, **kwargs)
+                symbols.append(symbol)
+                DFS[symbol] = df
+            except PermissionError as e:
+                self.logger.error(f"file, {file}, is handled by other process {e}")
+                raise e
+            except Exception as e:
+                self.logger.error(f"error occured on read csv {e}")
+                raise e
         if self.__is_chunk_mode:
             #when chunksize is specified, TextReader is stored instead of DataFrame
             TRS = DFS.copy()
@@ -113,8 +122,11 @@ class CSVClient(Client):
         
         if start_index is not None:
             self.data = self.data.iloc[start_index:].copy()
-            
-        self.__update_columns(self.data.columns)
+        if is_multi_mode:
+            columns = self.data[symbols[0]].columns
+        else:
+            columns = self.data.columns
+        self.__update_columns(columns)
         is_date_index = False
         if date_col is not None:
             is_date_index = True
@@ -131,10 +143,19 @@ class CSVClient(Client):
                 self.data.index = pd.to_datetime(self.data.index, utc=True)
         elif "Time" in self.ohlc_columns:
             time_column = self.ohlc_columns["Time"]
-            if time_column in self.data.columns:
-                self.data.set_index(time_column, inplace=True)
-                self.data.index = pd.to_datetime(self.data.index, utc=True)
-                self.data = self.data.sort_index(ascending=ascending)
+            if time_column in columns:
+                dfs = []
+                DFS = {}
+                if is_multi_mode:
+                    dfs = [self.data[_symbol] for _symbol in symbols]
+                else:
+                    dfs = [self.data]
+                for df in dfs:
+                    df.set_index(time_column, inplace=True)
+                    df.index = pd.to_datetime(df.index, utc=True)
+                    df = df.sort_index(ascending=ascending)
+                    DFS[symbol] = df
+                self.data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index:
             if self.__is_chunk_mode and is_multi_mode:
@@ -250,18 +271,18 @@ class CSVClient(Client):
         args.update(self.__args)
         return args
 
-    def __init__(self, files:list = None, columns = ['Open', 'High', 'Low', 'Close'], date_column = "Timestamp", 
+    def __init__(self, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, out_frame:int=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=False, auto_reset_index=False, slip_type="random", 
-                 idc_processes = [], pre_process = [], ascending=True, chunksize=None, budget=1000000, 
+                 idc_processes = [], pre_processes = [], ascending=True, chunksize=None, budget=1000000, 
                  do_render=False, seed=1017,logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
         
         Args:
             files (list<str>, optional): You can directly specify the file names. Defaults to None.
-            columns (list, optional): column names to read from CSV files. Defaults to ['Open', 'High', 'Low', 'Close'].
-            date_column (str, optional): If specified, try to parse time columns. Otherwise search time column. Defaults to Timestamp
+            columns (list, optional): column names to read from CSV files. Defaults to [].
+            date_column (str, optional): If specified, try to parse time columns. Otherwise search time column. Defaults to None
             file_name_generator (function, optional): function to create file name from symbol. Ex) lambda symbol: f'D:\\warehouse\\stock_D1_{symbol}.csv'
             out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
             start_index (int, optional): specify minimum index. If not specified, start from 0. Defauls to None.
@@ -282,7 +303,7 @@ class CSVClient(Client):
         slip_type = slip_type.lower()
         if slip_type in self.available_slip_type:
             self.slip_type = slip_type
-            if slip_type == "percentage":
+            if slip_type == "percent":
                 self.slip_rate = 0.1
         else:
             self.logger.warn(f"{slip_type} is not in availble values: {self.available_slip_type}")
@@ -296,6 +317,15 @@ class CSVClient(Client):
         self.ask_positions = {}
         self.base_point = 0.01
         self.frame = None
+        if start_index:
+            self.__step_index = start_index
+        elif start_random_index:
+            #assign initial value later
+            self.__step_index = 0
+        else:
+            start_index = 0
+            self.__step_index = start_index
+
         
         if files is not None:
             if type(files) == str:
@@ -311,7 +341,6 @@ class CSVClient(Client):
                 files = [os.path.abspath(file) for file in files]
             self.__initialize_file_name_func(files)
             self.__read_csv__(files, columns, date_column, start_index, start_date, chunksize, ascending)
-            start_index = 0
             if out_frame != None:
                 to_frame = int(out_frame)
                 if self.frame < to_frame:
@@ -325,15 +354,7 @@ class CSVClient(Client):
                     raise Exception("frame should be greater than file_frame as we can't decrease the frame.")
                 self.out_frames = to_frame
                 
-        if start_index:
-            self.__step_index = start_index
-        else:
-            self.__step_index = random.randint(0, len(self.data))
         self.__auto_reset = auto_reset_index
-        high_column = self.ohlc_columns["High"]
-        low_column = self.ohlc_columns["Low"]
-        self.__high_max = self.get_min_max(column = high_column)[1]
-        self.__low_min = self.get_min_max(column = low_column)[0]
     
     #overwrite if needed
     def update_rates(self) -> bool:
@@ -422,17 +443,37 @@ class CSVClient(Client):
             self.data = dfs
             
     def __get_rates_by_chunk(self, symbols:list=[], interval:int=None, frame:int=None):
-        chunk_size = self.__args["chunksize"]
-        if "TIMES" in self.__chunk_mode_params:
-            self.__update_chunkdata_with_time(chunk_size, symbols, interval)
+        if interval is not None:
+            chunk_size = self.__args["chunksize"]
+            if "TIMES" in self.__chunk_mode_params:
+                self.__update_chunkdata_with_time(chunk_size, symbols, interval)
+            else:
+                self.__update_chunkdata(chunk_size, symbols, interval)
         else:
-            self.__update_chunkdata(chunk_size, symbols, interval)
+            target_symbols = list(set(self.data.columns) & set(symbols))
+            # todo: update missing columns
+            rates = self.data.copy()
+            if self.auto_step_index:
+                self.__step_index += 1
+            return rates
+        target_symbols = list(set(self.data.columns) & set(symbols))
+        symbols_dfs = self.data[target_symbols]
+        is_ascending = self.__args["ascending"]
+        if is_ascending:
+            rates = symbols_dfs.iloc[self.__step_index - interval+1:self.__step_index+1]
+        else:
+            rates = symbols_dfs.iloc[len(symbols_dfs) - interval - self.__step_index - interval+1: len(symbols_dfs) -self.__step_index]
+        if self.auto_step_index:
+            self.__step_index += 1
+        return rates
             
     
     def __get_rates(self, symbols:list=[], interval:int=None, frame:int=None):
         if interval is None:
             self.update_rates()
             rates = self.data.copy()
+            if self.auto_step_index:
+                self.__step_index += 1
             return rates
 
         elif interval >= 1:
@@ -440,21 +481,22 @@ class CSVClient(Client):
             if self.__step_index >= interval-1:
                 try:
                     #return data which have interval length
-                    rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1].copy()
-                    if self.auto_step_index:
-                        self.__step_index = self.__step_index + 1
-                        ## raise index change event
+                    is_ascending = self.__args["ascending"]
+                    if is_ascending:
+                        rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1]
+                    else:
+                        rates = self.data.iloc[len(self.data) - interval - self.__step_index - interval+1: len(self.data) -self.__step_index]
                     return rates
                 except Exception as e:
                     self.logger.error(e)
             else:
                 if self.update_rates():
-                    self.get_rates_from_client(symbols, interval, frame)
+                    self.__get_rates(symbols, interval, frame)
                 else:
                     if self.__auto_reset:
                         self.__step_index = random.randint(0, len(self.data))
                         ## raise index change event
-                        return self.get_rates_from_client(symbols, interval, frame)
+                        return self.__get_rates(symbols, interval, frame)
                     else:
                         self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
@@ -462,7 +504,10 @@ class CSVClient(Client):
             raise Exception("interval should be greater than 0.")
            
     def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
-        pass
+        if self.__is_chunk_mode:
+            return self.__get_rates_by_chunk(symbols, interval, frame)
+        else:
+            return self.__get_rates(symbols, interval, frame)
 
     def get_future_rates(self,interval=1, back_interval=0):
         if interval > 1:
@@ -575,23 +620,16 @@ class CSVClient(Client):
     def __getitem__(self, ndx):
         return self.data.iloc[ndx]
         
-    def get_min_max(self, column, data_length = 0):
-        if column in self.data.columns:
-            if data_length == 0:
-                return self.data[column].min(), self.data[column].max()
-            else:
-                if data_length > 0:
-                    target_df = self.data[column].iloc[self.__step_index:self.__step_index + data_length]
-                else:
-                    target_df = self.data[column].iloc[self.__step_index + data_length + 1:self.__step_index +1]
-                return target_df.min(), target_df.max()
-        else:
-            raise ValueError(f"{column} is not defined in {self.data.columns}")
-        
     def get_current_index(self):
         return self.__step_index
     
     def get_params(self) -> dict:
         self.__args["files"] = self.files
         
-        return param
+        return self.__args
+    
+    def __del__(self):
+        if self.__is_chunk_mode:
+            TRS = self.__chunk_mode_params["TRS"]
+            for key, value in TRS.items():
+                value.close()
