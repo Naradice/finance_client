@@ -134,5 +134,7 @@ class TestCSVClientMulti(unittest.TestCase):
         client = CSVClient(files=files, pre_processes=[utils.MinMaxPreProcess()])
         del client
         
+    def test_get_rates
+        
 if __name__ == '__main__':
     unittest.main()

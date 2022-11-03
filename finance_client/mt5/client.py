@@ -412,7 +412,7 @@ class MT5Client(Client):
         else:
             return df_rates
         
-    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None, start = None):
+    def get_ohlc_from_client(self, symbols:list=[], interval:int=None, frame:int=None, start = None):
         
         if interval is None:
             return self.__get_all_rates()

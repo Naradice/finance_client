@@ -184,7 +184,7 @@ class CoinCheckClient(Client):
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+    def get_ohlc_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
         if interval is None:
             if self.__return_intermidiate_data:
                 return pd.concat([self.data, self.frame_ohlcv])

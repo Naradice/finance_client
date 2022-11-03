@@ -346,7 +346,7 @@ class Client:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_rates(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[]) -> pd.DataFrame:
+    def get_ohlc(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[]) -> pd.DataFrame:
         """ get ohlc data with length length
 
         Args:
@@ -365,12 +365,12 @@ class Client:
             do_run_process = True
         
         if length is None:
-            ohlc_df = self.get_rates_from_client(symbols=symbols, length=length, frame=frame)
+            ohlc_df = self.get_ohlc_from_client(symbols=symbols, length=length, frame=frame)
         else:
             required_length = length
             if do_run_process:
                 required_length = length + self.__get_required_length(idc_processes + pre_processes)
-            ohlc_df = self.get_rates_from_client(symbols=symbols, length=required_length, frame=frame)
+            ohlc_df = self.get_ohlc_from_client(symbols=symbols, length=required_length, frame=frame)
         
         t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
@@ -395,7 +395,7 @@ class Client:
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, symbols:list, length:int):
+    def get_ohlc_from_client(self, symbols:list, length:int):
         return {}
     
     def get_future_rates(self, interval) -> pd.DataFrame:

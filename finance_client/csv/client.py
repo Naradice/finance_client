@@ -503,7 +503,7 @@ class CSVClient(Client):
         else:
             raise Exception("interval should be greater than 0.")
            
-    def get_rates_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+    def get_ohlc_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
         if self.__is_chunk_mode:
             return self.__get_rates_by_chunk(symbols, interval, frame)
         else:
