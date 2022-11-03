@@ -134,7 +134,21 @@ class TestCSVClientMulti(unittest.TestCase):
         client = CSVClient(files=files, pre_processes=[utils.MinMaxPreProcess()])
         del client
         
-    def test_get_rates
+    def check_data_length(self, expected_length, df):
+        self.assertEqual(expected_length, len(df))
+        
+    def test_get_rates_with_files_basic(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files)
+        df = client.get_ohlc(DATA_LENGTH)
+        self.check_data_length(DATA_LENGTH, df)
+        # del client
+        # client = CSVClient(files=files, columns=ohlc_columns)
+        # del client
+        # client = CSVClient(files=files, date_column=datetime_column)
         
 if __name__ == '__main__':
     unittest.main()

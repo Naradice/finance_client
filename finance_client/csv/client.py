@@ -468,54 +468,54 @@ class CSVClient(Client):
         return rates
             
     
-    def __get_rates(self, symbols:list=[], interval:int=None, frame:int=None):
-        if interval is None:
+    def __get_rates(self, length:int=None, symbols:list=[], frame:int=None):
+        if length is None:
             self.update_rates()
             rates = self.data.copy()
             if self.auto_step_index:
                 self.__step_index += 1
             return rates
 
-        elif interval >= 1:
+        elif length >= 1:
             rates = None
-            if self.__step_index >= interval-1:
+            if self.__step_index >= length-1:
                 try:
-                    #return data which have interval length
+                    #return data which have length length
                     is_ascending = self.__args["ascending"]
                     if is_ascending:
-                        rates = self.data.iloc[self.__step_index - interval+1:self.__step_index+1]
+                        rates = self.data.iloc[self.__step_index - length+1:self.__step_index+1]
                     else:
-                        rates = self.data.iloc[len(self.data) - interval - self.__step_index - interval+1: len(self.data) -self.__step_index]
+                        rates = self.data.iloc[len(self.data) - length - self.__step_index - length+1: len(self.data) -self.__step_index]
                     return rates
                 except Exception as e:
                     self.logger.error(e)
             else:
                 if self.update_rates():
-                    self.__get_rates(symbols, interval, frame)
+                    self.__get_rates(length, symbols, frame)
                 else:
                     if self.__auto_reset:
                         self.__step_index = random.randint(0, len(self.data))
                         ## raise index change event
-                        return self.__get_rates(symbols, interval, frame)
+                        return self.__get_rates(length, symbols, frame)
                     else:
                         self.logger.warning(f"not more data on index {self.__step_index}")
                     return pd.DataFrame()
         else:
             raise Exception("interval should be greater than 0.")
            
-    def get_ohlc_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None):
         if self.__is_chunk_mode:
-            return self.__get_rates_by_chunk(symbols, interval, frame)
+            return self.__get_rates_by_chunk(symbols, length, frame)
         else:
-            return self.__get_rates(symbols, interval, frame)
+            return self.__get_rates(symbols, length, frame)
 
-    def get_future_rates(self,interval=1, back_interval=0):
-        if interval > 1:
+    def get_future_rates(self,length=1, back_length=0):
+        if length > 1:
             rates = None
-            if self.__step_index >= interval-1:
+            if self.__step_index >= length-1:
                 try:
-                    #return data which have interval length
-                    rates = self.data.iloc[self.__step_index - back_interval:self.__step_index+interval+1].copy()
+                    #return data which have length length
+                    rates = self.data.iloc[self.__step_index - back_length:self.__step_index+length+1].copy()
                     return rates
                 except Exception as e:
                     self.logger.error(e)
@@ -523,12 +523,12 @@ class CSVClient(Client):
                 if self.__auto_reset:
                     self.__step_index = random.randint(0, len(self.data))
                     ## raise index change event
-                    return self.get_future_rates(interval)
+                    return self.get_future_rates(length)
                 else:
                     self.logger.warning(f"not more data on index {self.__step_index}")
                 return pd.DataFrame()
         else:
-            raise Exception("interval should be greater than 0.")
+            raise Exception(f"length should be greater than 0. {length} is provided.")
     
     def get_current_ask(self):
         tick = self.data.iloc[self.__step_index]

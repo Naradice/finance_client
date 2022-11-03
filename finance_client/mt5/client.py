@@ -351,20 +351,20 @@ class MT5Client(Client):
         write_df_to_csv(rate_df, os.path.join(self.kinds, self.provider), file_name, panda_option={"mode":"w", "index":False, "header":True})
         return rate_df
     
-    def __get_rates(self, interval, start = None):
+    def __get_rates(self, length, start = None):
         start_index = 0
-        _interval = None
+        _length = None
         if start is not None:
             start_index = start
         elif self.back_test:
             start_index = self.sim_index#simu index will be reduced by get_client_rate.
-        if self.auto_index and interval == 1:
-            _interval  = interval
-            interval += 1
+        if self.auto_index and length == 1:
+            _length  = length
+            length += 1
             
         ## save data when mode is back test
-        ## if interval is less than stored length - step_index. Then update time fit logic
-        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
+        ## if length is less than stored length - step_index. Then update time fit logic
+        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, length)
         df_rates = pd.DataFrame(rates)
         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
         #df_rates = df_rates.set_index('time')
@@ -384,7 +384,7 @@ class MT5Client(Client):
                     candidate = self.sim_index
                     while current_time != self.__next_time:
                         candidate += 1
-                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, interval)
+                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, length)
                         df_rates = pd.DataFrame(rates)
                         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
                         current_time = df_rates['time'].iloc[0]
@@ -398,7 +398,7 @@ class MT5Client(Client):
                     candidate = self.sim_index
                     while current_time != self.__next_time:
                         candidate = candidate - 1
-                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, interval)
+                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, length)
                         df_rates = pd.DataFrame(rates)
                         df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
                         current_time = df_rates['time'].iloc[0]
@@ -407,17 +407,17 @@ class MT5Client(Client):
                     self.logger.debug(f"auto index: fixed to {current_time}")
                     self.__next_time = df_rates['time'].iloc[1]
                     
-        if self.auto_index and _interval:
-            return df_rates.iloc[:interval]
+        if self.auto_index and _length:
+            return df_rates.iloc[:length]
         else:
             return df_rates
         
-    def get_ohlc_from_client(self, symbols:list=[], interval:int=None, frame:int=None, start = None):
+    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, start = None):
         
-        if interval is None:
+        if length is None:
             return self.__get_all_rates()
-        elif interval > 0:
-            df_rates = self.__get_rates(interval=interval, start=start)
+        elif length > 0:
+            df_rates = self.__get_rates(length=length, start=start)
             if self.auto_index:
                 self.sim_index = self.sim_index - 1
 

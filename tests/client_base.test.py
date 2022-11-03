@@ -22,7 +22,7 @@ class TestClient(Client):
     def get_additional_params(self):
         return {}
 
-    def get_ohlc_from_client(self, symbols:list=[], interval:int=None, frame:int=None):
+    def get_ohlc_from_client(self, interval:int=None, symbols:list=[], frame:int=None):
         df = self.data.iloc[self.step_index - interval+1: self.step_index+1]
         self.step_index += 1
         return df
