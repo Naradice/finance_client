@@ -185,16 +185,16 @@ class CoinCheckClient(Client):
         return {}
 
     def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None):
-        if interval is None:
+        if length is None:
             if self.__return_intermidiate_data:
                 return pd.concat([self.data, self.frame_ohlcv])
             else:
                 return self.data.copy()
-        elif interval > 0:
+        elif length > 0:
             if self.__return_intermidiate_data:
-                return pd.concat([self.data, self.frame_ohlcv]).iloc[-interval:]
+                return pd.concat([self.data, self.frame_ohlcv]).iloc[-length:]
             else:
-                return self.data.iloc[-interval:]
+                return self.data.iloc[-length:]
         else:
             self.logger.error(f"intervl should be greater than 0.")
     

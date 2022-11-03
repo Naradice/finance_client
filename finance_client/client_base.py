@@ -260,7 +260,7 @@ class Client:
         common_args.update(add_params)
         return common_args
     
-    def __check_order_completion(self, ohlc_df: pd.DataFrame):
+    def __check_order_completion(self, ohlc_df: pd.DataFrame, symbols:list):
         if len(self.market.listening_positions) > 0:
             positions = self.market.listening_positions.copy()
             self.logger.debug("start checking the tp and sl of positions")

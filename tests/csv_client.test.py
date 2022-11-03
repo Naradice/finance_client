@@ -107,10 +107,6 @@ class TestCSVClientMulti(unittest.TestCase):
     
     def test_initialize_with_files(self):
         files = csv_files[:2]
-        client = CSVClient(files=files)
-        del client
-        client = CSVClient(files=files, columns=ohlc_columns)
-        del client
         client = CSVClient(files=files, date_column=datetime_column)
         del client
         #client = CSVClient(files=files, out_frame=30)
@@ -133,22 +129,40 @@ class TestCSVClientMulti(unittest.TestCase):
         del client
         client = CSVClient(files=files, pre_processes=[utils.MinMaxPreProcess()])
         del client
+        client = CSVClient(files=files, columns=ohlc_columns, pre_processes=[utils.MinMaxPreProcess()])
         
-    def check_data_length(self, expected_length, df):
-        self.assertEqual(expected_length, len(df))
-        
-    def test_get_rates_with_files_basic(self):
+    def test_get_data_with_files_basic(self):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
         
         client = CSVClient(files=files)
         df = client.get_ohlc(DATA_LENGTH)
-        self.check_data_length(DATA_LENGTH, df)
-        # del client
-        # client = CSVClient(files=files, columns=ohlc_columns)
+        self.assertEqual(DATA_LENGTH, len(df))
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del df
+        df = client.get_ohlc()
+        self.assertGreater(len(df), 0)
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del client, df
+        
         # del client
         # client = CSVClient(files=files, date_column=datetime_column)
+
+    def test_get_data_with_files_with_limit_columns(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files, columns=ohlc_columns)
+        df = client.get_ohlc(DATA_LENGTH)
+        self.assertEqual(DATA_LENGTH, len(df))
+        self.assertEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del df
+        df = client.get_ohlc()
+        self.assertGreater(len(df), 0)
+        self.assertEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del client, df
         
 if __name__ == '__main__':
     unittest.main()

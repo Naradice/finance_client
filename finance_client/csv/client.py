@@ -69,7 +69,21 @@ class CSVClient(Client):
             else:
                 suffix = same_strs[-1]
                 self.__get_symbol_from_filename = lambda file_name: file_name.replace(suffix, "")[:4]
+    
+    def __initialize_date_index(self, ascending:bool, start_date:datetime.datetime=None):
+        self.data = self.data.sort_index(ascending=ascending)
+        if ascending:
+            delta = self.data.index[1] - self.data.index[0]
+        else:
+            delta = self.data.index[0] - self.data.index[1]
+        self.frame = int(delta.total_seconds()/60)
+        
+        if delta < datetime.timedelta(days=1):
+            self.data.index = pd.to_datetime(self.data.index, utc=True)
             
+        if start_date is not None and type(start_date) is datetime.datetime:
+            self.data = self.data[self.data.index >= start_date.astimezone(datetime.timezone.utc)]
+    
     def __read_csv__(self, files, columns=[], date_col=None, start_index=None, start_date=None, chunksize=None, ascending=True):
         DFS = {}
         kwargs = {}
@@ -79,6 +93,7 @@ class CSVClient(Client):
             
         usecols = columns
         if date_col is not None:
+            # To load date column, don't specify columns if date is not specified at first
             if len(usecols) > 0:
                 usecols = set(usecols)
                 usecols.add(date_col)
@@ -123,41 +138,37 @@ class CSVClient(Client):
         if start_index is not None:
             self.data = self.data.iloc[start_index:].copy()
         if is_multi_mode:
-            columns = self.data[symbols[0]].columns
+            __columns = self.data[symbols[0]].columns
         else:
-            columns = self.data.columns
-        self.__update_columns(columns)
+            __columns = self.data.columns
+        self.__update_columns(__columns)
         is_date_index = False
         if date_col is not None:
             is_date_index = True
-            self.data = self.data.sort_index(ascending=ascending)
-            if ascending:
-                delta = self.data.index[1] - self.data.index[0]
-            else:
-                delta = self.data.index[0] - self.data.index[1]
-            self.frame = int(delta.total_seconds()/60)
-            if start_date is not None and type(start_date) is datetime:
-                self.data = self.data[self.data.index >= start_date]
-            
-            if delta < datetime.timedelta(days=1):
-                self.data.index = pd.to_datetime(self.data.index, utc=True)
         elif "Time" in self.ohlc_columns:
+            # make Time column to index
             time_column = self.ohlc_columns["Time"]
-            if time_column in columns:
+            if time_column in __columns:
                 dfs = []
                 DFS = {}
                 if is_multi_mode:
                     dfs = [self.data[_symbol] for _symbol in symbols]
                 else:
                     dfs = [self.data]
-                for df in dfs:
+                for index in range(0, len(symbols)):
+                    df = dfs[index].dropna()
+                    symbol = symbols[index]
                     df.set_index(time_column, inplace=True)
-                    df.index = pd.to_datetime(df.index, utc=True)
+                    if type(df.index) != pd.DatetimeIndex:
+                        df.index = pd.to_datetime(df.index, utc=True)
                     df = df.sort_index(ascending=ascending)
-                    DFS[symbol] = df
+                    if columns is not None and len(columns) > 0:
+                        df = df[columns]
+                    DFS[symbol] = df.copy()
                 self.data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index:
+            self.__initialize_date_index(ascending, start_date)
             if self.__is_chunk_mode and is_multi_mode:
                 for key, df in DFS.items():
                     last_time = df.index[-1]
@@ -311,7 +322,7 @@ class CSVClient(Client):
             self.slip_type = "random"
         random.seed(seed)
         # store args so that we can reproduce CSV client by loading args file
-        self.__args = {"out_frame": out_frame, "olumns": columns, "date_column": date_column, "start_index": start_index, "start_date":start_date,
+        self.__args = {"out_frame": out_frame, "columns": columns, "date_column": date_column, "start_index": start_index, "start_date":start_date,
                        "start_random_index":start_random_index, "auto_step_index": auto_step_index, "auto_reset_index":auto_reset_index, "slip_type":slip_type,
                        "ascending":ascending, "chunksize": chunksize,"seed": seed}
         self.ask_positions = {}
@@ -358,6 +369,11 @@ class CSVClient(Client):
     
     #overwrite if needed
     def update_rates(self) -> bool:
+        """ you can define a function to increment length of self.data 
+    
+        Returns:
+            bool: succeeded to update. Length should be increased 1 at least
+        """
         return False
     
     def __update_chunkdata_with_time(self, chunk_size:int, symbols:list=[], interval:int=None):
@@ -495,19 +511,19 @@ class CSVClient(Client):
                 else:
                     if self.__auto_reset:
                         self.__step_index = random.randint(0, len(self.data))
-                        ## raise index change event
+                        ## todo: raise index change event
                         return self.__get_rates(length, symbols, frame)
                     else:
-                        self.logger.warning(f"not more data on index {self.__step_index}")
-                    return pd.DataFrame()
+                        self.logger.warning(f"current step index {self.__step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
+                        return self.data.iloc[:length]
         else:
             raise Exception("interval should be greater than 0.")
            
     def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None):
         if self.__is_chunk_mode:
-            return self.__get_rates_by_chunk(symbols, length, frame)
+            return self.__get_rates_by_chunk(length, symbols, frame)
         else:
-            return self.__get_rates(symbols, length, frame)
+            return self.__get_rates(length, symbols, frame)
 
     def get_future_rates(self,length=1, back_length=0):
         if length > 1:
