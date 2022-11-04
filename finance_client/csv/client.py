@@ -84,11 +84,13 @@ class CSVClient(Client):
         if start_date is not None and type(start_date) is datetime.datetime:
             #self.data[self.data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
             start_date = start_date.astimezone(datetime.timezone.utc)
-            if ascending:
-                for index in range(0, len(self.data.index)):
-                    if self.data.index[0] >= start_date:
-                        self.__step_index = index
-                        break    
+            for index in range(0, len(self.data.index)):
+                if self.data.index[index] >= start_date:
+                    # date is retrievd by [:step_index], so we need to plus 1
+                    self.__step_index = index + 1
+                    break
+            self.logger.warning(f"start date {start_date} doesn't exit in the index")
+                
     def __read_csv__(self, files, columns=[], date_col=None, skiprows=None, start_date=None, chunksize=None, ascending=True):
         DFS = {}
         kwargs = {}
@@ -482,9 +484,9 @@ class CSVClient(Client):
         symbols_dfs = self.data[target_symbols]
         is_ascending = self.__args["ascending"]
         if is_ascending:
-            rates = symbols_dfs.iloc[self.__step_index - interval+1:self.__step_index+1]
+            rates = symbols_dfs.iloc[self.__step_index - interval:self.__step_index]
         else:
-            rates = symbols_dfs.iloc[len(symbols_dfs) - interval - self.__step_index - interval+1: len(symbols_dfs) -self.__step_index]
+            rates = symbols_dfs.iloc[len(symbols_dfs) - interval - self.__step_index - interval: len(symbols_dfs) -self.__step_index]
         if self.auto_step_index:
             self.__step_index += 1
         return rates
@@ -503,11 +505,7 @@ class CSVClient(Client):
             if self.__step_index >= length-1:
                 try:
                     #return data which have length length
-                    is_ascending = self.__args["ascending"]
-                    if is_ascending:
-                        rates = self.data.iloc[self.__step_index - length:self.__step_index]
-                    else:
-                        rates = self.data.iloc[len(self.data) - length - self.__step_index - length: len(self.data) -self.__step_index]
+                    rates = self.data.iloc[self.__step_index - length:self.__step_index]
                     return rates
                 except Exception as e:
                     self.logger.error(e)

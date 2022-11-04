@@ -176,8 +176,19 @@ class TestCSVClientMulti(unittest.TestCase):
         client = CSVClient(files=files, start_index=DATA_LENGTH*MARGIN_FACTOR)
         df = client.get_ohlc(DATA_LENGTH)
         for index in range(0, DATA_LENGTH):
-            self.assertEqual(df.index[index], org_df.index[DATA_LENGTH + index])
-
+            self.assertEqual(df.index[index], org_df.index[DATA_LENGTH *(MARGIN_FACTOR-1) + index])
+    
+    def test_get_data_from_specific_date(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        START_DATE=datetime.datetime(year=2001, month=4, day=1)
+        
+        client = CSVClient(files=files, start_date=START_DATE)
+        df = client.get_ohlc(DATA_LENGTH)
+        start_date_utc = START_DATE.astimezone(tz=datetime.timezone.utc)
+        self.assertLess(df.index[-2], start_date_utc)
+        self.assertGreaterEqual(df.index[-1], start_date_utc)
         
 if __name__ == '__main__':
     unittest.main()
