@@ -82,9 +82,14 @@ class CSVClient(Client):
             self.data.index = pd.to_datetime(self.data.index, utc=True)
             
         if start_date is not None and type(start_date) is datetime.datetime:
-            self.data = self.data[self.data.index >= start_date.astimezone(datetime.timezone.utc)]
-    
-    def __read_csv__(self, files, columns=[], date_col=None, start_index=None, start_date=None, chunksize=None, ascending=True):
+            #self.data[self.data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
+            start_date = start_date.astimezone(datetime.timezone.utc)
+            if ascending:
+                for index in range(0, len(self.data.index)):
+                    if self.data.index[0] >= start_date:
+                        self.__step_index = index
+                        break    
+    def __read_csv__(self, files, columns=[], date_col=None, skiprows=None, start_date=None, chunksize=None, ascending=True):
         DFS = {}
         kwargs = {}
         is_multi_mode = False
@@ -104,9 +109,9 @@ class CSVClient(Client):
         if chunksize is not None:
             kwargs["chunksize"] = chunksize
             self.__is_chunk_mode = True
-        if is_multi_mode and start_index is not None:
+        if is_multi_mode and skiprows is not None:
             #assume index 0 is column
-            kwargs["skiprows"] = range(1, start_index+1)
+            kwargs["skiprows"] = range(1, skiprows+1)
             
         symbols = []
         for file in files:
@@ -135,8 +140,9 @@ class CSVClient(Client):
             self.data = df.copy()
         del df
         
-        if start_index is not None:
-            self.data = self.data.iloc[start_index:].copy()
+        if skiprows is not None and is_multi_mode:
+            if skiprows > 0:
+                self.data = self.data.iloc[skiprows:].copy()
         if is_multi_mode:
             __columns = self.data[symbols[0]].columns
         else:
@@ -284,8 +290,8 @@ class CSVClient(Client):
 
     def __init__(self, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, out_frame:int=None,
-                 start_index = 0, start_date = None, start_random_index=False, auto_step_index=False, auto_reset_index=False, slip_type="random", 
-                 idc_processes = [], pre_processes = [], ascending=True, chunksize=None, budget=1000000, 
+                 start_index = 0, start_date = None, start_random_index=False, auto_step_index=True, skiprows=None, auto_reset_index=False,
+                 slip_type="random", idc_processes = [], pre_processes = [], ascending=True, chunksize=None, budget=1000000, 
                  do_render=False, seed=1017,logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
@@ -300,6 +306,7 @@ class CSVClient(Client):
             start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
             start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
             auto_step_index (bool, optional): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
+            skiprows (int, optional): specify number to skip row of csv. For multisymbol, row is skipped after merge. Defaults None, not skipped.
             auto_reset_index ( bool, optional): refreh the index when index reach the end. Defaults False
             slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. percentage: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters. 
@@ -351,7 +358,7 @@ class CSVClient(Client):
                 files = list(self.files)
                 files = [os.path.abspath(file) for file in files]
             self.__initialize_file_name_func(files)
-            self.__read_csv__(files, columns, date_column, start_index, start_date, chunksize, ascending)
+            self.__read_csv__(files, columns, date_column, skiprows, start_date, chunksize, ascending)
             if out_frame != None:
                 to_frame = int(out_frame)
                 if self.frame < to_frame:
@@ -499,9 +506,9 @@ class CSVClient(Client):
                     #return data which have length length
                     is_ascending = self.__args["ascending"]
                     if is_ascending:
-                        rates = self.data.iloc[self.__step_index - length+1:self.__step_index+1]
+                        rates = self.data.iloc[self.__step_index - length:self.__step_index]
                     else:
-                        rates = self.data.iloc[len(self.data) - length - self.__step_index - length+1: len(self.data) -self.__step_index]
+                        rates = self.data.iloc[len(self.data) - length - self.__step_index - length: len(self.data) -self.__step_index]
                     return rates
                 except Exception as e:
                     self.logger.error(e)

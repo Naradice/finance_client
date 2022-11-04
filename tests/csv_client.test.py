@@ -107,12 +107,8 @@ class TestCSVClientMulti(unittest.TestCase):
     
     def test_initialize_with_files(self):
         files = csv_files[:2]
-        client = CSVClient(files=files, date_column=datetime_column)
-        del client
         #client = CSVClient(files=files, out_frame=30)
         #del client
-        client = CSVClient(files=files, start_index=100)
-        del client
         client = CSVClient(files=files, start_date=datetime.datetime(year=2005, month=4, day=1))
         del client
         client = CSVClient(files=files, start_random_index=True)
@@ -146,10 +142,16 @@ class TestCSVClientMulti(unittest.TestCase):
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
         del client, df
         
-        # del client
-        # client = CSVClient(files=files, date_column=datetime_column)
+        client = CSVClient(files=files, date_column=datetime_column)
+        df = client.get_ohlc(DATA_LENGTH)
+        self.assertEqual(DATA_LENGTH, len(df))
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del df
+        df = client.get_ohlc()
+        self.assertGreater(len(df), 0)
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
 
-    def test_get_data_with_files_with_limit_columns(self):
+    def test_get_data_with_files_with_limited_columns(self):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
@@ -163,6 +165,21 @@ class TestCSVClientMulti(unittest.TestCase):
         self.assertGreater(len(df), 0)
         self.assertEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
         del client, df
+        
+    def test_get_data_from_specific_index(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        MARGIN_FACTOR = 2
+        
+        client = CSVClient(files=files, start_index=None)
+        org_df = client.get_ohlc(DATA_LENGTH*MARGIN_FACTOR)
+        
+        client = CSVClient(files=files, start_index=DATA_LENGTH*MARGIN_FACTOR)
+        df = client.get_ohlc(DATA_LENGTH)
+        for index in range(0, DATA_LENGTH):
+            self.assertEqual(df.index[index], org_df.index[DATA_LENGTH + index])
+
         
 if __name__ == '__main__':
     unittest.main()
