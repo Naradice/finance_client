@@ -84,12 +84,15 @@ class CSVClient(Client):
         if start_date is not None and type(start_date) is datetime.datetime:
             #self.data[self.data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
             start_date = start_date.astimezone(datetime.timezone.utc)
+            is_date_found = False
             for index in range(0, len(self.data.index)):
                 if self.data.index[index] >= start_date:
                     # date is retrievd by [:step_index], so we need to plus 1
                     self.__step_index = index + 1
+                    is_date_found = True
                     break
-            self.logger.warning(f"start date {start_date} doesn't exit in the index")
+            if is_date_found is False:
+                self.logger.warning(f"start date {start_date} doesn't exit in the index")
                 
     def __read_csv__(self, files, columns=[], date_col=None, skiprows=None, start_date=None, chunksize=None, ascending=True):
         DFS = {}
@@ -115,12 +118,11 @@ class CSVClient(Client):
             #assume index 0 is column
             kwargs["skiprows"] = range(1, skiprows+1)
             
-        symbols = []
         for file in files:
             symbol = self.__get_symbol_from_filename(file)
             try:
                 df = pd.read_csv(file, header=0, **kwargs)
-                symbols.append(symbol)
+                self.symbols.append(symbol)
                 DFS[symbol] = df
             except PermissionError as e:
                 self.logger.error(f"file, {file}, is handled by other process {e}")
@@ -146,7 +148,7 @@ class CSVClient(Client):
             if skiprows > 0:
                 self.data = self.data.iloc[skiprows:].copy()
         if is_multi_mode:
-            __columns = self.data[symbols[0]].columns
+            __columns = self.data[self.symbols[0]].columns
         else:
             __columns = self.data.columns
         self.__update_columns(__columns)
@@ -160,12 +162,12 @@ class CSVClient(Client):
                 dfs = []
                 DFS = {}
                 if is_multi_mode:
-                    dfs = [self.data[_symbol] for _symbol in symbols]
+                    dfs = [self.data[_symbol] for _symbol in self.symbols]
                 else:
                     dfs = [self.data]
-                for index in range(0, len(symbols)):
+                for index in range(0, len(self.symbols)):
                     df = dfs[index].dropna()
-                    symbol = symbols[index]
+                    symbol = self.symbols[index]
                     df.set_index(time_column, inplace=True)
                     if type(df.index) != pd.DatetimeIndex:
                         df.index = pd.to_datetime(df.index, utc=True)
@@ -310,7 +312,7 @@ class CSVClient(Client):
             auto_step_index (bool, optional): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
             skiprows (int, optional): specify number to skip row of csv. For multisymbol, row is skipped after merge. Defaults None, not skipped.
             auto_reset_index ( bool, optional): refreh the index when index reach the end. Defaults False
-            slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. percentage: slip_rate=0.1 is applied. none: no slip.
+            slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. prcent or pct: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters. 
             seed (int, optional): specify random seed. Defaults to 1017
             chunksize (int, optional): To load huge file partially, you can specify chunk size. Defaults to None.
@@ -318,17 +320,25 @@ class CSVClient(Client):
             pre_processes (Process, optional) : list of pre process. Defaults to []
         """
         super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, provider="csv", logger_name=__name__, logger=logger)
+        random.seed(seed)
         self.auto_step_index = auto_step_index
         slip_type = slip_type.lower()
         if slip_type in self.available_slip_type:
-            self.slip_type = slip_type
-            if slip_type == "percent":
-                self.slip_rate = 0.1
+            if slip_type == "percent" or slip_type == "pct":
+                slip_rate = 0.1
+                self.__get_current_bid = lambda open_value, low_value: open_value - (open_value - low_value) * slip_rate
+                self.__get_current_ask = lambda open_value, high_value: open_value + (high_value - open_value) * slip_rate
+            elif slip_type == "random":
+                self.__get_current_bid = lambda open_value, low_value: random.uniform(low_value, open_value)
+                self.__get_current_ask = lambda open_value, high_value: random.uniform(open_value, high_value)
+            elif slip_type == "none" or slip_rate is None:
+                self.__get_current_bid = lambda open_value, low_value: open_value
+                self.__get_current_ask = lambda open_value, low_value: open_value
         else:
             self.logger.warn(f"{slip_type} is not in availble values: {self.available_slip_type}")
             self.logger.info(f"use random as slip_type")
-            self.slip_type = "random"
-        random.seed(seed)
+            self.__get_current_bid = lambda open_value, low_value: random.uniform(low_value, open_value)
+            self.__get_current_ask = lambda open_value, high_value: random.uniform(open_value, high_value)
         # store args so that we can reproduce CSV client by loading args file
         self.__args = {"out_frame": out_frame, "columns": columns, "date_column": date_column, "start_index": start_index, "start_date":start_date,
                        "start_random_index":start_random_index, "auto_step_index": auto_step_index, "auto_reset_index":auto_reset_index, "skiprows":skiprows,
@@ -336,6 +346,7 @@ class CSVClient(Client):
         self.ask_positions = {}
         self.base_point = 0.01
         self.frame = None
+        self.symbols = []
         if start_index:
             self.__step_index = start_index
         elif start_random_index:
@@ -374,6 +385,8 @@ class CSVClient(Client):
                 self.out_frames = to_frame
                 
         self.__auto_reset = auto_reset_index
+        if start_random_index and self.data is not None:
+            self.__step_index = random.randint(0, len(self.data))
     
     #overwrite if needed
     def update_rates(self) -> bool:
@@ -550,31 +563,57 @@ class CSVClient(Client):
         else:
             raise Exception(f"length should be greater than 0. {length} is provided.")
     
-    def get_current_ask(self):
-        tick = self.data.iloc[self.__step_index]
+    def get_current_ask(self, symbols=None):
+        tick = self.data.iloc[self.__step_index-1]
         open_column = self.ohlc_columns["Open"]
         high_column = self.ohlc_columns["High"]
-        
-        if self.slip_type == "random":
-            return random.uniform(tick[open_column], tick[high_column])
-        elif self.slip_type == "none":
-            return tick[open_column]
-        elif self.slip_type == "percentage":
-            slip = (tick[high_column] - tick[open_column]) * self.slip_rate
-            return tick[open_column] + slip
+        if type(tick.index) is pd.MultiIndex:
+            if type(symbols) is str and symbols in self.symbols:
+                open_value = tick[symbols][open_column]
+                high_value = tick[symbols][open_column]
+            elif type(symbols) is list:
+                available_symbols = set(self.symbols) & set(symbols)
+                available_symbols = list(available_symbols)
+                open_value = tick[[(__symbol, open_column) for __symbol in available_symbols]]
+                open_value.index = available_symbols
+                high_value = tick[[(__symbol, high_column) for __symbol in available_symbols]]
+                high_value.index = available_symbols
+            else:
+                open_value = tick[[(__symbol, open_column) for __symbol in self.symbols]]
+                open_value.index = self.symbols
+                high_value = tick[[(__symbol, high_column) for __symbol in self.symbols]]
+                high_value.index = self.symbols
+        else:
+            open_value = tick[open_column]
+            high_value = tick[open_column]
+        return self.__get_current_ask(open_value, high_value)
 
-    def get_current_bid(self):
-        tick = self.data.iloc[self.__step_index]
+    def get_current_bid(self, symbols=None):
+        tick = self.data.iloc[self.__step_index-1]
         open_column = self.ohlc_columns["Open"]
         low_column = self.ohlc_columns["Low"]
         
-        if self.slip_type == "random":
-            return random.uniform(tick[low_column], tick[open_column])
-        elif self.slip_type == "none":
-            return tick[open_column]
-        elif self.slip_type == "percentage":
-            slip = (tick[open_column] - tick[low_column]) * self.slip_rate
-            return tick[open_column] - slip
+        if type(tick.index) is pd.MultiIndex:
+            if type(symbols) is str and symbols in self.symbols:
+                open_value = tick[symbols][open_column]
+                low_value = tick[symbols][open_column]
+            elif type(symbols) is list:
+                available_symbols = set(self.symbols) & set(symbols)
+                available_symbols = list(available_symbols)
+                open_value = tick[[(__symbol, open_column) for __symbol in available_symbols]]
+                open_value.index = available_symbols
+                low_value = tick[[(__symbol, low_column) for __symbol in available_symbols]]
+                low_value.index = available_symbols
+            else:
+                open_value = tick[[(__symbol, open_column) for __symbol in self.symbols]]
+                open_value.index = self.symbols
+                low_value = tick[[(__symbol, low_column) for __symbol in self.symbols]]
+                low_value.index = self.symbols
+        else:
+            open_value = tick[open_column]
+            low_value = tick[open_column]
+        
+        return self.__get_current_bid(open_value, low_value)
         
     def reset(self, mode:str = None, retry=0)-> bool:
         self.ask_positions = {}#ignore if there is position

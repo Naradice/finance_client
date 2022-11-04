@@ -109,10 +109,6 @@ class TestCSVClientMulti(unittest.TestCase):
         files = csv_files[:2]
         #client = CSVClient(files=files, out_frame=30)
         #del client
-        client = CSVClient(files=files, start_date=datetime.datetime(year=2005, month=4, day=1))
-        del client
-        client = CSVClient(files=files, start_random_index=True)
-        del client
         client = CSVClient(files=files, auto_reset_index=True)
         del client
         client = CSVClient(files=files, slip_type="percent")
@@ -164,7 +160,7 @@ class TestCSVClientMulti(unittest.TestCase):
         self.assertEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
         del client, df
         
-    def test_get_data_from_specific_index(self):
+    def test_get_data_with_files_from_specific_index(self):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
@@ -178,7 +174,7 @@ class TestCSVClientMulti(unittest.TestCase):
         for index in range(0, DATA_LENGTH):
             self.assertEqual(df.index[index], org_df.index[DATA_LENGTH *(MARGIN_FACTOR-1) + index])
     
-    def test_get_data_from_specific_date(self):
+    def test_get_data_with_files_from_specific_date(self):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
@@ -189,6 +185,39 @@ class TestCSVClientMulti(unittest.TestCase):
         start_date_utc = START_DATE.astimezone(tz=datetime.timezone.utc)
         self.assertLess(df.index[-2], start_date_utc)
         self.assertGreaterEqual(df.index[-1], start_date_utc)
+        
+    def test_get_data_with_files_with_random_index(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files, start_random_index=True, seed=100)
+        df = client.get_ohlc(DATA_LENGTH)
+        first_date = df.index[-1]
+        client = CSVClient(files=files, start_random_index=True, seed=200)
+        df = client.get_ohlc(DATA_LENGTH)
+        second_date = df.index[-1]
+        self.assertNotEqual(first_date, second_date)
+
+    def test_get_data_with_files_by_no_slip(self):
+        KEY_NONE = "none"
+        KEY_PCT = "pct"
+        KEY_RDM = "random"
+        
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files, slip_type=KEY_NONE)
+        df = client.get_ohlc(DATA_LENGTH)
+        __symbols = symbols[:SYMBOL_COUNT][1:-2]
+        open_values = df[[df[(symbol_, ohlc_columns[0])] for symbol_ in __symbols]].iloc[-1]
+        ask_values = client.get_current_ask()
+        bid_values = client.get_current_bid()
+        for symbol in __symbols:
+            self.assertEqual(open_values[symbol], ask_values[symbol])
+            self.assertEqual(open_values[symbol], bid_values[symbol])
+        
         
 if __name__ == '__main__':
     unittest.main()
