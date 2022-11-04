@@ -291,7 +291,7 @@ class CSVClient(Client):
     def __init__(self, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, out_frame:int=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=True, skiprows=None, auto_reset_index=False,
-                 slip_type="random", idc_processes = [], pre_processes = [], ascending=True, chunksize=None, budget=1000000, 
+                 slip_type="random", idc_processes = [], pre_processes = [], chunksize=None, budget=1000000, 
                  do_render=False, seed=1017,logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
@@ -311,7 +311,6 @@ class CSVClient(Client):
             slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. percentage: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters. 
             seed (int, optional): specify random seed. Defaults to 1017
-            ascending (bool, optional): You can control order of get_rates result
             chunksize (int, optional): To load huge file partially, you can specify chunk size. Defaults to None.
             idc_processes (Process, optional) : list of indicater process. Dafaults to []
             pre_processes (Process, optional) : list of pre process. Defaults to []
@@ -330,8 +329,8 @@ class CSVClient(Client):
         random.seed(seed)
         # store args so that we can reproduce CSV client by loading args file
         self.__args = {"out_frame": out_frame, "columns": columns, "date_column": date_column, "start_index": start_index, "start_date":start_date,
-                       "start_random_index":start_random_index, "auto_step_index": auto_step_index, "auto_reset_index":auto_reset_index, "slip_type":slip_type,
-                       "ascending":ascending, "chunksize": chunksize,"seed": seed}
+                       "start_random_index":start_random_index, "auto_step_index": auto_step_index, "auto_reset_index":auto_reset_index, "skiprows":skiprows,
+                       "slip_type":slip_type, "chunksize": chunksize,"seed": seed}
         self.ask_positions = {}
         self.base_point = 0.01
         self.frame = None
@@ -358,7 +357,7 @@ class CSVClient(Client):
                 files = list(self.files)
                 files = [os.path.abspath(file) for file in files]
             self.__initialize_file_name_func(files)
-            self.__read_csv__(files, columns, date_column, skiprows, start_date, chunksize, ascending)
+            self.__read_csv__(files, columns, date_column, skiprows, start_date, chunksize)
             if out_frame != None:
                 to_frame = int(out_frame)
                 if self.frame < to_frame:

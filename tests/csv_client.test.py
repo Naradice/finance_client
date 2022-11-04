@@ -119,8 +119,6 @@ class TestCSVClientMulti(unittest.TestCase):
         del client
         client = CSVClient(files=files, chunksize=50)
         del client
-        client = CSVClient(files=files, ascending=False)
-        del client
         client = CSVClient(files=files, idc_processes=[utils.CCIProcess(ohlc_column=ohlc_columns)])
         del client
         client = CSVClient(files=files, pre_processes=[utils.MinMaxPreProcess()])
