@@ -3,6 +3,7 @@ import pandas as pd
 import random, difflib, os, datetime, math
 import finance_client.frames as Frame
 from finance_client.client_base import Client
+from finance_client.utils.convert import get_symbols
 from finance_client.utils.csvrw import write_df_to_csv, read_csv
 
 class CSVClient(Client):
@@ -78,8 +79,9 @@ class CSVClient(Client):
             delta = self.data.index[0] - self.data.index[1]
         self.frame = int(delta.total_seconds()/60)
         
-        if delta < datetime.timedelta(days=1):
-            self.data.index = pd.to_datetime(self.data.index, utc=True)
+        if self.frame < Frame.D1:
+            if self.data.index.tzinfo is None:
+                self.data.index = pd.to_datetime(self.data.index, utc=True)
             
         if start_date is not None and type(start_date) is datetime.datetime:
             #self.data[self.data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
@@ -180,9 +182,11 @@ class CSVClient(Client):
         if is_date_index:
             self.__initialize_date_index(ascending, start_date)
             if self.__is_chunk_mode and is_multi_mode:
-                for key, df in DFS.items():
+                TIMES = {}
+                for symbol in self.symbols:
+                    df = self.data[symbol]
                     last_time = df.index[-1]
-                    TIMES = {key: (df.index[0], last_time)}
+                    TIMES[symbol] = (df.index[0], last_time)
                 self.__chunk_mode_params["TIMES"] = TIMES
         else:
             print("Couldn't daterming date column")
@@ -364,6 +368,7 @@ class CSVClient(Client):
                         files = list(files)
                     except Exception as e:
                         raise Exception(f"files is specified, but can't be casted to list: {e}")
+                # store files to be able to reproduce the client by params
                 self.files = set(files)
                 files = list(self.files)
                 files = [os.path.abspath(file) for file in files]
@@ -396,8 +401,12 @@ class CSVClient(Client):
         return False
     
     def __update_chunkdata_with_time(self, chunk_size:int, symbols:list=[], interval:int=None):
-        min_last_time = datetime.datetime.utcnow()
+            
         TIMES = self.__chunk_mode_params["TIMES"]
+        
+        min_last_time = datetime.datetime.now()
+        min_last_time = min_last_time.astimezone(tz=datetime.timezone.utc)
+
         for symbol in symbols:
             if symbol not in TIMES:
                 # if file_name_generator is defined, initialize it
@@ -406,6 +415,8 @@ class CSVClient(Client):
                 print(f"{symbol} is not initialized")
                 pass
             first_time, last_time = TIMES[symbol]
+            if last_time.tzinfo is None:
+                last_time = last_time.tz_localize(tz=datetime.timezone.utc)
             if min_last_time > last_time:
                 min_last_time = last_time
                 min_time_symbol = symbol
@@ -425,6 +436,10 @@ class CSVClient(Client):
             temp_df = pd.concat(temp_dfs, axis=0)
             required_last_time = temp_df.index[self.__step_index + interval -1]
             temp_df = temp_df.dropna()
+            
+        
+            if self.frame < Frame.D1:
+                temp_df.index = pd.to_datetime(temp_df.index, utc=True)
             DFS[min_time_symbol] = temp_df
             TIMES[min_time_symbol] = (temp_df.index[0], temp_df.index[-1])
             min_last_time = temp_df.index[-1]
@@ -442,6 +457,8 @@ class CSVClient(Client):
                 if len(temp_df) > 1:
                     temp_df = pd.concat(temp_dfs, axis=0)
                     temp_df = temp_df.dropna()
+                    if self.frame < Frame.D1:
+                        temp_df.index = pd.to_datetime(temp_df.index, utc=True)
                     DFS[symbol] = temp_df
                     TIMES[symbol] = (temp_df.index[0], temp_df.index[-1])
                     if min_last_time > temp_df.index[-1]:
@@ -477,7 +494,7 @@ class CSVClient(Client):
                 dfs = pd.concat([dfs, missing_data_df])
             self.data = dfs
             
-    def __get_rates_by_chunk(self, symbols:list=[], interval:int=None, frame:int=None):
+    def __get_rates_by_chunk(self, interval:int=None, symbols:list=[], frame:int=None):
         if interval is not None:
             chunk_size = self.__args["chunksize"]
             if "TIMES" in self.__chunk_mode_params:
@@ -491,13 +508,14 @@ class CSVClient(Client):
             if self.auto_step_index:
                 self.__step_index += 1
             return rates
-        target_symbols = list(set(self.data.columns) & set(symbols))
+        target_symbols = list(set(self.symbols) & set(symbols))
         symbols_dfs = self.data[target_symbols]
-        is_ascending = self.__args["ascending"]
-        if is_ascending:
+        if self.__step_index >= interval-1:
             rates = symbols_dfs.iloc[self.__step_index - interval:self.__step_index]
         else:
-            rates = symbols_dfs.iloc[len(symbols_dfs) - interval - self.__step_index - interval: len(symbols_dfs) -self.__step_index]
+            rates = symbols_dfs[:interval]
+            self.logger.warning(f"current step index {self.__step_index} is less than length {interval}. return length from index 0. Please assgin start_index.")
+        
         if self.auto_step_index:
             self.__step_index += 1
         return rates
@@ -509,8 +527,13 @@ class CSVClient(Client):
             rates = self.data.copy()
             if self.auto_step_index:
                 self.__step_index += 1
+            if len(symbols) != 0:
+                try:
+                    #data is grouped by symbol by csv read
+                    rates = rates[symbols]
+                except Exception as e:
+                    self.logger.error(f"{symbols} is not in data. Return entire symbols: {e}")
             return rates
-
         elif length >= 1:
             rates = None
             if self.__step_index >= length-1:
@@ -519,12 +542,13 @@ class CSVClient(Client):
                     rates = self.data.iloc[self.__step_index - length:self.__step_index]
                     return rates
                 except Exception as e:
-                    self.logger.error(e)
+                    self.logger.error(f"can't find data fom {self.__step_index - length} to {self.__step_index}: {e}")
             else:
                 if self.update_rates():
-                    self.__get_rates(length, symbols, frame)
+                    return self.__get_rates(length, symbols, frame)
                 else:
                     if self.__auto_reset:
+                        ## todo initialize based on parameters
                         self.__step_index = random.randint(0, len(self.data))
                         ## todo: raise index change event
                         return self.__get_rates(length, symbols, frame)
@@ -534,11 +558,22 @@ class CSVClient(Client):
         else:
             raise Exception("interval should be greater than 0.")
            
-    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None):
-        if self.__is_chunk_mode:
-            return self.__get_rates_by_chunk(length, symbols, frame)
+    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
+        if len(symbols) == 0:
+            symbols = self.symbols
         else:
-            return self.__get_rates(length, symbols, frame)
+            missing_symbols = set(symbols) - set(self.symbols)
+            if len(missing_symbols) > 0:
+                #temp. TODO: read csv by creating file name file name generator
+                symbols = list(set(self.symbols) & set(symbols))
+        if self.__is_chunk_mode:
+            rates = self.__get_rates_by_chunk(length, symbols, frame)
+        else:
+            rates = self.__get_rates(length, symbols, frame)
+        if grouped_by_symbol == False:
+            rates.columns = rates.columns.swaplevel(0, 1)
+            rates.sort_index(level=0, axis=1, inplace=True)
+        return rates
 
     def get_future_rates(self,length=1, back_length=0):
         if length > 1:

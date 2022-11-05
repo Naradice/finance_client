@@ -111,8 +111,6 @@ class TestCSVClientMulti(unittest.TestCase):
         #del client
         client = CSVClient(files=files, auto_reset_index=True)
         del client
-        client = CSVClient(files=files, chunksize=50)
-        del client
         
     def test_get_data_with_files_basic(self):
         SYMBOL_COUNT = 3
@@ -279,6 +277,49 @@ class TestCSVClientMulti(unittest.TestCase):
         for symbol in __symbols:
             self.assertGreater(open_values[symbol], ask_values[symbol])
             self.assertLess(open_values[symbol], bid_values[symbol])
+
+    def test_get_data_with_limited_symbols(self):
+        pass
+class TestCSVClientMultiChunk(unittest.TestCase):
+    
+    def test_initialize_with_file_chunk(self):
+        files = csv_files[:2]
+        #client = CSVClient(files=files, out_frame=30)
+        #del client
+        client = CSVClient(files=files, chunksize=50, auto_reset_index=True)
+        del client
+        
+    def test_get_data_with_chunk_basic(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        CHUNK_SIZE = 50
+        files = csv_files[:SYMBOL_COUNT]
+        step = 0
+        
+        client = CSVClient(files=files, chunksize=CHUNK_SIZE)
+        df = client.get_ohlc(DATA_LENGTH)
+        self.assertEqual(DATA_LENGTH, len(df))
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del df
+        df = client.get_ohlc(CHUNK_SIZE + DATA_LENGTH)
+        self.assertEqual(CHUNK_SIZE + DATA_LENGTH, len(df))
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del df
+        df = client.get_ohlc()
+        self.assertGreater(len(df), DATA_LENGTH + DATA_LENGTH)
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del client, df
+        
+        client = CSVClient(files=files, date_column=datetime_column, chunksize=CHUNK_SIZE)
+        print("warning is shown")
+        df = client.get_ohlc(DATA_LENGTH)
+        self.assertEqual(DATA_LENGTH, len(df))
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+        del df
+        df = client.get_ohlc()
+        self.assertGreater(len(df), 0)
+        self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
+
     
 if __name__ == '__main__':
     unittest.main()
