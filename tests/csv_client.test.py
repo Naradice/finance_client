@@ -120,6 +120,7 @@ class TestCSVClientMulti(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
         
         client = CSVClient(files=files)
+        print("warning is shown")
         df = client.get_ohlc(DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
@@ -130,6 +131,7 @@ class TestCSVClientMulti(unittest.TestCase):
         del client, df
         
         client = CSVClient(files=files, date_column=datetime_column)
+        print("warning is shown")
         df = client.get_ohlc(DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
@@ -144,6 +146,7 @@ class TestCSVClientMulti(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
         
         client = CSVClient(files=files, columns=ohlc_columns)
+        print("warning is shown")
         df = client.get_ohlc(DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertEqual(len(df.columns), len(ohlc_columns)*SYMBOL_COUNT)
@@ -160,6 +163,7 @@ class TestCSVClientMulti(unittest.TestCase):
         MARGIN_FACTOR = 2
         
         client = CSVClient(files=files, start_index=None)
+        print("warning is shown")
         org_df = client.get_ohlc(DATA_LENGTH*MARGIN_FACTOR)
         
         client = CSVClient(files=files, start_index=DATA_LENGTH*MARGIN_FACTOR)
@@ -198,7 +202,7 @@ class TestCSVClientMulti(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
         cci = utils.CCIProcess(ohlc_column=ohlc_columns)
         #macd = utils.MACDProcess(target_column=ohlc_columns[3])
-        client = CSVClient(files=files)
+        client = CSVClient(files=files, start_index=DATA_LENGTH*10)
         df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci])
         self.assertEqual(len(df.columns), SYMBOL_COUNT * (len(ohlc_columns) + len(additional_column) + len(cci.columns)))
 
@@ -208,21 +212,19 @@ class TestCSVClientMulti(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
         cci = utils.CCIProcess(ohlc_column=ohlc_columns)
         #macd = utils.MACDProcess(target_column=ohlc_columns[3])
-        client = CSVClient(files=files)
+        client = CSVClient(files=files, start_index=DATA_LENGTH*10)
         df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[utils.MinMaxPreProcess(scale=(0,1))])
         self.assertGreaterEqual(df.min().min(), 0)
         self.assertLessEqual(df.max().max(), 1)
 
     def test_get_current_value_with_no_slip(self):
         KEY_NONE = "none"
-        KEY_PCT = "pct"
-        KEY_RDM = "random"
         
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
         
-        client = CSVClient(files=files, slip_type=KEY_NONE)
+        client = CSVClient(files=files, slip_type=KEY_NONE, start_index=DATA_LENGTH)
         df = client.get_ohlc(DATA_LENGTH)
         __symbols = symbols[:SYMBOL_COUNT][1:-2]
         open_values = df[[df[(symbol_, ohlc_columns[0])] for symbol_ in __symbols]].iloc[-1]
@@ -233,9 +235,36 @@ class TestCSVClientMulti(unittest.TestCase):
             self.assertEqual(open_values[symbol], bid_values[symbol])
         
     def test_get_current_value_with_pct_slip(self):
-        pass
+        KEY_PCT = "pct"
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files, slip_type=KEY_PCT, start_index=DATA_LENGTH)
+        df = client.get_ohlc(DATA_LENGTH)
+        __symbols = symbols[:SYMBOL_COUNT][1:-2]
+        open_values = df[[df[(symbol_, ohlc_columns[0])] for symbol_ in __symbols]].iloc[-1]
+        ask_values = client.get_current_ask()
+        bid_values = client.get_current_bid()
+        for symbol in __symbols:
+            self.assertGreater(open_values[symbol], ask_values[symbol])
+            self.assertLess(open_values[symbol], bid_values[symbol])
     
     def test_get_current_value_with_random_slip(self):
-        pass
+        KEY_RDM = "random"
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files, slip_type=KEY_RDM, start_index=DATA_LENGTH)
+        df = client.get_ohlc(DATA_LENGTH)
+        __symbols = symbols[:SYMBOL_COUNT][1:-2]
+        open_values = df[[df[(symbol_, ohlc_columns[0])] for symbol_ in __symbols]].iloc[-1]
+        ask_values = client.get_current_ask()
+        bid_values = client.get_current_bid()
+        for symbol in __symbols:
+            self.assertGreater(open_values[symbol], ask_values[symbol])
+            self.assertLess(open_values[symbol], bid_values[symbol])
+    
 if __name__ == '__main__':
     unittest.main()

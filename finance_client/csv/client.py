@@ -7,7 +7,7 @@ from finance_client.utils.csvrw import write_df_to_csv, read_csv
 
 class CSVClient(Client):
     kinds = 'csv'
-    available_slip_type = ["random", "none", "percent"]
+    available_slip_type = ["random", "none", "percent", "pct"]
     
     def __update_columns(self, columns:list):
         if self.ohlc_columns is None:
