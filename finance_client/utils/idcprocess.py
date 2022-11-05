@@ -103,7 +103,9 @@ class MACDProcess(ProcessBase):
         c_macd = self.columns[self.KEY_MACD]
         c_signal = self.columns[self.KEY_SIGNAL]
         
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             macd_df = indicaters.MACDFromOHLCMulti(symbols, data, target_column, short_window, long_window, signal_window, grouped_by_symbol,
                                                    short_ema_name=cs_ema, long_ema_name=cl_ema, macd_name=c_macd, signal_name=c_signal)
         else:
@@ -191,7 +193,9 @@ class EMAProcess(ProcessBase):
         window = option['window']
         column = self.columns["EMA"]
         
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             ema = indicaters.EMAMulti(symbols, data, window, grouped_by_symbol=grouped_by_symbol, ema_name=column)
         else:
             ema = indicaters.EMA(data[target_column], window)
@@ -273,7 +277,9 @@ class BBANDProcess(ProcessBase):
         c_lb = self.columns[self.KEY_LOWER_VALUE]
         c_width = self.columns[self.KEY_WIDTH_VALUE]
         
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             bb_df = indicaters.BolingerFromOHLCMulti(symbols, data, window=window, alpha=alpha, grouped_by_symbol=grouped_by_symbol,
                                                 mean_name=c_ema, upper_name=c_ub, lower_name=c_lb, width_name=c_width, std_name=None)
         else:
@@ -349,8 +355,10 @@ class ATRProcess(ProcessBase):
         target_columns = option['ohlc_column']
         window = option['window']
         c_atr = self.columns[self.KEY_ATR]
-            
-        if type(symbols) == list and len(symbols) > 0:
+        
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             atr_df = indicaters.ATRFromMultiOHLC(symbols, data, target_columns, window=window, grouped_by_symbol=grouped_by_symbol,
                                                  tr_name=None, atr_name=c_atr)
         else:
@@ -426,7 +434,9 @@ class RSIProcess(ProcessBase):
         c_gain = self.columns[self.KEY_GAIN]
         c_loss = self.columns[self.KEY_LOSS]
         
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             rsi_df = indicaters.RSIFromOHLCMulti(symbols, data, target_column, window=window, grouped_by_symbol=grouped_by_symbol,                                 
                                                 mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi)
         else:
@@ -498,7 +508,9 @@ class RenkoProcess(ProcessBase):
         
         renko_block_num = self.columns[self.KEY_BRICK_NUM]
         renko_value = self.columns[self.KEY_VALUE]
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             renko_df = indicaters.RenkoFromMultiOHLC(symbols, data, ohlc_columns=ohlc_column, atr_window=window, grouped_by_symbol=grouped_by_symbol,
                                                      total_brick_name=renko_value, brick_num_name=renko_block_num)
         else:
@@ -547,7 +559,9 @@ class SlopeProcess(ProcessBase):
         window = option['window']
         out_column = self.columns[self.KEY_SLOPE]
         
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             slope_df = indicaters.SlopeFromOHLCMulti(symbols, data, window=window, column=column, grouped_by_sygnal=grouped_by_symbol, slope_name=out_column)
         else:
             slope_df = indicaters.SlopeFromOHLC(data, window=window, column=column, slope_name=out_column)
@@ -605,10 +619,7 @@ class CCIProcess(ProcessBase):
         ohlc_column = self.options["ohlc_column"]
         
         out_column = self.columns[self.KEY_CCI]
-        is_multi_mode = False
         if type(data.columns) == pd.MultiIndex:
-            is_multi_mode  = True
-        if is_multi_mode:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
             cci_df = indicaters.CommodityChannelIndexMulti(symbols, data, window, ohlc_column, grouped_by_sygnal=grouped_by_symbol, cci_name=out_column)
@@ -683,10 +694,12 @@ class RangeTrendProcess(ProcessBase):
             self.KEY_TREND: f'{key}_trend'
         }
         
-    def __bb_initialization(self, symbols:list, df:pd.DataFrame, grouped_by_symbol):
+    def __bb_initialization(self, df:pd.DataFrame, symbols:list, grouped_by_symbol):
         data = df.copy()
         self.is_multi_mode = False
-        if type(symbols) == list and len(symbols) > 0:
+        if type(data.columns) == pd.MultiIndex:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
             if grouped_by_symbol == False:
                 data.columns = data.columns.swaplevel(0, 1)
             self.is_multi_mode = True
@@ -750,6 +763,8 @@ class RangeTrendProcess(ProcessBase):
     
     def __range_trand_by_bb(self, df:pd.DataFrame, symbols=[], grouped_by_symbol=False, max_period=3, thresh = 0.8):
         data = df.copy()
+        if type(data.columns) == pd.MultiIndex and len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
         if self.initialized == False or self.initialization_required:
             self.initialize(df, symbols, grouped_by_symbol)
             
