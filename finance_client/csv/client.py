@@ -310,7 +310,7 @@ class CSVClient(Client):
             start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
             start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
             auto_step_index (bool, optional): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
-            skiprows (int, optional): specify number to skip row of csv. For multisymbol, row is skipped after merge. Defaults None, not skipped.
+            skiprows (int, optional): specify number to skip row of csv. For multi symbols, row is skipped for each files. Defaults None, not skipped.
             auto_reset_index ( bool, optional): refreh the index when index reach the end. Defaults False
             slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. prcent or pct: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters. 

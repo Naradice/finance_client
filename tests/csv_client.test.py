@@ -196,6 +196,20 @@ class TestCSVClientMulti(unittest.TestCase):
         second_date = df.index[-1]
         self.assertNotEqual(first_date, second_date)
 
+    def test_get_data_with_files_with_skiprows(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        SKIP_LINES = 3
+        files = csv_files[:SYMBOL_COUNT]
+        
+        client = CSVClient(files=files, start_index=10)
+        df = client.get_ohlc(DATA_LENGTH)
+        first_date = df.index[SKIP_LINES-1]
+        client = CSVClient(files=files, start_index=10, skiprows=SKIP_LINES)
+        df = client.get_ohlc(DATA_LENGTH)
+        second_date = df.index[0]
+        self.assertGreater(second_date, first_date)
+
     def test_get_data_with_indicaters(self):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
