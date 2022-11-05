@@ -295,7 +295,7 @@ class CSVClient(Client):
     def __init__(self, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, out_frame:int=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=True, skiprows=None, auto_reset_index=False,
-                 slip_type="random", idc_processes = [], pre_processes = [], chunksize=None, budget=1000000, 
+                 slip_type="random", chunksize=None, budget=1000000, 
                  do_render=False, seed=1017,logger=None):
         """CSV Client for bitcoin, etc. currently bitcoin in available only.
         Need to change codes to use settings file
@@ -316,8 +316,6 @@ class CSVClient(Client):
             do_render (bool, optional): If true, plot OHLC and supported indicaters. 
             seed (int, optional): specify random seed. Defaults to 1017
             chunksize (int, optional): To load huge file partially, you can specify chunk size. Defaults to None.
-            idc_processes (Process, optional) : list of indicater process. Dafaults to []
-            pre_processes (Process, optional) : list of pre process. Defaults to []
         """
         super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, provider="csv", logger_name=__name__, logger=logger)
         random.seed(seed)

@@ -1,6 +1,7 @@
 import numpy
 from finance_client.utils import indicaters
 import pandas as pd
+from finance_client.utils.convert import get_symbols
 from finance_client.utils.process import ProcessBase
 
 """ process class to add indicater for data_client, dataset, env etc
@@ -53,7 +54,6 @@ def load_indicaters(params:dict) -> list:
 class MACDProcess(ProcessBase):
     
     kinds = 'MACD'
-    last_data = None
     
     KEY_SHORT_EMA = 'S_EMA'
     KEY_LONG_EMA = 'L_EMA'
@@ -62,6 +62,7 @@ class MACDProcess(ProcessBase):
     
     def __init__(self, key='macd', target_column = "Close", short_window=12, long_window=26, signal_window = 9, option=None, is_input=True, is_output=True):
         super().__init__(key)
+        self.last_data = None
         self.option = {
             "column": target_column,
             "short_window": short_window,
@@ -604,9 +605,13 @@ class CCIProcess(ProcessBase):
         ohlc_column = self.options["ohlc_column"]
         
         out_column = self.columns[self.KEY_CCI]
-        if type(symbols) == list and len(symbols) > 0:
-            cci_df = indicaters.CommodityChannelIndexMulti(symbols, data, window, ohlc_column, grouped_by_sygnal=grouped_by_symbol,
-                                                        cci_name=out_column)
+        is_multi_mode = False
+        if type(data.columns) == pd.MultiIndex:
+            is_multi_mode  = True
+        if is_multi_mode:
+            if len(symbols) == 0:
+                symbols = get_symbols(data, grouped_by_symbol)
+            cci_df = indicaters.CommodityChannelIndexMulti(symbols, data, window, ohlc_column, grouped_by_sygnal=grouped_by_symbol, cci_name=out_column)
         else:
             cci_df = indicaters.CommodityChannelIndex(data, window, ohlc_column, cci_name=out_column)
         

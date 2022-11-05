@@ -100,7 +100,7 @@ file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_
 symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
 datetime_column = "Datetime"
 ohlc_columns = ["Open", "High", "Low", "Close"]
-additional_column = ["Adj Close"]
+additional_column = ["Adj Close", "Volume"]
 csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
 
 class TestCSVClientMulti(unittest.TestCase):
@@ -111,15 +111,8 @@ class TestCSVClientMulti(unittest.TestCase):
         #del client
         client = CSVClient(files=files, auto_reset_index=True)
         del client
-        client = CSVClient(files=files, slip_type="percent")
-        del client
         client = CSVClient(files=files, chunksize=50)
         del client
-        client = CSVClient(files=files, idc_processes=[utils.CCIProcess(ohlc_column=ohlc_columns)])
-        del client
-        client = CSVClient(files=files, pre_processes=[utils.MinMaxPreProcess()])
-        del client
-        client = CSVClient(files=files, columns=ohlc_columns, pre_processes=[utils.MinMaxPreProcess()])
         
     def test_get_data_with_files_basic(self):
         SYMBOL_COUNT = 3
@@ -199,7 +192,28 @@ class TestCSVClientMulti(unittest.TestCase):
         second_date = df.index[-1]
         self.assertNotEqual(first_date, second_date)
 
-    def test_get_data_with_files_by_no_slip(self):
+    def test_get_data_with_indicaters(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        cci = utils.CCIProcess(ohlc_column=ohlc_columns)
+        #macd = utils.MACDProcess(target_column=ohlc_columns[3])
+        client = CSVClient(files=files)
+        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci])
+        self.assertEqual(len(df.columns), SYMBOL_COUNT * (len(ohlc_columns) + len(additional_column) + len(cci.columns)))
+
+    def test_get_data_with_preprocess(self):
+        SYMBOL_COUNT = 3
+        DATA_LENGTH = 10
+        files = csv_files[:SYMBOL_COUNT]
+        cci = utils.CCIProcess(ohlc_column=ohlc_columns)
+        #macd = utils.MACDProcess(target_column=ohlc_columns[3])
+        client = CSVClient(files=files)
+        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[utils.MinMaxPreProcess(scale=(0,1))])
+        self.assertGreaterEqual(df.min().min(), 0)
+        self.assertLessEqual(df.max().max(), 1)
+
+    def test_get_current_value_with_no_slip(self):
         KEY_NONE = "none"
         KEY_PCT = "pct"
         KEY_RDM = "random"
@@ -218,6 +232,10 @@ class TestCSVClientMulti(unittest.TestCase):
             self.assertEqual(open_values[symbol], ask_values[symbol])
             self.assertEqual(open_values[symbol], bid_values[symbol])
         
-        
+    def test_get_current_value_with_pct_slip(self):
+        pass
+    
+    def test_get_current_value_with_random_slip(self):
+        pass
 if __name__ == '__main__':
     unittest.main()

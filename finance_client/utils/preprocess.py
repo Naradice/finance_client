@@ -1,8 +1,7 @@
-import numpy
-import datetime
-from finance_client.utils import standalization, indicaters
+from finance_client.utils import standalization, convert
 import pandas as pd
 from finance_client.utils.process import ProcessBase
+from collections.abc import Iterable
 
 def get_available_processes() -> dict:
     processes = {
@@ -113,15 +112,18 @@ class MinMaxPreProcess(ProcessBase):
         Args:
             key (str, optional): identification of this process. Defaults to 'minmax'.
             scale (tuple, optional): minimax scale. Defaults to (-1, 1).
-            init_params (dict, optional): {column_name: (min, max)}. Defaults to None and caliculate by provided data when run this process.
+            init_params (dict, optional): {"min": {column_name: min_value}, "max": {column_name: max_value}}. Defaults to None and caliculate by provided data when run this process.
             columns_to_ignore (list, optional): specify column to ignore applying minimax or revert process. Defaults to []
         """
-        self.option = {}
-        self.option['scale'] = scale
+        self.option = {
+            "min": {}, "max": {}, 
+            "scale": scale
+        }
         if type(columns_to_ignore) is str:
             columns_to_ignore = [columns_to_ignore]
+        elif type(columns_to_ignore) is tuple and len(columns_to_ignore) == 2:
+            columns_to_ignore = [columns_to_ignore]
         self.option['columns_to_ignore'] = columns_to_ignore
-        self.entire_mode_column = '__minmax'
         self.columns = []
         super().__init__(key)
         self.initialization_required = True
@@ -143,12 +145,28 @@ class MinMaxPreProcess(ProcessBase):
     
     def initialize(self, data: pd.DataFrame):
         self.run(data)
+        self.initialization_required = False
     
-    def run(self, data: pd.DataFrame) -> dict:
-        columns = list(set(data.columns) - set(self.option['columns_to_ignore']))
+    def run(self, data: pd.DataFrame, symbols:list=[], grouped_by_symbol=False) -> dict:
+        columns_to_ignore = self.option['columns_to_ignore']
+        __columns_to_ignore = []
+        if type(data.columns) == pd.MultiIndex:
+            entire_symbols = convert.get_symbols(data, grouped_by_symbol)
+            for i_columns in columns_to_ignore:
+                if type(i_columns) is str:
+                    if grouped_by_symbol:
+                        __columns_to_ignore += [(__symbol, i_columns) for __symbol in entire_symbols]
+                    else:
+                        __columns_to_ignore += [(i_columns, __symbol) for __symbol in entire_symbols]
+                elif isinstance(i_columns, Iterable) and len(i_columns) == 2:
+                    __columns_to_ignore.append(i_columns)
+                else:
+                    print(f"skip {i_columns} on ignore column process of minmax")
+        else:
+            __columns_to_ignore = columns_to_ignore
+        columns = list(set(data.columns) - set(__columns_to_ignore))
         self.columns = columns
         
-        result = {}
         option = self.option
         if 'scale' in option:
             scale = option['scale']
@@ -156,34 +174,36 @@ class MinMaxPreProcess(ProcessBase):
             scale = (-1, 1)
             self.option['scale'] = scale
             
-        for column in columns:
-            if column in self.option:
-                _min, _max = self.option[column]
-                result[column], _, _ = standalization.mini_max_from_series(data[column], scale, (_min, _max))
+        if len(option["min"]) > 0:
+            _min = pd.Series(option["min"])
+            _max = pd.Series(option["max"])
+        else:
+            _min = data[columns].min()
+            option["min"].update(_min.to_dict())
+            _max = data[columns].max()
+            option["max"].update(_max.to_dict())
+            
+        if len(symbols) > 0:
+            if grouped_by_symbol:
+                target_symbols = set(data.columns.droplevel(1)) & set(symbols)
+                target_columns = data[list(target_symbols)].columns
             else:
-                result[column], _max, _min =  standalization.mini_max_from_series(data[column], scale)
-                if column not in self.option:
-                    #if type(_max) != pd.Timestamp:
-                    self.option[column] = (_min, _max)
-        return result
+                target_symbols = set(data.columns.droplevel(0)) & set(symbols)
+                unique_columns = set(data.columns.droplevel(1))
+                target_columns = [(__column, __symbol) for __symbol in target_symbols for __column in unique_columns]
+        else:
+            target_columns = data.columns
+        columns = list(set(target_columns) - set(__columns_to_ignore))        
+        _df, _, _ = standalization.mini_max(data, _min, _max, scale)
+        
+        return _df
+        
     
     def update(self, tick:pd.Series, do_update_minmax=True):
         columns = self.columns
         scale = self.option['scale']
         result = {}
         e_mode = self.option['entire_mode']
-        
-        if e_mode:
-            _min, _max = self.option[self.entire_mode_column]
-            if do_update_minmax:
-                tick_max = tick.max()
-                tick_min = tick.min()
-                if tick_min < _min:
-                    _min = tick_min
-                    self.option[self.entire_mode_column] = (_min, _max)
-                if tick_max > _max:
-                    _max = tick_max
-                    self.option[self.entire_mode_column] = (_min, _max)
         
         for column in columns:
             new_value = tick[column]

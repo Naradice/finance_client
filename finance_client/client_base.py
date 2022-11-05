@@ -166,7 +166,7 @@ class Client:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def __get_required_length(processes:list) -> int:
+    def __get_required_length(self, processes:list) -> int:
         required_length_list = [0]
         for process in processes:
             required_length_list.append(process.get_minimum_required_length())
@@ -177,33 +177,14 @@ class Client:
         Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
         """
         data_cp = data.copy()
-        columns_dict = self.get_ohlc_columns()
-        date_data = None
-        multi_mode = False
-        if len(symbols) > 0:
-            multi_mode = True
-                    
-        for process in idc_processes:
-            values_dict = process.run(symbols, data_cp, grouped_by_symbol)
-            for column, values in values_dict.items():
-                data_cp[column] = values
         
-        if "Time" in columns_dict and columns_dict["Time"] != None:
-            date_column = columns_dict["Time"]
-            columns = list(data_cp.columns.copy())
-            date_data = data_cp[date_column].copy()
-            #df = df.set_index(date_column)
-            columns.remove(date_column)
-            data_cp = data_cp[columns]
-                    
+        idc_dfs = [data_cp]
+        for process in idc_processes:
+            idc_dfs.append(process.run(data_cp, symbols, grouped_by_symbol))
+        
+        data_cp = pd.concat(idc_dfs, axis=1)
         for process in pre_processes:
-            values_dict = process.run(data_cp)
-            for column, values in values_dict.items():
-                data_cp[column] = values
-                
-        if type(date_data) != type(None):
-            data_cp[date_column] = date_data
-        #data_cp = data_cp.dropna(how = 'any')
+            data_cp = process.run(data_cp)
         return data_cp
               
     def get_data_queue(self, symbols:list, data_length:int, frame:int):
@@ -346,7 +327,7 @@ class Client:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_ohlc(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[]) -> pd.DataFrame:
+    def get_ohlc(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[], grouped_by_symbol=True) -> pd.DataFrame:
         """ get ohlc data with length length
 
         Args:
@@ -377,7 +358,7 @@ class Client:
         
         if do_run_process:
             if type(ohlc_df) == pd.DataFrame and len(ohlc_df) >= required_length:
-                data = self.run_processes(ohlc_df)
+                data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
                 if self.do_render:
                     self.__plot_data_width_indicaters(symbols, data)
                 if length is None:
