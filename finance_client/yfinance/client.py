@@ -94,13 +94,19 @@ class YahooClient(CSVClient):
     
     def __tz_convert(self, df):
         if 'tz_convert' in dir(df.index):
-            df.index = df.index.tz_convert('UTC')
+            try:
+                df.index = df.index.tz_convert('UTC')
+            except Exception as e:
+                try:
+                    df.index = df.index.tz_localize('UTC')
+                except Exception as e:
+                    print(f'failed tz_convert of index: ({type(df.index)}) by {e}')    
         else:
             try:
                 df.index = pd.DatetimeIndex(df.index)
-                df.index = df.index.tz_convert('UTC')
+                df.index = df.index.tz_localize('UTC')
             except Exception as e:
-                print(f'failed tz_convert of index: ({type(df.index)})')
+                print(f'failed tz_convert of index: ({type(df.index)}) by {e}')
         return df
 
     def __get_all_rates(self):
@@ -183,7 +189,8 @@ class YahooClient(CSVClient):
                         ticks_df = ticks_df.sort_index()
                 write_df_to_csv(ticks_df, self.kinds, file_name, panda_option={"index_label":self.TIME_INDEX_NAME})
                 DFS[symbol] = ticks_df
-                
+            
+            self.__updated_time = datetime.datetime.now()
             if len(DFS) > 1:
                 df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
             else:
