@@ -525,29 +525,33 @@ class CSVClient(Client):
             self.data = dfs
             
     def __get_rates_by_chunk(self, interval:int=None, symbols:list=[], frame:int=None):
-        if interval is not None:
+        target_symbols = list(set(self.symbols) & set(symbols))
+        if interval is None:
+            # todo: update missing columns
+            rates = self.data.copy()
+            if self.auto_step_index:
+                self.__step_index += 1
+            if len(target_symbols) > 0:
+                rates = rates[target_symbols]
+        else:
             chunk_size = self.__args["chunksize"]
             if "TIMES" in self.__chunk_mode_params:
                 self.__update_chunkdata_with_time(chunk_size, symbols, interval)
             else:
                 self.__update_chunkdata(chunk_size, symbols, interval)
-        else:
-            target_symbols = list(set(self.data.columns) & set(symbols))
-            # todo: update missing columns
-            rates = self.data.copy()
+            if len(target_symbols) > 0:
+                symbols_dfs = self.data[target_symbols]
+            else:
+                symbols_dfs = self.data
+                
+            if self.__step_index >= interval-1:
+                rates = symbols_dfs.iloc[self.__step_index - interval:self.__step_index]
+            else:
+                rates = symbols_dfs[:interval]
+                self.logger.warning(f"current step index {self.__step_index} is less than length {interval}. return length from index 0. Please assgin start_index.")
+            
             if self.auto_step_index:
                 self.__step_index += 1
-            return rates
-        target_symbols = list(set(self.symbols) & set(symbols))
-        symbols_dfs = self.data[target_symbols]
-        if self.__step_index >= interval-1:
-            rates = symbols_dfs.iloc[self.__step_index - interval:self.__step_index]
-        else:
-            rates = symbols_dfs[:interval]
-            self.logger.warning(f"current step index {self.__step_index} is less than length {interval}. return length from index 0. Please assgin start_index.")
-        
-        if self.auto_step_index:
-            self.__step_index += 1
         return rates
             
     
@@ -569,8 +573,11 @@ class CSVClient(Client):
             if self.__step_index >= length-1:
                 try:
                     #return data which have length length
-                    rates = self.data.iloc[self.__step_index - length:self.__step_index]
-                    return rates
+                    if len(symbols) > 0:
+                        rates = self.data[symbols]
+                    else:
+                        rates = self.data
+                    return rates.iloc[self.__step_index - length:self.__step_index]
                 except Exception as e:
                     self.logger.error(f"can't find data fom {self.__step_index - length} to {self.__step_index}: {e}")
             else:
@@ -804,7 +811,8 @@ class CSVClient(Client):
         return self.__args
     
     def __del__(self):
-        if self.__is_chunk_mode:
-            TRS = self.__chunk_mode_params["TRS"]
-            for key, value in TRS.items():
-                value.close()
+        if '_CSVClient__chunk_mode_params' in self.__dir__():
+            if "TRS" in self.__chunk_mode_params:
+                TRS = self.__chunk_mode_params["TRS"]
+                for key, value in TRS.items():
+                    value.close()
