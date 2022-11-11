@@ -127,6 +127,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         if is_multi_mode == False and skiprows is not None:
             #assume index 0 is column
             kwargs["skiprows"] = range(1, skiprows+1)
+        return kwargs
     
     def _create_dfs_by_files(self, files, kwargs):
         symbols = []
@@ -146,9 +147,10 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             
         return DFS, symbols
 
-    def _make_timecolumn_to_index(self, data, symbols, time_column, columns, is_multi_mode=False):
+    def _make_timecolumn_to_index(self, data, symbols, time_column, columns, is_multi_mode):
         dfs = []
         DFS = {}
+        __columns = list(set(columns) - set(time_column))
         if is_multi_mode:
             dfs = [data[_symbol] for _symbol in symbols]
         else:
@@ -160,8 +162,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             if type(df.index) != pd.DatetimeIndex:
                 df.index = pd.to_datetime(df.index, utc=True)
             df = df.sort_index(ascending=True)
-            if columns is not None and len(columns) > 0:
-                df = df[columns]
+            if __columns is not None and len(__columns) > 0:
+                df = df[__columns]
             DFS[symbol] = df.copy()
         return DFS
 
@@ -266,6 +268,49 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             rolled_data = pd.DataFrame({date_column:Timestamp, high_column: Highs, low_column:Lows, open_column:Opens, close_column:Closes})
             return rolled_data
         return data
+    
+    #functions for get_ohlc
+    def _get_target_symbols(self, symbols):
+        """ separate symbols to available and missing
+        """
+        target_symbols = []
+        missing_symbols = []
+        missing_files = []
+        if len(symbols) == 0:
+            target_symbols = self.symbols
+        else:
+            # check any of provided symbols exists in data
+            target_symbols = list(set(self.symbols) & set(symbols))
+            if len(target_symbols) == 0:
+                #assume file_path is provided instead of symbols
+                for file in symbols:
+                    if os.path.exists(file):
+                        if self._get_symbol_from_filename is None:
+                            self._initialize_file_name_func(symbols)
+                        __symbol = self._get_symbol_from_filename(file)
+                        if __symbol in self.symbols:
+                            target_symbols.append(__symbol)
+                        else:
+                            # filename generate may be different from symbol generator, so store file as is
+                            missing_files.append(file)
+                    else:
+                        # check if prvided symbol string is part of existing filename
+                        is_handled_symbol = False
+                        for handled_file in self.files:
+                            if file in handled_file:
+                                ## assume __symbol represents symbol name of handled_file
+                                __symbol = self._get_symbol_from_filename(handled_file)
+                                target_symbols.append(__symbol)
+                                is_handled_symbol = True
+                                break
+                        if is_handled_symbol is False:
+                            # it may be not a file name, so store it as is
+                            missing_symbols.append(file)
+            else:
+                #some of provided symbols match with handled symbols, so assume all others are symbol names (not filename)
+                missing_symbols = list(set(symbols) - set(self.symbols))
+                
+        return target_symbols, missing_files
 
     def __init__(self, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, out_frame:int=None,
@@ -345,7 +390,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 files = [os.path.abspath(file) for file in files]
             self._initialize_file_name_func(files)
             self.data = self._read_csv(files, columns, date_column, skiprows, start_date)
-            if out_frame != None:
+            if out_frame != None and False:
                 to_frame = int(out_frame)
                 if self.frame < to_frame:
                     rolled_data = self._rolling_frame(self.data.copy(), from_frame=self.frame, to_frame=to_frame)
@@ -360,7 +405,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 
         self._auto_reset = auto_reset_index
         if start_random_index and self.data is not None:
-            self._step_index = random.randint(0, len(self.data))
+            self._step_index = random.randint(0, len(self))
     
     def get_current_index(self):
         return self._step_index
@@ -371,6 +416,14 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         args.update(adds)
         
         return self._args
+
+    def __getitem__(self, ndx):
+        return self.data.iloc[ndx]
+    
+    def __len__(self):
+        if self.data is not None:
+            return len(self.data)
+        return 0
 
     @abstractmethod
     def _read_csv(self, files, columns, date_column, skiprows, start_date):
@@ -447,6 +500,10 @@ class CSVClient(CSVClientBase):
             
         # create kwargs from provided args
         kwargs = self._create_csv_kwargs(columns, date_col, skiprows, is_multi_mode)
+        is_date_index = False
+        if "parse_dates" in kwargs:
+            is_date_index = True
+            
         #read csvs by pandas feature
         DFS, __symbols = self._create_dfs_by_files(files, kwargs)
         data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
@@ -463,14 +520,11 @@ class CSVClient(CSVClientBase):
         self._update_columns(__columns)
         
         #convert TIME column values to datetime index if date column name is not defined, but there is time column
-        is_date_index = False
-        if date_col is not None:
-            is_date_index = True
-        elif "Time" in self.ohlc_columns:
+        if is_date_index is False and "Time" in self.ohlc_columns:
             # make Time column to index
             time_column = self.ohlc_columns["Time"]
             if time_column in __columns:
-                DFS = self._make_timecolumn_to_index(data, __symbols, time_column, __columns, is_multi_mode)
+                DFS = self._make_timecolumn_to_index(data, __symbols, time_column, columns, is_multi_mode)
                 data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index:
@@ -529,67 +583,17 @@ class CSVClient(CSVClientBase):
             raise Exception("interval should be greater than 0.")
            
     def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
-        target_symbols = []
-        missing_symbols = []
-        missing_files = []
-        if len(symbols) == 0:
-            target_symbols = self.symbols
-        else:
-            # check any of provided symbols exists in data
-            target_symbols = list(set(self.symbols) & set(symbols))
-            if len(target_symbols) == 0:
-                #assume file_path is provided instead of symbols
-                for file in symbols:
-                    if os.path.exists(file):
-                        if self._get_symbol_from_filename is None:
-                            self._initialize_file_name_func(symbols)
-                        __symbol = self._get_symbol_from_filename(file)
-                        if __symbol in self.symbols:
-                            target_symbols.append(__symbol)
-                        else:
-                            # filename generate may be different from symbol generator, so store file as is
-                            missing_files.append(file)
-                    else:
-                        # check if prvided symbol string is part of existing filename
-                        is_handled_symbol = False
-                        for handled_file in self.files:
-                            if file in handled_file:
-                                ## assume __symbol represents symbol name of handled_file
-                                __symbol = self._get_symbol_from_filename(handled_file)
-                                target_symbols.append(__symbol)
-                                is_handled_symbol = True
-                                break
-                        if is_handled_symbol is False:
-                            # it may be not a file name, so store it as is
-                            missing_symbols.append(file)
-            else:
-                #some of provided symbols match with handled symbols, so assume all others are symbol names (not filename)
-                missing_symbols = list(set(symbols) - set(self.symbols))
-                
-            if len(missing_symbols) > 0:
-                if self.file_name_generator is not None:
-                    for __symbol in missing_symbols:
-                        file_name = self.file_name_generator(__symbol)
-                        if os.path.exists(file_name):
-                            if file_name not in self.files:
-                                missing_files.append(file_name)
-                            else:
-                                self.logger.debug(f"{file_name} is duplicated some how for {__symbol}")
-                        else:
-                            self.logger.warning(f"generated filename {file_name} for {__symbol} doesn't exist")
-                else:
-                    self.logger.warning(f"file_name_generator is not initialized. {len(missing_symbols)} symbols are ignored.")
-            if len(missing_files) > 0:
+        target_symbols, missing_files = self._get_target_symbols(symbols)
+        if len(missing_files) > 0:
+            try:
+                missing_data = self._read_csv(list(set(missing_files)), self._args["columns"], self._args["date_column"], self._args["skiprows"], self._args["start_date"])
+            except Exception as e:
+                self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
+            if missing_data is not None and len(missing_data) > 0:
                 try:
-                    missing_data = self._read_csv(list(set(missing_files)), self._args["columns"], self._args["date_column"], self._args["skiprows"], self._args["start_date"])
+                    self.data = pd.concat([self.data, missing_data], axis=1)
                 except Exception as e:
-                    self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
-                if missing_data is not None:
-                    try:
-                        self.data = pd.concat([self.data, missing_data], axis=1)
-                    except Exception as e:
-                        self.logger.error(f"Filed to concat existing data with additional data of specified symbols by {e}")
-
+                    self.logger.error(f"Filed to concat existing data with additional data of specified symbols by {e}")
         rates = self.__get_rates(length, target_symbols, frame)
         if grouped_by_symbol == False:
             rates.columns = rates.columns.swaplevel(0, 1)
@@ -721,12 +725,9 @@ class CSVClient(CSVClientBase):
     @property
     def min(self):
         self.data.max()
-        
-    def __getitem__(self, ndx):
-        return self.data.iloc[ndx]
     
 
-class CSVChunkClient(CSVClient):
+class CSVChunkClient(CSVClientBase):
     
     def __init__(self, chunksize:int, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, out_frame:int=None,
@@ -757,18 +758,20 @@ class CSVChunkClient(CSVClient):
             raise ValueError(f"chunksize should be greater than 0.")
         self.TIMES = {}
         self.TRS = {}
+        self.chunksize = chunksize
         super().__init__(files, columns, date_column, file_name_generator, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, logger)
-        self._args["chunksize"] = chunksize
 
-    def _read_csv(self, files, columns=[], date_col=None, skiprows=None, start_date=None, chunksize=None, ascending=True):        
-        chunksize = self._args["chunksize"]
+    def _read_csv(self, files, columns=[], date_col=None, skiprows=None, start_date=None, chunksize=None, ascending=True):
         is_multi_mode = False
         if len(files) > 1:
             is_multi_mode = True
             
         # create kwargs from provided args
         kwargs = self._create_csv_kwargs(columns, date_col, skiprows, is_multi_mode)
-        kwargs["chunksize"] = chunksize
+        kwargs["chunksize"] = self.chunksize
+        is_date_index = False
+        if "parse_dates" in kwargs:
+            is_date_index = True
             
         #read csvs by pandas feature. When chunksize is specified, TextReader is stored instead of DataFrame
         TRS, __symbols = self._create_dfs_by_files(files, kwargs)
@@ -796,15 +799,13 @@ class CSVChunkClient(CSVClient):
             __columns = data.columns        
         self._update_columns(__columns)
         
-        #convert TIME column values to datetime index if date column name is not defined, but there is time column
-        is_date_index = False
-        if date_col is not None:
-            is_date_index = True
-        elif "Time" in self.ohlc_columns:
+        #convert TIME column values to datetime index if date column name is not defined, but there is time column        
+        if is_date_index is False and  "Time" in self.ohlc_columns:
             # make Time column to index
             time_column = self.ohlc_columns["Time"]
             if time_column in __columns:
-                data = self._make_timecolumn_to_index(data, __symbols, time_column, __columns, is_multi_mode)
+                DFS = self._make_timecolumn_to_index(data, __symbols, time_column, columns, is_multi_mode)
+                data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index:
             data = self._initialize_date_index(data, ascending, start_date)
@@ -819,7 +820,7 @@ class CSVChunkClient(CSVClient):
             print("Couldn't daterming date column")
         DFS = {}
         for _symbol in __symbols:
-            DFS[symbol] = data[_symbol].dropna()
+            DFS[_symbol] = data[_symbol].dropna()
             
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
         self.symbols = list(set(self.symbols) | set(__symbols))
@@ -839,7 +840,7 @@ class CSVChunkClient(CSVClient):
             self.logger.debug(f"{symbol} is not in TRS")
         return pd.DataFrame()
     
-    def __update_chunkdata_with_time(self, chunk_size:int, symbols:list=[], interval:int=None):
+    def __update_chunkdata_with_time(self, symbols:list=[], interval:int=None):
         min_last_time = datetime.datetime.now()
         min_last_time = min_last_time.astimezone(tz=datetime.timezone.utc)
 
@@ -857,13 +858,13 @@ class CSVChunkClient(CSVClient):
                 min_last_time = last_time
                 min_time_symbol = symbol
         
-        if len(self.data[min_time_symbol]) - self.__step_index < interval:
+        if len(self.data[min_time_symbol]) - self._step_index < interval:
             DFS = {}
             
             ##update data of min_date symbol.
             temp_df = self.data[min_time_symbol].dropna()
-            short_length = interval - len(temp_df) + self.__step_index
-            short_chunk_count = math.ceil(short_length/chunk_size)
+            short_length = interval - len(temp_df) + self._step_index
+            short_chunk_count = math.ceil(short_length/self.chunksize)
             tr = self.TRS[min_time_symbol]
             temp_dfs = [temp_df]
             ohlc_columns = self.get_ohlc_columns()
@@ -881,7 +882,7 @@ class CSVChunkClient(CSVClient):
                     temp_df = temp_df.sort_index(ascending=True)
                 temp_dfs.append(temp_df)
             temp_df = pd.concat(temp_dfs, axis=0)
-            required_last_time = temp_df.index[self.__step_index + interval -1]
+            required_last_time = temp_df.index[self._step_index + interval -1]
             temp_df = temp_df.dropna()
             
         
@@ -922,13 +923,13 @@ class CSVChunkClient(CSVClient):
                     DFS[symbol] = self.data[min_time_symbol].dropna()
             self.data.update(DFS)
             
-    def __update_chunkdata(self, chunk_size:int, symbols:list=[], interval:int=None):
+    def __update_chunkdata(self, symbols:list=[], interval:int=None):
         DFS = {}
         for symbol in symbols:
             temp_df = self.data[symbol].dropna()
             if len(temp_df) - self.__step_index < interval:
                 short_length = interval - len(temp_df) + self.__step_index
-                short_chunk_count = math.ceil(short_length/chunk_size)
+                short_chunk_count = math.ceil(short_length/self.chunksize)
                 temp_dfs = [temp_df]
                 for count in range(0, short_chunk_count):
                     temp_df = self.__read_chunk_data(symbol)
@@ -949,11 +950,10 @@ class CSVChunkClient(CSVClient):
             if len(target_symbols) > 0:
                 rates = pd.concat([self.data[symbol] for symbol in target_symbols], axis=1, keys=target_symbols)
         else:
-            chunk_size = self._args["chunksize"]
             if len(self.TIMES) > 0:
-                self.__update_chunkdata_with_time(chunk_size, symbols, interval)
+                self.__update_chunkdata_with_time(symbols, interval)
             else:
-                self.__update_chunkdata(chunk_size, symbols, interval)
+                self.__update_chunkdata(symbols, interval)
             if len(target_symbols) > 0:
                 symbols_dfs = pd.concat([self.data[symbol] for symbol in target_symbols], axis=1, keys=target_symbols)
             else:
@@ -970,66 +970,14 @@ class CSVChunkClient(CSVClient):
         return rates
     
     def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
-        target_symbols = []
-        missing_symbols = []
-        missing_files = []
-        if len(symbols) == 0:
-            target_symbols = self.symbols
-        else:
-            # check any of provided symbols exists in data
-            target_symbols = list(set(self.symbols) & set(symbols))
-            if len(target_symbols) == 0:
-                #assume file_path is provided instead of symbols
-                for file in symbols:
-                    if os.path.exists(file):
-                        if self._get_symbol_from_filename is None:
-                            self._initialize_file_name_func(symbols)
-                        __symbol = self._get_symbol_from_filename(file)
-                        if __symbol in self.symbols:
-                            target_symbols.append(__symbol)
-                        else:
-                            # filename generate may be different from symbol generator, so store file as is
-                            missing_files.append(file)
-                    else:
-                        # check if prvided symbol string is part of existing filename
-                        is_handled_symbol = False
-                        for handled_file in self.files:
-                            if file in handled_file:
-                                ## assume __symbol represents symbol name of handled_file
-                                __symbol = self._get_symbol_from_filename(handled_file)
-                                target_symbols.append(__symbol)
-                                is_handled_symbol = True
-                                break
-                        if is_handled_symbol is False:
-                            # it may be not a file name, so store it as is
-                            missing_symbols.append(file)
-            else:
-                #some of provided symbols match with handled symbols, so assume all others are symbol names (not filename)
-                missing_symbols = list(set(symbols) - set(self.symbols))
-                
-            if len(missing_symbols) > 0:
-                if self.file_name_generator is not None:
-                    for __symbol in missing_symbols:
-                        file_name = self.file_name_generator(__symbol)
-                        if os.path.exists(file_name):
-                            if file_name not in self.files:
-                                missing_files.append(file_name)
-                            else:
-                                self.logger.debug(f"{file_name} is duplicated some how for {__symbol}")
-                        else:
-                            self.logger.warning(f"generated filename {file_name} for {__symbol} doesn't exist")
-                else:
-                    self.logger.warning(f"file_name_generator is not initialized. {len(missing_symbols)} symbols are ignored.")
-            if len(missing_files) > 0:
-                try:
-                    missing_data = self._read_csv(list(set(missing_files)), self.args["columns"], self.args["date_column"], self.args["skiprows"], self.args["start_date"], self.args["chunksize"])
-                except Exception as e:
-                    self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
-                if missing_data is not None:
-                    try:
-                        self.data = pd.concat([self.data, missing_data], axis=1)
-                    except Exception as e:
-                        self.logger.error(f"Filed to concat existing data with additional data of specified symbols by {e}")
+        target_symbols, missing_files = self._get_target_symbols(symbols)
+        if len(missing_files) > 0:
+            try:
+                missing_DFS = self._read_csv(list(set(missing_files)), self._args["columns"], self._args["date_column"], self._args["skiprows"], self._args["start_date"])
+            except Exception as e:
+                self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
+            if missing_DFS is not None and len(missing_DFS) > 0:
+                self.data.update(missing_DFS)
         rates = self.__get_rates_by_chunk(length, target_symbols, frame)
         if grouped_by_symbol == False:
             rates.columns = rates.columns.swaplevel(0, 1)
@@ -1049,16 +997,17 @@ class CSVChunkClient(CSVClient):
         pass
     
     def get_next_tick(self):
-        if self._step_index < len(self.data)-2:
+        rates = pd.concat(self.data.values(), axis=1, keys=self.data.keys())
+        if self._step_index < len(rates)-2:
             self._step_index += 1
-            tick = self.data.iloc[self._step_index]
+            tick = rates.iloc[self._step_index]
             ## raise index change event
             return tick, False
         else:
             if self._auto_reset:
-                self._step_index = random.randint(0, len(self.data))
+                self._step_index = random.randint(0, len(rates))
                 ## raise index change event
-                tick = self.data.iloc[self._step_index]
+                tick = rates.iloc[self._step_index]
                 return tick, True
             else:
                 self.logger.warning(f"not more data on index {self._step_index}")
@@ -1071,12 +1020,20 @@ class CSVChunkClient(CSVClient):
     @property
     def min(self):
         pass
+    
+    def get_additional_params(self):
+        return {"chunksize": self.chunksize, "files":self.files}
         
     def __getitem__(self, ndx):
-        return self.data.iloc[ndx]
+        rates = pd.concat(self.data.values(), axis=1, keys=self.data.keys())
+        return rates.iloc[ndx]
 
     def __del__(self):
-        if "TRS" in self.__chunk_mode_params:
-            TRS = self.__chunk_mode_params["TRS"]
-            for key, value in TRS.items():
+        if len(self.TRS) > 0:
+            for key, value in self.TRS.items():
                 value.close()
+    def __len__(self):
+        if self.data is not None and len(self.data) >0:
+            rates = pd.concat(self.data.values(), axis=1, keys=self.data.keys())
+            return len(rates)
+        return 0
