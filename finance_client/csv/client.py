@@ -297,6 +297,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             if len(target_symbols) == 0:
                 #assume file_path is provided instead of symbols
                 for file in symbols:
+                    file = os.path.abspath(file)
                     if os.path.exists(file):
                         if self._get_symbol_from_filename is None:
                             self._initialize_file_name_func(symbols)
@@ -322,7 +323,13 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             else:
                 #some of provided symbols match with handled symbols, so assume all others are symbol names (not filename)
                 missing_symbols = list(set(symbols) - set(self.symbols))
-                
+                if self.file_name_generator is None:
+                    self.logger.error("can't create file name from symbol as file name generator is not defined.")
+                    self.logger.warning(f"{missing_files} are ignored")
+                else:
+                    for symbol in missing_symbols:
+                        file = self.file_name_generator(symbol)
+                        missing_files.append(os.path.abspath(file))
         return target_symbols, missing_files
 
     def __init__(self, files:list = None, columns = [], date_column = None, 
@@ -385,7 +392,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 self.files = list(set(files))
                 files = [os.path.abspath(file) for file in self.files]
             self._initialize_file_name_func(files)
-            self.data = self._read_csv(self.files, columns, date_column, skiprows)
+            self.data, __symbols = self._read_csv(self.files, columns, date_column, skiprows)
+            self.symbols = list(__symbols)
             if out_frame != None and False:
                 to_frame = int(out_frame)
                 if self.frame < to_frame:
@@ -423,7 +431,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
     @abstractmethod
     def _read_csv(self, files, columns, date_column, skiprows):
-        pass
+        symbols = []
+        return pd.DataFrame(), symbols
     
     @abstractmethod
     def get_additional_params(self):
@@ -525,8 +534,7 @@ class CSVClient(CSVClientBase):
             raise Exception("Couldn't daterming date column")
         data = self._initialize_date_index(data, True)
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
-        self.symbols = list(set(self.symbols) | set(__symbols))
-        return data
+        return data, __symbols
 
     def get_additional_params(self):
         args = {
@@ -535,12 +543,18 @@ class CSVClient(CSVClientBase):
         return args
     
     def __read_missing_symbol_data(self, symbols):
-        missing_symbol_set = set(symbols) - set(self.symbols)
-        if len(missing_symbol_set) > 0:
+        target_symbols, missing_files = self._get_target_symbols(symbols)
+        if len(missing_files) > 0:
             date_column = self.ohlc_columns["Time"]
+            start_date = self.data.index[0]
+            columns = self._args["columns"]
+            data, __symbols = self._read_csv(missing_files, columns, date_column)
+            self.files.extend(list(__symbols))
+            data = data[data.index >= start_date]
+            return data
+        return  target_symbols, pd.DataFrame()
     
     def __get_rates(self, length:int=None, symbols:list=[], frame:int=None):
-        
         if length is None:
             self.update_rates()
             rates = self.data.copy()
@@ -582,17 +596,17 @@ class CSVClient(CSVClientBase):
             raise Exception("interval should be greater than 0.")
            
     def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
-        target_symbols, missing_files = self._get_target_symbols(symbols)
-        if len(missing_files) > 0:
+        missing_data = pd.DataFrame()
+        target_symbols = []
+        try:
+            target_symbols, missing_data = self.__read_missing_symbol_data(symbols)
+        except Exception as e:
+            self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
+        if len(missing_data) > 0:
             try:
-                missing_data = self._read_csv(list(set(missing_files)), self._args["columns"], self._args["date_column"], self._args["skiprows"], self._args["start_date"])
+                self.data = pd.concat([self.data, missing_data], axis=1)
             except Exception as e:
-                self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
-            if missing_data is not None and len(missing_data) > 0:
-                try:
-                    self.data = pd.concat([self.data, missing_data], axis=1)
-                except Exception as e:
-                    self.logger.error(f"Filed to concat existing data with additional data of specified symbols by {e}")
+                self.logger.error(f"Filed to concat existing data with additional data of specified symbols by {e}")
         if len(target_symbols) == 0:
             self.logger.warning("Specified symbols can be handled as csv file or its symbol name.")
             return pd.DataFrame()
@@ -765,6 +779,7 @@ class CSVChunkClient(CSVClientBase):
         self.chunksize = chunksize
         super().__init__(files, columns, date_column, file_name_generator, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, logger)
         data = pd.concat(self.data.values(), axis=1, keys=self.data.keys())
+        # to avoid 
         is_date_found = self._proceed_step_until_date(data, start_date)
         while is_date_found is False:
             DFS = {}
@@ -830,8 +845,7 @@ class CSVChunkClient(CSVClientBase):
         for _symbol in __symbols:
             DFS[_symbol] = data[_symbol].dropna()
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
-        self.symbols = list(set(self.symbols) | set(__symbols))
-        return DFS
+        return DFS, __symbols
     
     def __read_chunk_data(self, symbol):
         if symbol in self.TRS:
@@ -867,7 +881,6 @@ class CSVChunkClient(CSVClientBase):
         
         if len(self.data[min_time_symbol]) - self._step_index < interval:
             DFS = {}
-            
             ##update data of min_date symbol.
             temp_df = self.data[min_time_symbol].dropna()
             short_length = interval - len(temp_df) + self._step_index
@@ -933,6 +946,7 @@ class CSVChunkClient(CSVClientBase):
             self._proceed_step_until_date(temp_df, self._args["start_date"])
             
     def __update_chunkdata(self, symbols:list=[], interval:int=None):
+        "function to update symbols regardless datetime"
         DFS = {}
         for symbol in symbols:
             temp_df = self.data[symbol].dropna()
@@ -961,10 +975,7 @@ class CSVChunkClient(CSVClientBase):
             if len(target_symbols) > 0:
                 rates = pd.concat([self.data[symbol] for symbol in target_symbols], axis=1, keys=target_symbols)
         else:
-            if len(self.TIMES) > 0:
-                self.__update_chunkdata_with_time(symbols, interval)
-            else:
-                self.__update_chunkdata(symbols, interval)
+            self.__update_chunkdata_with_time(target_symbols, interval)
             if len(target_symbols) > 0:
                 symbols_dfs = pd.concat([self.data[symbol] for symbol in target_symbols], axis=1, keys=target_symbols)
             else:
@@ -984,11 +995,18 @@ class CSVChunkClient(CSVClientBase):
         target_symbols, missing_files = self._get_target_symbols(symbols)
         if len(missing_files) > 0:
             try:
-                missing_DFS = self._read_csv(list(set(missing_files)), self._args["columns"], self._args["date_column"], self._args["skiprows"], self._args["start_date"])
+                missing_DFS, __symbols = self._read_csv(list(set(missing_files)), self._args["columns"], self._args["date_column"])
+                self.symbols.extend(list(__symbols))
             except Exception as e:
                 self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
             if missing_DFS is not None and len(missing_DFS) > 0:
-                self.data.update(missing_DFS)
+                times_df = pd.DataFrame.from_dict(self.TIMES)
+                min_datetime = times_df.T[0].min()
+                DFS = {}
+                for symbol, df in missing_DFS.items():
+                    df = df[df.index >= min_datetime]
+                    DFS[symbol] = df
+                self.data.update(DFS)
         rates = self.__get_rates_by_chunk(length, target_symbols, frame)
         if grouped_by_symbol == False:
             rates.columns = rates.columns.swaplevel(0, 1)
