@@ -17,6 +17,9 @@
         },
         "SBI":{
             "trade_unit":1
+        },
+        "csv":{
+            "trade_unit":1
         }
     },
     "log":{

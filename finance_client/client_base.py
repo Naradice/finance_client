@@ -11,11 +11,12 @@ import time
 
 class Client:
     
-    def __init__(self, budget=1000000.0, provider="Default", out_ohlc_columns = ("Open", "High", "Low", "Close"), do_render=True, logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, provider="Default", out_ohlc_columns = ("Open", "High", "Low", "Close"), frame=None, do_render=True, logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
         self.do_render = do_render
+        self.frame = frame
         if self.do_render:
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1

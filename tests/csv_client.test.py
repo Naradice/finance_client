@@ -21,52 +21,61 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/csv/USDJPY_forex_min5.csv'))
-time_column = "Time"
+file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/yfinance'))
+symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
+datetime_column = "Datetime"
+ohlc_columns = ["Open", "High", "Low", "Close"]
+additional_column = ["Adj Close", "Volume"]
+csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
+csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
 
-"""
 class TestCSVClient(unittest.TestCase):
-    client = CSVClient(files=csv_file, logger=logger, date_column=time_column)
     
     def test_get_rates(self):
+        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         length = 10
-        rates = self.client.get_rates(length)
+        rates = client.get_ohlc(length)
         self.assertEqual(len(rates.Close), length)
 
     def test_get_next_tick(self):
-        print(self.client.get_next_tick())
+        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
+        print(client.get_next_tick())
     
     def test_get_current_ask(self):
-        print(self.client.get_current_ask())
+        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
+        print(client.get_current_ask())
 
     def test_get_current_bid(self):
-        print(self.client.get_current_bid())
+        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
+        print(client.get_current_bid())
         
+    """
     def test_get_30min_rates(self):
         length = 10
-        client  = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=time_column)
+        client  = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=datetime_column)
         rates = client.get_rates(length)
         self.assertEqual(len(rates.Close), length)
+    """
     
     def test_get_indicaters(self):
         length = 10
         bband = utils.BBANDProcess()
         macd = utils.MACDProcess()
         processes = [bband, macd]
-        client = CSVClient(files=csv_file, frame=Frame.MIN5, idc_processes=processes, logger=logger, date_column=time_column)
-        data = client.get_rate_with_indicaters(length)
+        client = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=datetime_column)
+        data = client.get_ohlc(length, idc_processes=processes)
         print(data.columns)
-        self.assertEqual(len(data.Close), length)
+        self.assertEqual(len(data[ohlc_columns[3]]), length)
         
     def test_get_indicaters(self):
         length = 10
         bband = utils.BBANDProcess()
         macd = utils.MACDProcess()
         processes = [bband, macd]
-        client = CSVClient(files=csv_file, frame=Frame.MIN5, idc_processes=processes, logger=logger, date_column=time_column)
-        data = client.get_rate_with_indicaters(length)
+        client = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=datetime_column)
+        data = client.get_ohlc(length, idc_processes=processes)
         print(data.columns)
-        self.assertEqual(len(data.Close), length)
+        self.assertEqual(len(data[ohlc_columns[3]]), length)
         
     def test_get_standalized_indicaters(self):
         length = 10
@@ -74,13 +83,14 @@ class TestCSVClient(unittest.TestCase):
         macd = utils.MACDProcess()
         processes = [bband, macd]
         post_prs = [utils.DiffPreProcess(), utils.MinMaxPreProcess()]
-        client = CSVClient(files=csv_file, frame=Frame.MIN5, idc_processes=processes, post_process=post_prs ,logger=logger, date_column=time_column)
-        data = client.get_rate_with_indicaters(length)
+        client = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=datetime_column)
+        data = client.get_ohlc(length, idc_processes=processes, pre_processes=post_prs)
         print(data)
-        self.assertEqual(len(data.Close), length)
+        self.assertEqual(len(data[ohlc_columns[3]]), length)
         
+    """
     def test_get_diffs_minmax(self):
-        client = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=time_column)
+        client = CSVClient(files=csv_file, frame=Frame.MIN5, logger=logger, date_column=datetime_column)
         diffs = client.get_diffs()
         self.assertEqual(sum(diffs), 0)
         diffs_mm = client.get_diffs_with_minmax()
@@ -93,14 +103,7 @@ class TestCSVClient(unittest.TestCase):
         self.assertNotEqual(sum(diffs), 0)
         self.assertEqual(type(diffs_mm), list)
         self.assertNotEqual(sum(diffs_mm), 0)
-"""
-
-file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/yfinance'))
-symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
-datetime_column = "Datetime"
-ohlc_columns = ["Open", "High", "Low", "Close"]
-additional_column = ["Adj Close", "Volume"]
-csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
+    """
 
 class TestCSVClientMulti(unittest.TestCase):
     
@@ -373,13 +376,12 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        START_DATE=datetime.datetime(year=2001, month=4, day=1)
+        START_DATE=datetime.datetime(year=2001, month=4, day=1, tzinfo=datetime.timezone.utc)
         
         client = CSVChunkClient(files=files, start_date=START_DATE, chunksize=100)
         df = client.get_ohlc(DATA_LENGTH)
-        start_date_utc = START_DATE.astimezone(tz=datetime.timezone.utc)
-        self.assertLess(df.index[-2], start_date_utc)
-        self.assertGreaterEqual(df.index[-1], start_date_utc)
+        self.assertLess(df.index[-2], START_DATE)
+        self.assertGreaterEqual(df.index[-1], START_DATE)
         
     def test_get_data_with_files_with_random_index(self):
         SYMBOL_COUNT = 3

@@ -57,13 +57,8 @@ class DiffPreProcess(ProcessBase):
         return DiffPreProcess(key, floor)
     
     def run(self, data: pd.DataFrame) -> dict:
-        columns = data.columns
-        result = {}
-        for column in columns:
-            result[column] = data[column].diff()
-        
         self.last_tick = data.iloc[-1]
-        return result
+        return data.diff()
     
     def update(self, tick:pd.Series):
         """ assuming data is previous result of run()
