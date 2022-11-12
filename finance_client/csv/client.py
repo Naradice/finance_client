@@ -85,7 +85,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 else:
                     self.logger.info(f"file_name_generator is not initialized automatically as you specified it manually.")
 
-    def _initialize_date_index(self, data:pd.DataFrame, ascending:bool, start_date:datetime.datetime=None):
+    def _initialize_date_index(self, data:pd.DataFrame, ascending:bool):
         data = data.sort_index(ascending=ascending)
         if ascending:
             delta = data.index[1] - data.index[0]
@@ -101,12 +101,15 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         if self.frame < Frame.D1:
             if data.index.tzinfo is None:
                 data.index = pd.to_datetime(data.index, utc=True)
+        return data
+
+    def _proceed_step_until_date(self, data, start_date):
         is_date_found = True
         if start_date is not None and type(start_date) is datetime.datetime:
             #data[data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
             start_date = start_date.astimezone(datetime.timezone.utc)
             is_date_found = False
-            for index in range(0, len(data.index)):
+            for index in range(self._step_index, len(data.index)):
                 if data.index[index] >= start_date:
                     # date is retrievd by [:step_index], so we need to plus 1
                     self._step_index = index + 1
@@ -115,7 +118,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             if is_date_found is False:
                 self._step_index = len(data.index)
                 self.logger.warning(f"start date {start_date} doesn't exit in the index")
-        return data, is_date_found
+        return is_date_found
 
     def _create_csv_kwargs(self, columns, date_column, skiprows, is_multi_mode=False):
         usecols = columns
@@ -518,7 +521,8 @@ class CSVClient(CSVClientBase):
                 data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index:
-            data, _ = self._initialize_date_index(data, True, start_date)
+            data = self._initialize_date_index(data, True)
+            self._proceed_step_until_date(data, start_date)
         else:
             print("Couldn't daterming date column")
             
@@ -801,12 +805,14 @@ class CSVChunkClient(CSVClientBase):
                 data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index:
-            data, is_date_found = self._initialize_date_index(data, ascending, start_date)
+            data = self._initialize_date_index(data, ascending)
+            is_date_found = self._proceed_step_until_date(data, start_date)
             while is_date_found is False:
                 DFS = {}
                 dfs = [self.__read_chunk_data(symbol) for symbol in __symbols]
                 new_data = pd.concat(dfs, axis=1, keys=__symbols)
-                data, is_date_found = self._initialize_date_index(new_data, ascending, start_date)
+                data = self._initialize_date_index(new_data, ascending)
+                is_date_found = self._proceed_step_until_date(data, start_date)
             if is_multi_mode:
                 TIMES = {}
                 for symbol in __symbols:
@@ -920,13 +926,15 @@ class CSVChunkClient(CSVClientBase):
                 else:
                     DFS[symbol] = self.data[min_time_symbol].dropna()
             self.data.update(DFS)
+            temp_df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+            self._proceed_step_until_date(temp_df, self._args["start_date"])
             
     def __update_chunkdata(self, symbols:list=[], interval:int=None):
         DFS = {}
         for symbol in symbols:
             temp_df = self.data[symbol].dropna()
-            if len(temp_df) - self.__step_index < interval:
-                short_length = interval - len(temp_df) + self.__step_index
+            if len(temp_df) - self._step_index < interval:
+                short_length = interval - len(temp_df) + self._step_index
                 short_chunk_count = math.ceil(short_length/self.chunksize)
                 temp_dfs = [temp_df]
                 for count in range(0, short_chunk_count):
@@ -937,6 +945,8 @@ class CSVChunkClient(CSVClientBase):
                 DFS[symbol] = temp_df
             else:
                 DFS[symbol] = temp_df
+        data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+        DFS = self._initialize_date_index(data, True, self._args["start_date"])
         self.data.update(DFS)
             
     def __get_rates_by_chunk(self, interval:int=None, symbols:list=[], frame:int=None):
