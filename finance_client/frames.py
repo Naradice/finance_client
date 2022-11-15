@@ -21,6 +21,38 @@ min_str = {
     MO1:"MO1"
 }
 
+freq_str = {
+    MIN1:"1min",MIN5:"5min",MIN10:"10min",MIN30:"30min",
+    H1:"1H",H2:"2H",H4:"4H",H8:"8H",
+    D1:"1D",D2:"2D",D4:"4D",
+    W1:"W1",
+    MO1:"MO1"
+}
+
+def to_panda_freq(minutes:int):
+    try:
+        return freq_str[minutes]
+    except Exception:
+        hours = minutes/60
+        if hours >= 1:
+            days = hours/24
+            if days >= 1:
+                week = days/7
+                if week >= 1:
+                    month = days/30
+                    if month >= 1:
+                        years = minutes/(60*24*365)
+                        return f"{str(int(years))}Y"
+                    else:
+                        return f"{str(int(month))}M"
+                else:#15 days are handled as 2 weeks
+                    return f"{str(int(week))}W"
+            else:
+                return f"{str(int(hours))}h"
+        else:
+            return f"{str(int(minutes))}min"
+                    
+
 def to_str(value:int):
     if value in min_str:
         return min_str[value]

@@ -181,106 +181,16 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         return DFS
 
     #functions for rolling
-    def __past_date(self, target_date, from_frame, to_frame):
-        diff_date = target_date.day % datetime.timedelta(minutes=to_frame).days
-        diff_date_as_minutes = diff_date*60*24
-        diff_hours_as_minutes = target_date.hour*60 + target_date.minute
-        total_diff_minutes = diff_date_as_minutes+diff_hours_as_minutes
-        past_index = int(total_diff_minutes/from_frame)
-        return past_index
-
-    def __past_hours(self, target_date, from_frame, to_frame) :
-        diff_hours = target_date.hour % (to_frame/60)
-        diff_hours_as_minutes = diff_hours*60
-        total_diff_minutes = diff_hours_as_minutes + target_date.minute
-        past_index = int(total_diff_minutes/from_frame)
-        return past_index
-
-    def __past_minutes(self, target_date, from_frame, to_frame) :
-        target_minute = target_date.minute
-        diff_minutes = target_minute % to_frame
-        past_index = int(diff_minutes/from_frame)
-        return past_index
-
-    def _rolling_frame(self, data:pd.DataFrame, from_frame:int, to_frame: int, addNan=False) -> pd.DataFrame:        
-        if "Time" in self.ohlc_columns:
-            date_column = self.ohlc_columns["Time"]
-            if to_frame >= Frame.MO1:
-                raise Exception("not implemented")
-            elif to_frame >= Frame.D1:
-                get_past_window = self.__past_date
-            elif to_frame >= Frame.H1:
-                get_past_window = self.__past_hours
-            else:
-                get_past_window = self.__past_minutes
+    def _rolling_frame(self, data:pd.DataFrame, from_frame:int, to_frame: int, addNan=False) -> pd.DataFrame:
+        if self.frame is not None:
+            if "Time" in self.ohlc_columns:
+                date_column = self.ohlc_columns["Time"]
+                open_column = self.ohlc_columns["Open"]
+                high_column = self.ohlc_columns["High"]
+                low_column = self.ohlc_columns["Low"]
+                close_column = self.ohlc_columns["Close"]
                 
-            open_column = self.ohlc_columns["Open"]
-            high_column = self.ohlc_columns["High"]
-            low_column = self.ohlc_columns["Low"]
-            close_column = self.ohlc_columns["Close"]
-            
-            pre_index = len(data)-1
-            past_index = get_past_window(data[date_column].iloc[pre_index], from_frame, to_frame)
-            window = int(to_frame/from_frame)
-            window_ = window
-            next_index = pre_index - past_index
-            delta = datetime.timedelta(minutes=from_frame * past_index)
-            Highs = []
-            Lows = []
-            Opens = []
-            Closes = []
-            Timestamp = []
-            
-            expected_date = data[date_column].iloc[pre_index] - delta
-            delta = datetime.timedelta(minutes=to_frame)
-            
-            while next_index >= 0:
-                next_date = data[date_column].iloc[next_index]
-                window_ = window
-                while next_date != expected_date:
-                    if  next_date > expected_date:
-                        self.logger.warning(f"{pre_index} to {next_index} has insufficient data. rolling data anyway.")
-                        #when next tick doen't start with expected_date, reduce missing count from window
-                        NEXT_INDEX_PAD = -1
-                        temp_next_date = data[date_column].iloc[next_index + NEXT_INDEX_PAD]
-                        next_delta = expected_date - temp_next_date
-                        exclude = int((next_delta.total_seconds())/60/from_frame)-1
-                        if window > exclude:
-                            window_ = window - exclude
-                        else:#else case the next date has no data
-                            if not addNan:
-                                past_index = get_past_window(temp_next_date, from_frame, to_frame)
-                                window_ = past_index - NEXT_INDEX_PAD
-                                expected_date = temp_next_date - datetime.timedelta(minutes=from_frame*past_index)
-                        break
-                    else:
-                        # datetime over as there is lack of data
-                        next_index = next_index + 1
-                        next_date = data[date_column].iloc[next_index]
-                        
-                if pre_index == next_index and addNan:
-                    self.logger.info(f"{pre_index} has no data. Put NaN on this datetime")
-                    expected_date = expected_date - delta
-                    next_index = pre_index - window_
-                    Highs.append(numpy.Nan)
-                    Lows.append(numpy.Nan)
-                    Opens.append(numpy.Nan)
-                    Closes.append(numpy.Nan)
-                    Timestamp.append(expected_date)
-                else:
-                    Highs.append(data[high_column].iloc[next_index:pre_index].max())
-                    Lows.append(data[high_column].iloc[next_index:pre_index].min())
-                    Opens.append(data[open_column].iloc[next_index])
-                    Closes.append(data[close_column].iloc[pre_index-1])
-                    Timestamp.append(data[date_column].iloc[next_index])
-
-                    expected_date = expected_date - delta
-                    pre_index = next_index
-                    next_index = pre_index - window_
-
-            rolled_data = pd.DataFrame({date_column:Timestamp, high_column: Highs, low_column:Lows, open_column:Opens, close_column:Closes})
-            return rolled_data
-        return data
+                
     
     #functions for get_ohlc
     def _get_target_symbols(self, symbols):
@@ -944,27 +854,6 @@ class CSVChunkClient(CSVClientBase):
             self.data.update(DFS)
             temp_df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
             self._proceed_step_until_date(temp_df, self._args["start_date"])
-            
-    def __update_chunkdata(self, symbols:list=[], interval:int=None):
-        "function to update symbols regardless datetime"
-        DFS = {}
-        for symbol in symbols:
-            temp_df = self.data[symbol].dropna()
-            if len(temp_df) - self._step_index < interval:
-                short_length = interval - len(temp_df) + self._step_index
-                short_chunk_count = math.ceil(short_length/self.chunksize)
-                temp_dfs = [temp_df]
-                for count in range(0, short_chunk_count):
-                    temp_df = self.__read_chunk_data(symbol)
-                    if len(temp_df) > 0:
-                        temp_dfs.append(temp_df)
-                temp_df = pd.concat(temp_dfs, axis=0)
-                DFS[symbol] = temp_df
-            else:
-                DFS[symbol] = temp_df
-        data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
-        DFS = self._initialize_date_index(data, True, self._args["start_date"])
-        self.data.update(DFS)
             
     def __get_rates_by_chunk(self, interval:int=None, symbols:list=[], frame:int=None):
         target_symbols = list(set(self.symbols) & set(symbols))
