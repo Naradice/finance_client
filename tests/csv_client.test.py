@@ -31,6 +31,9 @@ csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
 
 class TestCSVClient(unittest.TestCase):
     
+    def test_init(self):
+        client = CSVClient()
+
     def test_get_rates(self):
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         length = 10
@@ -288,6 +291,13 @@ class TestCSVClientMulti(unittest.TestCase):
         limited_symbols_1 = client.symbols[:2]
         df_1 = client.get_ohlc(DATA_LENGTH, symbols=limited_symbols_1)
         self.assertEqual(len(df_1.columns), len(limited_symbols_1)*(len(ohlc_columns) + len(additional_column)) )
+    
+    def test_get_data_with_file_generator(self):
+        generator = lambda symbol: f'{file_base}/yfinance_{symbol}_D1.csv'
+        client = CSVClient(file_name_generator=generator)
+        ohlc_df = client.get_ohlc(length=10, symbols=symbols[:2])
+        self.assertEqual(len(ohlc_df), 10)
+        
 
 class TestCSVClientMultiChunk(unittest.TestCase):
     

@@ -13,8 +13,6 @@ class CSVClientBase(Client, metaclass=ABCMeta):
     
     #functions for read csv
     def _update_columns(self, columns:list):
-        if self.ohlc_columns is None:
-            self.ohlc_columns = {}
         temp_columns = {}
         for column in columns:
             column_ = str(column).lower()
@@ -179,18 +177,6 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 df = df[__columns]
             DFS[symbol] = df.copy()
         return DFS
-
-    #functions for rolling
-    def _rolling_frame(self, data:pd.DataFrame, from_frame:int, to_frame: int, addNan=False) -> pd.DataFrame:
-        if self.frame is not None:
-            if "Time" in self.ohlc_columns:
-                date_column = self.ohlc_columns["Time"]
-                open_column = self.ohlc_columns["Open"]
-                high_column = self.ohlc_columns["High"]
-                low_column = self.ohlc_columns["Low"]
-                close_column = self.ohlc_columns["Close"]
-                
-                
     
     #functions for get_ohlc
     def _get_target_symbols(self, symbols):
@@ -207,8 +193,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             if len(target_symbols) == 0:
                 #assume file_path is provided instead of symbols
                 for file in symbols:
-                    file = os.path.abspath(file)
-                    if os.path.exists(file):
+                    _file_path = os.path.abspath(file)
+                    if os.path.exists(_file_path):
+                        file = _file_path
                         if self._get_symbol_from_filename is None:
                             self._initialize_file_name_func(symbols)
                         __symbol = self._get_symbol_from_filename(file)
@@ -230,9 +217,11 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                         if is_handled_symbol is False:
                             # it may be not a file name, so store it as is
                             missing_symbols.append(file)
+                    
             else:
                 #some of provided symbols match with handled symbols, so assume all others are symbol names (not filename)
                 missing_symbols = list(set(symbols) - set(self.symbols))
+            if len(missing_symbols) > 0:
                 if self.file_name_generator is None:
                     self.logger.error("can't create file name from symbol as file name generator is not defined.")
                     self.logger.warning(f"{missing_files} are ignored")
@@ -241,6 +230,12 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                         file = self.file_name_generator(symbol)
                         missing_files.append(os.path.abspath(file))
         return target_symbols, missing_files
+
+    def __generate_symbol(self, file_name:str, sps:list):
+        symbol = file_name
+        for sep in sps:
+            symbol = symbol.replace(sep, "")
+        return symbol
 
     def __init__(self, files:list = None, columns = [], date_column = None, 
                  file_name_generator=None, frame:int=None, out_frame:int=None,
@@ -252,6 +247,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         """
         super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, frame=frame, provider="csv", logger_name=__name__, logger=logger)
         random.seed(seed)
+        self.data = None
+        self.files = []
+        self.ohlc_columns = {}
         self.auto_step_index = auto_step_index
         slip_type = slip_type.lower()
         if slip_type in self.available_slip_type:
@@ -276,7 +274,11 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                        "slip_type":slip_type, "seed": seed}
         
         self.file_name_generator = file_name_generator
-            
+        if file_name_generator is not None:
+            sep = "?_?"
+            dummpy_path = file_name_generator(sep)
+            fixes = dummpy_path.split(sep)
+            self._get_symbol_from_filename = lambda file_path : self.__generate_symbol(file_path, fixes)
         self.base_point = 0.01
         self.frame = None
         self.symbols = []
@@ -304,17 +306,13 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             self._initialize_file_name_func(files)
             self.data, __symbols = self._read_csv(self.files, columns, date_column, skiprows)
             self.symbols = list(__symbols)
-            if out_frame != None and False:
+            if out_frame != None:
                 to_frame = int(out_frame)
-                if self.frame < to_frame:
-                    rolled_data = self._rolling_frame(self.data.copy(), from_frame=self.frame, to_frame=to_frame)
+                if self.frame != to_frame:
+                    rolled_data = self._rolling_frame(self.data, from_frame=self.frame, to_frame=to_frame)
                     if type(rolled_data) is pd.DataFrame and len(rolled_data) > 0:
                         self.data = rolled_data
                         self.frame = to_frame
-                elif to_frame == self.frame:
-                    self.logger.info("file_frame and frame are same value. row file is used.")
-                else:
-                    raise Exception("frame should be greater than file_frame as we can't decrease the frame.")
                 self.out_frames = to_frame
                 
         self._auto_reset = auto_reset_index
@@ -405,7 +403,8 @@ class CSVClient(CSVClientBase):
             seed (int, optional): specify random seed. Defaults to 1017
         """
         super().__init__(files, columns, date_column, file_name_generator, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, logger)
-        self._proceed_step_until_date(self.data, start_date)
+        if self.data is not None:
+            self._proceed_step_until_date(self.data, start_date)
     
     def _read_csv(self, files, columns=[], date_col=None, skiprows=None):
         DFS = {}
@@ -455,13 +454,16 @@ class CSVClient(CSVClientBase):
     def __read_missing_symbol_data(self, symbols):
         target_symbols, missing_files = self._get_target_symbols(symbols)
         if len(missing_files) > 0:
-            date_column = self.ohlc_columns["Time"]
-            start_date = self.data.index[0]
+            date_column = None
+            if "Time" in self.ohlc_columns:
+                date_column = self.ohlc_columns["Time"]
             columns = self._args["columns"]
             data, __symbols = self._read_csv(missing_files, columns, date_column)
             self.files.extend(list(__symbols))
-            data = data[data.index >= start_date]
-            return data
+            if self.data is not None:
+                start_date = self.data.index[0]
+                data = data[data.index >= start_date]
+            return __symbols, data
         return  target_symbols, pd.DataFrame()
     
     def __get_rates(self, length:int=None, symbols:list=[], frame:int=None):

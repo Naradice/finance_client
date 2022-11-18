@@ -581,6 +581,7 @@ class Client:
         
         if grouped_by_symbol:
             data.columns = data.columns.swaplevel(0, 1)
+            
         ohlc_columns_dict = self.get_ohlc_columns()
         rolled_data_dict = {}
         if "Open" in ohlc_columns_dict:
