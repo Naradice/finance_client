@@ -309,7 +309,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             if out_frame != None:
                 to_frame = int(out_frame)
                 if self.frame != to_frame:
-                    rolled_data = self._rolling_frame(self.data, from_frame=self.frame, to_frame=to_frame)
+                    rolled_data = self.roll_data(self.data, from_frame=self.frame, to_frame=to_frame)
                     if type(rolled_data) is pd.DataFrame and len(rolled_data) > 0:
                         self.data = rolled_data
                         self.frame = to_frame
@@ -356,7 +356,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         return False
     
     @abstractmethod
-    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
         pass
     
     @abstractmethod
@@ -507,7 +507,7 @@ class CSVClient(CSVClientBase):
         else:
             raise Exception("interval should be greater than 0.")
            
-    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
         missing_data = pd.DataFrame()
         target_symbols = []
         try:
@@ -882,7 +882,7 @@ class CSVChunkClient(CSVClientBase):
                 self._step_index += 1
         return rates
     
-    def get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol:bool=False):
         target_symbols, missing_files = self._get_target_symbols(symbols)
         if len(missing_files) > 0:
             try:

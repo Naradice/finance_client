@@ -58,9 +58,9 @@
                 "propagate": false
             },
             "finance_client.test": {
-                "level": "DEBUG",
+                "level": "ERROR",
                 "handlers": ["consoleHandler", "fileHandler"],
-                "propagate": false  
+                "propagate": true  
             }
         },
     

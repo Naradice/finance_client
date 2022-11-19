@@ -16,7 +16,7 @@ except Exception as e:
     raise e
 logger_config = settings["log"]
 log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.logs'
+log_path = f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
 logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
@@ -291,14 +291,7 @@ class TestCSVClientMulti(unittest.TestCase):
         limited_symbols_1 = client.symbols[:2]
         df_1 = client.get_ohlc(DATA_LENGTH, symbols=limited_symbols_1)
         self.assertEqual(len(df_1.columns), len(limited_symbols_1)*(len(ohlc_columns) + len(additional_column)) )
-    
-    def test_get_data_with_file_generator(self):
-        generator = lambda symbol: f'{file_base}/yfinance_{symbol}_D1.csv'
-        client = CSVClient(file_name_generator=generator)
-        ohlc_df = client.get_ohlc(length=10, symbols=symbols[:2])
-        self.assertEqual(len(ohlc_df), 10)
         
-
 class TestCSVClientMultiChunk(unittest.TestCase):
     
     def test_initialize_with_file_chunk(self):
@@ -500,14 +493,21 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         df_1 = client.get_ohlc(DATA_LENGTH, symbols=limited_symbols_1)
         self.assertEqual(len(df_1.columns), len(limited_symbols_1)*(len(ohlc_columns) + len(additional_column)) )
 
+class TestCSVClientMultiWOInit(unittest.TestCase):
+    def test_get_datas_with_file_generator(self):
+        generator = lambda symbol: f'{file_base}/yfinance_{symbol}_D1.csv'
+        client = CSVClient(file_name_generator=generator)
+        ohlc_df = client.get_ohlc(length=10, symbols=symbols[:2])
+        self.assertEqual(len(ohlc_df), 10)
+        
+    def test_get_datas_with_file_generator(self):
+        generator = lambda symbol: f'{file_base}/yfinance_{symbol}_D1.csv'
+        client = CSVClient(file_name_generator=generator)
+        ohlc_df = client.get_ohlc(length=10, symbols=symbols[3])
+        self.assertEqual(len(ohlc_df), 10)
+
 """
-class TestCSVClientMultiWOInit():
-    pass
-
 class TestCSVClientMultiChunkWOInit():
-    pass
-
-class TestCSVClientMultiWOInitChunk():
     pass
 
 class TestCSVClientMultiWOInit():
