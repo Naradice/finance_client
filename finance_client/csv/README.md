@@ -56,14 +56,14 @@ client = CSVChunkClient(files=csv_files, chunksize=CHUNK_SIZE)
 ```
 
 ## DateTime handling
-To handle multi symbols, client assume datetime column exists.
-If date_column is specified, the client try to parse data in date_column and make index.
+To handle multi symbols, the client assumes datetime column exists.
+If date_column is specified, the client tries to parse data in date_column and make index.
 
 if date_column is missing, the client searches column which has "time" as a part of column name such as "Datetime", "Timestamp", etc.
 
 ---------
 (Implementing)
-If the client fail to determin the date_column and both frame and start_date are specified on initialization, client generate index from state_date if date column is not found.
+If the client failed to determin the date_column and both frame and start_date are specified on initialization, client generate index from start_date if date column is not found.
 Otherwise, the client raises an exception.
 
 ### Timezone
