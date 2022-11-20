@@ -86,9 +86,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
     def _initialize_date_index(self, data:pd.DataFrame, ascending:bool):
         data = data.sort_index(ascending=ascending)
         if ascending:
-            delta = data.index[1] - data.index[0]
+            delta = (data.index[1:] - data.index[:-1]).min()
         else:
-            delta = data.index[0] - data.index[1]
+            delta = (data.index[:-1] - data.index[1:]).min()
         frame = int(delta.total_seconds()/60)
         if self.frame is None:
             self.frame = frame
@@ -103,19 +103,20 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
     def _proceed_step_until_date(self, data, start_date):
         is_date_found = True
-        if start_date is not None and type(start_date) is datetime.datetime:
-            #data[data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
-            start_date = start_date.astimezone(datetime.timezone.utc)
-            is_date_found = False
-            for index in range(self._step_index, len(data.index)):
-                if data.index[index] >= start_date:
-                    # date is retrievd by [:step_index], so we need to plus 1
-                    self._step_index = index + 1
-                    is_date_found = True
-                    break
-            if is_date_found is False:
-                self._step_index = len(data.index)
-                self.logger.warning(f"start date {start_date} doesn't exit in the index")
+        if data is not None and len(data) > 0:
+            if start_date is not None and type(start_date) is datetime.datetime:
+                #data[data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
+                start_date = start_date.astimezone(datetime.timezone.utc)
+                is_date_found = False
+                for index in range(self._step_index, len(data.index)):
+                    if data.index[index] >= start_date:
+                        # date is retrievd by [:step_index], so we need to plus 1
+                        self._step_index = index + 1
+                        is_date_found = True
+                        break
+                if is_date_found is False:
+                    self._step_index = len(data.index)
+                    self.logger.warning(f"start date {start_date} doesn't exit in the index")
         return is_date_found
 
     def _create_csv_kwargs(self, columns, date_column, skiprows, is_multi_mode=False):
@@ -177,6 +178,14 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 df = df[__columns]
             DFS[symbol] = df.copy()
         return DFS
+    
+    def _create_datetime_index(self, start_date, frame, data_length):
+        if start_date is not None and frame is not None and data_length is not None:
+            delta = datetime.timedelta(minutes=frame)
+            return pd.Index([ start_date + delta*i for i in range(0, data_length)])
+        else:
+            self.logger.warning("any of parameters are None on create_datetime_index")
+            return pd.Index([i for i in range(0, data_length)])
     
     #functions for get_ohlc
     def _get_target_symbols(self, symbols):
@@ -304,17 +313,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 self.files = list(set(files))
                 files = [os.path.abspath(file) for file in self.files]
             self._initialize_file_name_func(files)
-            self.data, __symbols = self._read_csv(self.files, columns, date_column, skiprows)
+            self.data, __symbols = self._read_csv(self.files, columns, date_column, skiprows, start_date, frame)
             self.symbols = list(__symbols)
-            if out_frame != None:
-                to_frame = int(out_frame)
-                if self.frame != to_frame:
-                    rolled_data = self.roll_data(self.data, from_frame=self.frame, to_frame=to_frame)
-                    if type(rolled_data) is pd.DataFrame and len(rolled_data) > 0:
-                        self.data = rolled_data
-                        self.frame = to_frame
-                self.out_frames = to_frame
-                
+                            
         self._auto_reset = auto_reset_index
         if start_random_index and self.data is not None:
             self._step_index = random.randint(0, len(self))
@@ -338,7 +339,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         return 0
 
     @abstractmethod
-    def _read_csv(self, files, columns, date_column, skiprows):
+    def _read_csv(self, files, columns, date_column, skiprows, start_date, frame):
         symbols = []
         return pd.DataFrame(), symbols
     
@@ -403,10 +404,12 @@ class CSVClient(CSVClientBase):
             seed (int, optional): specify random seed. Defaults to 1017
         """
         super().__init__(files, columns, date_column, file_name_generator, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, logger)
-        if self.data is not None:
-            self._proceed_step_until_date(self.data, start_date)
+        if out_frame is not None:
+            if self.frame < out_frame:
+                self.data = self.roll_data(self.data, out_frame, grouped_by_symbol=True).dropna()
+                self.frame = out_frame
     
-    def _read_csv(self, files, columns=[], date_col=None, skiprows=None):
+    def _read_csv(self, files, columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
         DFS = {}
         __symbols = []
         is_multi_mode = False
@@ -440,8 +443,13 @@ class CSVClient(CSVClientBase):
                 data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index is False:
-            raise Exception("Couldn't daterming date column")
+            if start_date is not None and frame is not None:
+                data.index = self._create_datetime_index(start_date, frame, len(data))
+                is_date_index = True
+            else:
+                raise Exception("Couldn't daterming date column")
         data = self._initialize_date_index(data, True)
+        self._proceed_step_until_date(data, start_date)
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
         return data, __symbols
 
@@ -472,15 +480,20 @@ class CSVClient(CSVClientBase):
             rates = self.data.copy()
             if self.auto_step_index:
                 self._step_index += 1
+            if frame is not None and self.frame < frame:
+                rates = self.roll_data(rates, frame, grouped_by_symbol=True).dropna()
             if len(symbols) != 0:
                 try:
                     #data is grouped by symbol by csv read
                     rates = rates[symbols]
                 except Exception as e:
                     self.logger.error(f"{symbols} is not in data. Return entire symbols: {e}")
-            return rates
+            return rates[:self._step_index].copy()
         elif length >= 1:
             rates = None
+            out_length = length
+            if frame is not None and self.frame < frame:
+                length = math.ceil(frame/self.frame) * length
             if self._step_index >= length-1:
                 try:
                     #return data which have length length
@@ -488,7 +501,7 @@ class CSVClient(CSVClientBase):
                         rates = self.data[symbols]
                     else:
                         rates = self.data.copy()
-                    return rates.iloc[self._step_index - length:self._step_index].copy()
+                    rates = rates.iloc[self._step_index - length:self._step_index].copy()
                 except Exception as e:
                     self.logger.error(f"can't find data fom {self._step_index - length} to {self._step_index}: {e}")
             else:
@@ -503,7 +516,11 @@ class CSVClient(CSVClientBase):
                     else:
                         self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
                         rates = self.data[symbols]
-                        return rates.iloc[:length].copy()
+                        rates = rates.iloc[:length].copy()
+            if frame is not None and self.frame < frame:
+                rates = self.roll_data(rates, frame, grouped_by_symbol=True).dropna()
+            rates = rates.iloc[:out_length].copy()
+            return rates
         else:
             raise Exception("interval should be greater than 0.")
            
@@ -512,15 +529,15 @@ class CSVClient(CSVClientBase):
         target_symbols = []
         try:
             target_symbols, missing_data = self.__read_missing_symbol_data(symbols)
-        except Exception as e:
-            self.logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
+        except:
+            self.logger.exception("Filed to read csv on get_ohlc_data of CSV client")
         if len(missing_data) > 0:
             try:
                 self.data = pd.concat([self.data, missing_data], axis=1)
-            except Exception as e:
-                self.logger.error(f"Filed to concat existing data with additional data of specified symbols by {e}")
+            except:
+                self.logger.exception("Filed to concat existing data with additional data of specified symbols")
         if len(target_symbols) == 0:
-            self.logger.warning("Specified symbols can be handled as csv file or its symbol name.")
+            self.logger.warning(f"Specified symbols can be handled as csv file or its symbol name: {symbols}")
             return pd.DataFrame()
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
@@ -707,7 +724,7 @@ class CSVChunkClient(CSVClientBase):
             TIMES[symbol] = (df.index[0], last_time)
         self.TIMES.update(TIMES)
 
-    def _read_csv(self, files, columns=[], date_col=None, skiprows=None):
+    def _read_csv(self, files, columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
         is_multi_mode = False
         if len(files) > 1:
             is_multi_mode = True
@@ -751,10 +768,16 @@ class CSVChunkClient(CSVClientBase):
                 data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                 is_date_index = True
         if is_date_index is False:
+            if start_date is not None and frame is not None:
+                data.index = self._create_datetime_index(start_date, frame, len(data))
+                is_date_index = True
+            else:
+                raise Exception("Couldn't daterming date column")
             raise Exception("Couldn't daterming date column")
         data = self._initialize_date_index(data, True)            
         DFS = {}
         for _symbol in __symbols:
+            #store each df. It may reduce the memory usage for NaM. (Is it handled in pandas?)
             DFS[_symbol] = data[_symbol].dropna()
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
         return DFS, __symbols

@@ -30,7 +30,7 @@ class Client:
             raise e
         self.ohlc_columns = None
         
-        if logger == None:
+        if logger is None:
             logger_config = settings["log"]
         
             try:
@@ -40,13 +40,13 @@ class Client:
                     os.makedirs(log_folder)
                 logger_config["handlers"]["fileHandler"]["filename"] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
                 config.dictConfig(logger_config)
+                if logger_name == None:
+                    logger_name == __name__
+                self.logger = getLogger(logger_name)
+                self.market = market.Manager(budget)
             except Exception as e:
-                self.logger.error(f"fail to set configure file: {e}")
+                print(f"fail to set configure file: {e}")
                 raise e
-            if logger_name == None:
-                logger_name == __name__
-            self.logger = getLogger(logger_name)
-            self.market = market.Manager(budget)
         else:
             self.logger = logger
             self.market = market.Manager(budget, logger=logger, provider=provider)

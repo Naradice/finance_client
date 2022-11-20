@@ -62,7 +62,7 @@ If date_column is specified, the client tries to parse data in date_column and m
 if date_column is missing, the client searches column which has "time" as a part of column name such as "Datetime", "Timestamp", etc.
 
 ---------
-(Implementing)
+(Testing)
 If the client failed to determin the date_column and both frame and start_date are specified on initialization, client generate index from start_date if date column is not found.
 Otherwise, the client raises an exception.
 
@@ -70,7 +70,7 @@ Otherwise, the client raises an exception.
 (ToDo) Currently datetime are convert to UTC. It may shift datetime from your localtime.
 
 ### Rolling Data
-(Testing) When you get ohlc data, you can specify frame to roll time frequency.
+When you get ohlc data, you can specify frame to roll time frequency.
 
 ```
 symbols = [1812, 1963]

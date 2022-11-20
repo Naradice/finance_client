@@ -40,7 +40,7 @@
             },
             "fileHandler": {
                 "class": "logging.FileHandler",
-                "level": "DEBUG",
+                "level": "WARN",
                 "formatter": "simple",
                 "filename": "finance_client"
             }
@@ -58,7 +58,7 @@
                 "propagate": false
             },
             "finance_client.test": {
-                "level": "ERROR",
+                "level": "DEBUG",
                 "handlers": ["consoleHandler", "fileHandler"],
                 "propagate": true  
             }
