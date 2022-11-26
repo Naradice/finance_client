@@ -142,6 +142,10 @@ class Manager:
         self.positions["budget"] = budget
         self.__start_budget = budget
         self.logger.info(f"MarketManager updated budget to {budget}")
+    
+    @property
+    def budget(self):
+        return self.positions["budget"]
 
     def __wait_lock(self):
         while self.__locked:
@@ -198,8 +202,8 @@ class Manager:
             for id, position in self.positions[order_type].items():
                 positions.append(position)
         else:
-            for trend, position_type in self.positions.items():
-                for id, position in position_type.items():
+            for position_type_key in ["ask", "bid"]:
+                for id, position in self.positions[position_type_key].items():
                     positions.append(position)
         return positions
     
