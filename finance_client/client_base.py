@@ -131,7 +131,7 @@ class Client:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         return self.market.close_position(position, price, amount)
     
-    def close_all_positions(self):
+    def close_all_positions(self, symbols=[]):
         """close all open_position.
         sell_for_settlement or buy_for_settlement is calleds for each position
         """
@@ -142,7 +142,7 @@ class Client:
             results.append(result)
         return results
 
-    def close_long_positions(self):
+    def close_long_positions(self, symbols=[]):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
@@ -153,7 +153,7 @@ class Client:
             results.append(result)
         return results
 
-    def close_short_positions(self):
+    def close_short_positions(self, symbols=[]):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """

@@ -191,16 +191,19 @@ class Manager:
             return self.positions["bid"][id]
         return None
     
-    def get_open_positions(self, order_type:str = None) -> list:
+    def get_open_positions(self, order_type:str = None, symbols=[]) -> list:
         positions = []
+        is_entire_symbols = len(symbols) == 0
         if order_type:
             order_type = self.__check_order_type(order_type=order_type)
             for id, position in self.positions[order_type].items():
-                positions.append(position)
+                if is_entire_symbols or position.symbol in symbols:
+                    positions.append(position)
         else:
             for trend, position_type in self.positions.items():
                 for id, position in position_type.items():
-                    positions.append(position)
+                    if is_entire_symbols or position.symbol in symbols:
+                        positions.append(position)
         return positions
     
     def close_position(self, position:Position, price: float, amount: float = None):
