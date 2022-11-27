@@ -165,7 +165,7 @@ class TestCSVClientMulti(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
         START_DATE=datetime.datetime(year=2001, month=4, day=1, tzinfo=datetime.timezone.utc)
         
-        client = CSVClient(files=files, start_date=START_DATE, logger=logger)
+        client = CSVClient(files=files, start_date=START_DATE, dropna=False, logger=logger)
         df = client.get_ohlc(DATA_LENGTH)
         self.assertLess(df.index[-2], START_DATE)
         self.assertGreaterEqual(df.index[-1], START_DATE)
@@ -525,7 +525,40 @@ class TestCSVClientMultiWOInit():
 
 class TestCSVClientMultiChunkWOInit():
     pass
-
 """
+
+class TestCCSVClientMultiTrade(unittest.TestCase):
+    
+    def test_trade_symbol(self):
+        files = csv_files[:2]
+        target_symbols = symbols[:2]
+        client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger)
+        client.open_trade(True, 1, "Market", symbols[1])
+        
+        for i in range(0, 5):
+            df = client.get_ohlc(10)
+        results = client.close_long_positions(symbols[1])
+        self.assertEqual(len(results[0]), 4)
+        self.assertNotEqual(results[0][0], results[0][1])
+    
+    def test_trade_symbols(self):
+        files = csv_files[:3]
+        target_symbols = symbols[:3]
+        client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger)
+        client.open_trade(True, 1, "Market", symbols[1])
+        
+        for i in range(0, 5):
+            df = client.get_ohlc(10)
+        client.open_trade(True, 1, "Market", symbols[2])
+        for i in range(0, 5):
+            df = client.get_ohlc(10)
+        results = client.close_long_positions(symbols[2])
+        self.assertEqual(len(results), 1)
+        self.assertNotEqual(results[0][0], results[0][1])
+        for i in range(0, 5):
+            df = client.get_ohlc(10)
+        self.assertEqual(len(results), 1)
+        self.assertNotEqual(results[0][0], results[0][1])
+    
 if __name__ == '__main__':
     unittest.main()

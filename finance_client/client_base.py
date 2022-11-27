@@ -56,7 +56,6 @@ class Client:
     def initialize_budget(self, budget):
         self.market(budget)
         
-    ## call from an actual client        
     def open_trade(self, is_buy, amount:float, order_type:str, symbol:str, price:float=None, tp=None, sl=None, option_info=None):
         """ by calling this in your client, order function is called and position is stored
 
@@ -65,28 +64,47 @@ class Client:
             amount (float): amount of trade unit
             stop (_type_): _description_
             order_type (str): Market, 
-            symbol (str): currency. ex USDJPY.
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
             option_info (any, optional): store info you want to position. Defaults to None.
 
         Returns:
-            Position: you can specify position or position.id to close the position
+            Success (bool): True if order is completed
+            Position (Position): you can specify position or position.id to close the position
         """
         if order_type == "Market":
             self.logger.debug("market order is requested.")
             if is_buy:
                 if price == None:
-                    ask_rate = self.get_current_ask()
+                    ask_rate = self.get_current_ask(symbol)
                 else:
                     ask_rate = price
-                result = self.market_buy(symbol, ask_rate, amount, tp, sl, option_info)
-                return self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                if ask_rate and ask_rate > 0:
+                    suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
+                    if suc:
+                        return True, self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                    else:
+                        self.logger.error(f"Order is failed as {result}")
+                        return False, result
+                else:
+                    err_msg = f"current rate is not valid: {ask_rate}"
+                    self.logger.error(f"Order is failed as {err_msg}")
+                    return False, err_msg
             else:
                 if price == None:
-                    bid_rate = self.get_current_bid()
+                    bid_rate = self.get_current_bid(symbol)
                 else:
                     bid_rate = price
-                result = self.market_sell(symbol, bid_rate, amount, tp, sl, option_info)
-                return self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                if bid_rate and bid_rate > 0:
+                    suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
+                    if suc:
+                        return True, self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                    else:
+                        self.logger(f"Order is failed as {result}")
+                        return False, result
+                else:
+                    err_msg = f"current rate is not valid: {ask_rate}"
+                    self.logger(f"Order is failed as {err_msg}")
+                    return False, err_msg
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
             
@@ -113,16 +131,16 @@ class Client:
         position_plot = 0
         if position.order_type == "ask":
             self.logger.debug(f"close long position is ordered for {id}")
-            if (price == None):
-                price = self.get_current_bid()
+            if (price is None):
+                price = self.get_current_bid(position.symbol)
                 self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
             self.sell_for_settlment(position.symbol , price, amount, position.option, position.result)
             position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close long position is ordered for {id}")
-            if (price == None):
+            if (price is None):
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
-                price = self.get_current_ask()
+                price = self.get_current_ask(position.symbol)
             self.buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             position_plot = -1
         else:
@@ -135,7 +153,7 @@ class Client:
         """close all open_position.
         sell_for_settlement or buy_for_settlement is calleds for each position
         """
-        positions = self.market.get_open_positions()
+        positions = self.market.get_open_positions(symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -146,7 +164,7 @@ class Client:
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.market.get_open_positions(order_type="ask")
+        positions = self.market.get_open_positions(order_type="ask", symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -157,7 +175,7 @@ class Client:
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.market.get_open_positions(order_type="bid")
+        positions = self.market.get_open_positions(order_type="bid", symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -392,11 +410,11 @@ class Client:
     def get_current_bid(self) -> float:
         print("Need to implement get_current_bid on your client")
             
-    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
-        pass
+    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+        return True, None
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        pass
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        return True, None
     
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass

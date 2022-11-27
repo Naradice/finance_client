@@ -203,7 +203,7 @@ class MT5Client(Client):
             return mt5.symbol_info(self.SYMBOL).spread
     
 
-    def market_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+    def _market_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         rate = price
         if self.__ignore_order is False:
             if tp != None:
@@ -223,7 +223,7 @@ class MT5Client(Client):
                 sl=sl,
                 tp=tp,
             )
-            return result
+            return True, result
             
     def buy_for_settlement(self, symbol, price, amount, option, result):
         if self.__ignore_order is False:
@@ -240,7 +240,7 @@ class MT5Client(Client):
             return result
             
     #symbol, ask_rate, amount, option_info
-    def market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+    def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         if self.__ignore_order is False:
             rate = price
             
@@ -262,7 +262,7 @@ class MT5Client(Client):
                 sl=sl,
                 tp=tp,
             )
-            return result
+            return True, result
             
     
     def buy_order(self, value, tp=None, sl=None):

@@ -52,11 +52,17 @@ class SBIClient(Client):
     def get_current_bid(self) -> float:
         return self.client.get_current_bid()
             
-    def market_buy(self, symbol, ask_rate=None, amount=1, tp=None, sl=None, option_info=None):
-        return self.rpa_client.buy_order(symbol, amount, None)
+    def _market_buy(self, symbol, ask_rate=None, amount=1, tp=None, sl=None, option_info=None):
+        suc = self.rpa_client.buy_order(symbol, amount, None)
+        if suc:
+            return True, None
+        else:
+            return False, None
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        self.logger.info("market_sell is not implemented")
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        err_msg = "market_sell is not implemented"
+        self.logger.info(err_msg)
+        return False, err_msg
     
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         return self.rpa_client.sell_to_close_buy_order(symbol, amount)

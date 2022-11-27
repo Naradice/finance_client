@@ -36,11 +36,11 @@ class TestClient(Client):
     def get_current_bid(self) -> float:
         return random.choice(self.data["Low"].iloc[self.step_index], self.data["Open"].iloc[self.step_index])
             
-    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
-        pass
+    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+        return True, None
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        pass
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        return True, None
     
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass

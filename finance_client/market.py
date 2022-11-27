@@ -84,7 +84,6 @@ class Manager:
                 
                     
     def __save_positions(self):
-        print(self.positions)
         _position = {
             "budget": self.positions["budget"],
             "ask": [ self.positions["ask"][position_id].to_dict() for position_id in self.positions["ask"]],
@@ -193,16 +192,23 @@ class Manager:
     
     def get_open_positions(self, order_type:str = None, symbols=[]) -> list:
         positions = []
-        is_entire_symbols = len(symbols) == 0
+        is_all_symbols = False
+        if type(symbols) == list:
+            is_all_symbols = len(symbols) == 0
+        elif type(symbols) == str:
+            symbols = [symbols]
+        else:
+            self.logger.error(f"Unkown type is specified as symbols: {type(symbols)}")
+            return []
         if order_type:
             order_type = self.__check_order_type(order_type=order_type)
             for id, position in self.positions[order_type].items():
-                if is_entire_symbols or position.symbol in symbols:
+                if is_all_symbols or position.symbol in symbols:
                     positions.append(position)
         else:
             for trend, position_type in self.positions.items():
                 for id, position in position_type.items():
-                    if is_entire_symbols or position.symbol in symbols:
+                    if is_all_symbols or position.symbol in symbols:
                         positions.append(position)
         return positions
     

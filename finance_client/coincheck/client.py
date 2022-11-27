@@ -209,7 +209,7 @@ class CoinCheckClient(Client):
         tick = self.ticker.get()
         return tick["bid"]
             
-    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
         #buy_amount = ask_rate * amount
         #response = apis.create_market_buy_order(amount=buy_amount, stop_loss_rate=sl)
         ## api don't return amount, so use pending order instead.
@@ -221,12 +221,16 @@ class CoinCheckClient(Client):
                 ask_rate = self.get_current_ask()
             response = apis.create_pending_buy_order(rate=ask_rate, amount=amount, stop_loss_rate=sl)
             if response["success"]:
-                return response["id"]
+                return True, response["id"]
             else:
-                print(f"error happened: {response}")
+                err_msg = f"error happened: {response}"
+                print(err_msg)
+                return False, err_msg
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        self.logger.error("sell is not allowed.")
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        err_meg = "sell is not allowed."
+        self.logger.error(err_meg)
+        return False, err_meg
     
     def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         self.logger.error("sell is not allowed, so buy settlement is not available.")
