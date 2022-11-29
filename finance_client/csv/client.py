@@ -254,11 +254,11 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                  file_name_generator=None, symbols = [], frame:int=None, out_frame:int=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=True, skiprows=None, auto_reset_index=False,
                  slip_type="random", budget=1000000, 
-                 do_render=False, seed=1017, logger=None):
+                 do_render=False, seed=1017, provider="csv", logger=None):
         """CSV Client Base
         Need to change codes to use settings file
         """
-        super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, frame=frame, provider="csv", logger_name=__name__, logger=logger)
+        super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, frame=frame, provider=provider, logger_name=__name__, logger=logger)
         random.seed(seed)
         self.data = None
         self.files = []
@@ -358,7 +358,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         return {}
     
     #overwrite if needed
-    def update_rates(self) -> bool:
+    def _update_rates(self, symbols) -> bool:
         """ you can define a function to increment length of self.data on parent class
     
         Returns:
@@ -394,7 +394,7 @@ class CSVClient(CSVClientBase):
                 
     def __init__(self, files: list=[], columns=[], date_column=None, file_name_generator=None, symbols=[], frame:int=None, out_frame: int = None, 
                  start_index=0, start_date=None, start_random_index=False, auto_step_index=True, skiprows=None, dropna=False,
-                 auto_reset_index=False, slip_type="random", budget=1000000, do_render=False, seed=1017, logger=None):
+                 auto_reset_index=False, slip_type="random", budget=1000000, do_render=False, seed=1017, provider="csv", logger=None):
         """CSV Client for time series data like bitcoin, stock, finance
         
         Args:
@@ -417,7 +417,7 @@ class CSVClient(CSVClientBase):
             seed (int, optional): specify random seed. Defaults to 1017
         """
         self.dropna = dropna
-        super().__init__(files, columns, date_column, file_name_generator, symbols, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, logger)
+        super().__init__(files, columns, date_column, file_name_generator, symbols, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, provider, logger)
         if out_frame is not None:
             if self.frame < out_frame:
                 #Rolled result has NaN regardless market is open or not.
@@ -495,7 +495,7 @@ class CSVClient(CSVClientBase):
     
     def __get_rates(self, length:int=None, symbols:list=[], frame:int=None):
         if length is None:
-            self.update_rates()
+            self._update_rates(symbols)
             rates = self.data.copy()
             if self.auto_step_index:
                 self._step_index += 1
@@ -526,7 +526,7 @@ class CSVClient(CSVClientBase):
                 except Exception as e:
                     self.logger.error(f"can't find data fom {self._step_index - length} to {self._step_index}: {e}")
             else:
-                if self.update_rates():
+                if self._update_rates():
                     return self.__get_rates(length, symbols, frame)
                 else:
                     if self._auto_reset:
@@ -629,9 +629,12 @@ class CSVClient(CSVClientBase):
         low_column = self.ohlc_columns["Low"]
         
         if type(tick.index) is pd.MultiIndex:
-            if type(symbols) is str and symbols in self.symbols:
-                open_value = tick[symbols][open_column]
-                low_value = tick[symbols][open_column]
+            if type(symbols) is str:
+                if symbols in self.symbols:
+                    open_value = tick[symbols][open_column]
+                    low_value = tick[symbols][open_column]
+                else:
+                    return None
             elif type(symbols) is list:
                 if len(symbols) > 0:
                     available_symbols = set(self.symbols) & set(symbols)
@@ -715,7 +718,7 @@ class CSVChunkClient(CSVClientBase):
                  file_name_generator=None, symbols=[], frame:int=None, out_frame:int=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=True, skiprows=None, auto_reset_index=False,
                  slip_type="random", budget=1000000, 
-                 do_render=False, seed=1017,logger=None):
+                 do_render=False, seed=1017, provider="csv", logger=None):
         """Low memory CSV Client
         
         Args:
@@ -742,7 +745,7 @@ class CSVChunkClient(CSVClientBase):
         self.TIMES = {}
         self.TRS = {}
         self.chunksize = chunksize
-        super().__init__(files, columns, date_column, file_name_generator, symbols, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, logger)
+        super().__init__(files, columns, date_column, file_name_generator, symbols, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, provider, logger)
         data = pd.concat(self.data.values(), axis=1, keys=self.data.keys())
         # to avoid 
         is_date_found = self._proceed_step_until_date(data, start_date)

@@ -239,7 +239,7 @@ class BBANDProcess(ProcessBase):
     KEY_LOWER_VALUE = "LV"
     KEY_WIDTH_VALUE = "Width"
     
-    def __init__(self, key='bolinger', window = 14, alpha=2, target_column = 'Close', is_input=True, is_output=True, option = None):
+    def __init__(self, key='BB', window = 14, alpha=2, target_column = 'Close', is_input=True, is_output=True, option = None):
         super().__init__(key)
         self.option = {
             "column": target_column,
@@ -709,7 +709,7 @@ class RangeTrendProcess(ProcessBase):
             data.columns = pd.MultiIndex.from_tuples([("Dummy", column) for column in columns])
             symbols = ["Dummy"]
             
-        default_required_columns = ["BBand_Width", "BBand_MV"]
+        default_required_columns = ["BB_Width", "BB_MV"]
         ## check required columns of default value exists in data columns
         required_columns = list(set(columns) & set(default_required_columns))
         if len(required_columns) == 2:
@@ -732,7 +732,7 @@ class RangeTrendProcess(ProcessBase):
                             close_column = column
                 if close_column:
                     self.__preprocess = BBANDProcess(target_column=close_column)
-                    bb_df = self.__preprocess.run(symbols, data, grouped_by_symbol=True)
+                    bb_df = self.__preprocess.run(data, symbols, grouped_by_symbol=True)
                     data = pd.concat([data, bb_df], axis=1)
                     required_columns = [self.__preprocess.columns[self.__preprocess.KEY_MEAN_VALUE], self.__preprocess.columns[self.__preprocess.KEY_WIDTH_VALUE]]
                 else:
@@ -769,7 +769,6 @@ class RangeTrendProcess(ProcessBase):
             self.initialize(df, symbols, grouped_by_symbol)
             
         params = self.options
-        required_columns = params["required_columns"]
         
         if self.is_multi_mode == False:
             columns = data.columns

@@ -197,11 +197,10 @@ class Client:
         """
         data_cp = data.copy()
         
-        idc_dfs = [data_cp]
         for process in idc_processes:
-            idc_dfs.append(process.run(data_cp, symbols, grouped_by_symbol))
+            idc_df = process.run(data_cp, symbols, grouped_by_symbol)
+            data_cp = pd.concat([data_cp, idc_df], axis=1)
         
-        data_cp = pd.concat(idc_dfs, axis=1)
         for process in pre_processes:
             data_cp = process.run(data_cp)
         return data_cp

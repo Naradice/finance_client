@@ -166,7 +166,7 @@ class TestIndicaters(unittest.TestCase):
         ran = data[range_p.columns[range_p.RANGE_KEY]]
         self.assertLessEqual(ran.max(), 1)
         self.assertGreaterEqual(ran.min(), -1)
-        mv = data["bolinger_MV"]
+        mv = data["BB_MV"]
         slope = data[range_p.columns[range_p.TREND_KEY]]
         for i in range(slope_window, 100):
             if slope.iloc[i] >= 0:
