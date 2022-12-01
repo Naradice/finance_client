@@ -526,7 +526,7 @@ class CSVClient(CSVClientBase):
                 except Exception as e:
                     self.logger.error(f"can't find data fom {self._step_index - length} to {self._step_index}: {e}")
             else:
-                if self._update_rates():
+                if self._update_rates(symbols):
                     return self.__get_rates(length, symbols, frame)
                 else:
                     if self._auto_reset:
@@ -598,22 +598,27 @@ class CSVClient(CSVClientBase):
         open_column = self.ohlc_columns["Open"]
         high_column = self.ohlc_columns["High"]
         if type(tick.index) is pd.MultiIndex:
-            if type(symbols) is str and symbols in self.symbols:
-                open_value = tick[symbols][open_column]
-                high_value = tick[symbols][open_column]
+            if type(symbols) is str:
+                if symbols in self.symbols:
+                    open_value = tick[symbols][open_column]
+                    high_value = tick[symbols][open_column]
+                else:
+                    return None
             elif type(symbols) is list:
                 if len(symbols) > 0:
-                    available_symbols = set(self.symbols) & set(symbols)
-                    available_symbols = list(available_symbols)
-                    open_value = tick[[(__symbol, open_column) for __symbol in available_symbols]]
-                    open_value.index = available_symbols
-                    high_value = tick[[(__symbol, high_column) for __symbol in available_symbols]]
-                    high_value.index = available_symbols
+                    target_symbols = set(self.symbols) & set(symbols)
+                    target_symbols = list(target_symbols)
                 else:
-                    open_value = tick[[(__symbol, open_column) for __symbol in self.symbols]]
-                    open_value.index = self.symbols
-                    high_value = tick[[(__symbol, high_column) for __symbol in self.symbols]]
-                    high_value.index = self.symbols
+                    target_symbols = self.symbols
+                
+                if len(target_symbols) == 1:
+                    open_value = tick[target_symbols[0]][open_column]
+                    high_value = tick[target_symbols[0]][open_column]
+                else:
+                    open_value = tick[[(__symbol, open_column) for __symbol in target_symbols]]
+                    open_value.index = target_symbols
+                    high_value = tick[[(__symbol, high_column) for __symbol in target_symbols]]
+                    high_value.index = target_symbols
             else:
                 err_msg = f"Unknown type is specified as symbols: {type(symbols)}"
                 self.logger.error(err_msg)
@@ -637,17 +642,19 @@ class CSVClient(CSVClientBase):
                     return None
             elif type(symbols) is list:
                 if len(symbols) > 0:
-                    available_symbols = set(self.symbols) & set(symbols)
-                    available_symbols = list(available_symbols)
-                    open_value = tick[[(__symbol, open_column) for __symbol in available_symbols]]
-                    open_value.index = available_symbols
-                    low_value = tick[[(__symbol, low_column) for __symbol in available_symbols]]
-                    low_value.index = available_symbols
+                    target_symbols = set(self.symbols) & set(symbols)
+                    target_symbols = list(target_symbols)
                 else:
-                    open_value = tick[[(__symbol, open_column) for __symbol in self.symbols]]
-                    open_value.index = self.symbols
-                    low_value = tick[[(__symbol, low_column) for __symbol in self.symbols]]
-                    low_value.index = self.symbols
+                    target_symbols = self.symbols
+                
+                if len(target_symbols) == 1:
+                    open_value = tick[target_symbols[0]][open_column]
+                    low_value = tick[target_symbols[0]][open_column]
+                else:
+                    open_value = tick[[(__symbol, open_column) for __symbol in target_symbols]]
+                    open_value.index = target_symbols
+                    low_value = tick[[(__symbol, low_column) for __symbol in target_symbols]]
+                    low_value.index = target_symbols
             else:
                 err_msg = f"Unknown type is specified as symbols: {type(symbols)}"
                 self.logger.error(err_msg)
