@@ -54,6 +54,13 @@ To save execution time also, you can use CSVChunkClient.
 ```
 client = CSVChunkClient(files=csv_files, chunksize=CHUNK_SIZE)
 ```
+## Data Index
+client.get_ohlc() and client.get_next_tick() returns data based on step_index.
+
+When auto_step_index = False, get_next_tick advance the index. If True, get_ohlc also advance the index.
+
+## Get Current Values
+get_current_ask and get_current_bid caliculate ask value and bid value based on current ohlc data on the step_index. If you call get_current_ask/bid after get_next_tick at step_index=100, ask/bid is caliculated on step_index = 101.
 
 ## DateTime handling
 To handle multi symbols, the client assumes datetime column exists.
