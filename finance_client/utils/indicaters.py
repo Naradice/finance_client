@@ -252,6 +252,7 @@ def MACDFromOHLCMulti(symbols:list, data: pd.DataFrame, column = 'Close', short_
     macd_df = pd.concat(elements, axis=1)
     macd_df.columns = columns
     macd_df.sort_index(level=0, axis=1, inplace=True)
+    return macd_df
 
 def BolingerFromSeries(data: pd.Series, window = 14, alpha=2):
     stds = data.rolling(window).std(ddof=0)

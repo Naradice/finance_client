@@ -258,7 +258,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         """CSV Client Base
         Need to change codes to use settings file
         """
-        super().__init__(budget=budget,do_render=do_render, out_ohlc_columns=columns, frame=frame, provider=provider, logger_name=__name__, logger=logger)
+        super().__init__(budget=budget,do_render=do_render, symbols=symbols, out_ohlc_columns=columns, frame=frame, provider=provider, logger_name=__name__, logger=logger)
         random.seed(seed)
         self.data = None
         self.files = []
@@ -567,7 +567,7 @@ class CSVClient(CSVClientBase):
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
         rates = self.__get_rates(length, target_symbols, frame)
-        if grouped_by_symbol == False:
+        if grouped_by_symbol == False and type(rates.columns) is pd.MultiIndex:
             rates.columns = rates.columns.swaplevel(0, 1)
             rates.sort_index(level=0, axis=1, inplace=True)
         return rates

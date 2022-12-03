@@ -58,8 +58,8 @@ class MT5Client(Client):
         self.logger.warn("parameters are not saved for mt5 as credentials are included.")
         return {}
 
-    def __init__(self,id, password, server, back_test=False, auto_index=True, simulation=True, frame = 5, symbol = 'USDJPY', indicaters = [], post_process = [], do_render=True, budget=1000000, logger = None, seed = 1017):
-        super().__init__( budget=budget, frame=frame, provider=server, do_render=do_render, indicater_processes=indicaters, post_processes= post_process, logger_name=__name__, logger=logger)
+    def __init__(self,id, password, server, auto_index=True, simulation=True, frame=5, symbols=['USDJPY'], back_test=False, do_render=False, budget=1000000, logger=None, seed=1017):
+        super().__init__( budget=budget, frame=frame, symbols=symbols, provider=server, do_render=do_render, logger_name=__name__, logger=logger)
         self.back_test = back_test
         self.debug = False
         self.provider = server
@@ -78,7 +78,15 @@ class MT5Client(Client):
             err_txt = f"User Authorization Failed"
             self.logger.error(err_txt)
             raise Exception(err_txt)
-        self.SYMBOL = symbol
+        if type(symbols) == str:
+            symbols = [symbols]
+        if type(symbols) != list:
+            try:
+                symbols = list(symbols)
+            except Exception as e:
+                raise TypeError(f"{type(symbols)} is not supported as symbols")
+
+        self.symbols = symbols
         self.frame = frame
         try:
             self.mt5_frame = self.AVAILABLE_FRAMES[frame]
@@ -90,13 +98,17 @@ class MT5Client(Client):
             self.logger.warning(f"Retreiving account information failed. Please check your internet connection.")
         self.logger.info(f"Balance: {account_info}")
 
-        symbol_info = mt5.symbol_info(self.SYMBOL)
-        if symbol_info is None:
-            err_txt = "Symbol not found"
-            self.logger.error(err_txt)
-            raise Exception(err_txt)
-        self.point = symbol_info.point
-        self.orders = {"ask":[], "bid":[]}
+        #check all symbol available
+        self.points = {}
+        self.orders = {}
+        for symbol in self.symbols:
+            symbol_info = mt5.symbol_info(symbol)
+            if symbol_info is None:
+                err_txt = f"Symbol, {symbol}, not found"
+                self.logger.error(err_txt)
+                raise Exception(err_txt)
+            self.points[symbol] = symbol_info.point
+            self.orders[symbol] = {"ask":[], "bid":[]}
         
         if self.back_test:
             if frame > Frame.W1:
@@ -106,7 +118,7 @@ class MT5Client(Client):
             else:
                 random.seed(1017)
             #self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
-            if frame > Frame.H2:
+            if frame >= Frame.H2:
                 if frame in self.LAST_IDX:
                     self.sim_index = self.LAST_IDX[frame]
                 else:
@@ -150,10 +162,10 @@ class MT5Client(Client):
         self.logger.debug(f"market order result: {result}")
         return result
     
-    def __post_order(self, _type, vol, price, dev, sl=None, tp=None, position=None):
+    def __post_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
             'action': mt5.TRADE_ACTION_PENDING,
-            'symbol': self.SYMBOL,
+            'symbol': symbol,
             'volume': vol,
             'price': price,
             'deviation': dev,
@@ -174,34 +186,69 @@ class MT5Client(Client):
         self.logger.debug(f"order result: {result}")
         return result
 
-    def get_current_ask(self):
+    def get_current_ask(self, symbols=[]):
+        if len(symbols) == 0:
+            symbols = self.symbols
         if self.back_test:
-            next_data = self.__get_rates(1, self.sim_index-1)
+            df = pd.DataFrame()
+            for symbol in symbols:
+                symbol_tick = self.__download(symbol, 1, self.sim_index-1)
+                symbol_tick.index = [symbol]
+                df = pd.concat(df, symbol_tick)
             open_column = self.get_ohlc_columns()["Open"]
             high_column = self.get_ohlc_columns()["High"]
-            value = random.uniform(next_data[open_column].iloc[0], next_data[high_column].iloc[0])
-            #value = next_data[open_column].iloc[0] + next_data["spread"].iloc[0]*self.point
-            return float(value)
+            
+            ask_srs = random.uniform(df[open_column].iloc[0], df[high_column].iloc[0])
+            #ask_srs = next_data[open_column].iloc[0] + next_data["spread"].iloc[0]*self.point
         else:
-            return mt5.symbol_info_tick(self.SYMBOL).ask
+            ask_values = {}
+            for symbol in symbols:
+                ask_values[symbol] = [mt5.symbol_info_tick(symbol).ask]
+            ask_srs = pd.DataFrame.from_dict(ask_values).iloc[0]
+        if len(symbols) == 1:
+            ask_srs = ask_srs[symbols[0]]
+        return ask_srs
     
-    def get_current_bid(self):
+    def get_current_bid(self, symbols=[]):
+        if len(symbols) == 0:
+            symbols = self.symbols
         if self.back_test:
-            next_data = self.__get_rates(1, self.sim_index-1)
+            df = pd.DataFrame()
+            for symbol in symbols:
+                symbol_tick = self.__download(symbol, 1, self.sim_index-1)
+                symbol_tick.index = [symbol]
+                df = pd.concat(df, symbol_tick)
             open_column = self.get_ohlc_columns()["Open"]
             low_column = self.get_ohlc_columns()["Low"]
-            value = random.uniform(next_data[low_column].iloc[0], next_data[open_column].iloc[0])
-            #value = next_data[open_column].iloc[0] - next_data["spread"].iloc[0]*self.point
-            return float(value)
+            
+            bid_srs = random.uniform(df[low_column].iloc[0], df[open_column].iloc[0])
+            #bid_srs = next_data[open_column].iloc[0] - next_data["spread"].iloc[0]*self.point
         else:
-            return mt5.symbol_info_tick(self.SYMBOL).bid
+            bid_values = {}
+            for symbol in symbols:
+                bid_values[symbol] = [mt5.symbol_info_tick(symbol).bid]
+            bid_srs = pd.DataFrame.from_dict(bid_values).iloc[0]
+        if len(symbols) == 1:
+            bid_srs = bid_srs[symbols[0]]
+        return bid_srs
     
-    def get_current_spread(self):
+    def get_current_spread(self, symbols=[]):
+        if len(symbols) == 0:
+            symbols = self.symbols
         if self.back_test:
-            return self.data["spread"].iloc[-1]
+            for symbol in symbols:
+                symbol_tick = self.__download(symbol, 1, self.sim_index-1)
+                symbol_tick.index = [symbol]
+                df = pd.concat(df, symbol_tick)
+            spread_srs = df["spread"].iloc[0]
         else:
-            return mt5.symbol_info(self.SYMBOL).spread
-    
+            spread_values = {}
+            for symbol in symbols:
+                spread_values[symbol] = [mt5.symbol_info_tick(symbol).spread]
+            spread_srs = pd.DataFrame.from_dict(spread_values).iloc[0]
+        if len(symbols) == 1:
+            spread_srs = spread_srs[symbols[0]]
+        return spread_srs
 
     def _market_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         rate = price
@@ -265,9 +312,10 @@ class MT5Client(Client):
             return True, result
             
     
-    def buy_order(self, value, tp=None, sl=None):
+    def buy_order(self, symbol, value, tp=None, sl=None):
         if self.__ignore_order is False:
             result = self.__post_order(
+                symbol=symbol,
                 _type=mt5.ORDER_TYPE_BUY_LIMIT,
                 vol=0.1,
                 price=value,
@@ -277,9 +325,10 @@ class MT5Client(Client):
             )
             return result
     
-    def sell_order(self, value, tp=None, sl=None):            
+    def sell_order(self, symbol, value, tp=None, sl=None):            
         if self.__ignore_order is False:
             result = self.__post_order(
+                symbol=symbol,
                 _type=mt5.ORDER_TYPE_SELL_LIMIT,
                 vol=0.1,
                 price=value,
@@ -305,10 +354,25 @@ class MT5Client(Client):
                 position=position,
             )
             return result
+    def __generate_file_name(self, symbol, frame):
+        if frame in self.AVAILABLE_FRAMES_STR:
+            frame_str = self.AVAILABLE_FRAMES_STR[frame]
+        elif type(frame) == int:
+            if frame > 16384*3:
+                frame_str = self.AVAILABLE_FRAMES_STR[Frame.MO1]
+            elif frame > 16384*2:
+                weeks = frame - 16384*2
+                frame_minutes = Frame.W1 * weeks
+                frame_str = self.AVAILABLE_FRAMES_STR[frame_minutes]
+            elif frame > 16384:
+                hours = frame - 16384
+                frame_minutes = Frame.H1 * hours
+                frame_str = self.AVAILABLE_FRAMES_STR[frame_minutes]
+        return f"mt5_{symbol}_{frame_str}.csv"
         
-    def __get_all_rates(self):
+    def __download_entire(self, symbol, frame):
         existing_rate_df = None
-        file_name = f"mt5_{self.SYMBOL}_{self.AVAILABLE_FRAMES_STR[self.frame]}.csv"
+        file_name = self.__generate_file_name(symbol, frame)
         existing_rate_df = read_csv(self.kinds, file_name, ["time"])
             
         MAX_LENGTH = 12*24*345#not accurate, may depend on server
@@ -328,13 +392,13 @@ class MT5Client(Client):
                 self.logger.warn("data may have vacant")
         
         start_index = 0
-        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
+        rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
         new_rates = rates
 
         while type(new_rates) != type(None):
             interval = len(new_rates)
             start_index += interval
-            new_rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, interval)
+            new_rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
             if type(new_rates) != type(None):
                 rates = numpy.concatenate([new_rates, rates])
             else:
@@ -351,79 +415,97 @@ class MT5Client(Client):
         write_df_to_csv(rate_df, os.path.join(self.kinds, self.provider), file_name, panda_option={"mode":"w", "index":False, "header":True})
         return rate_df
     
-    def __get_rates(self, length, start = None):
+    def __download(self,length, symbol, frame):
         start_index = 0
         _length = None
-        if start is not None:
-            start_index = start
-        elif self.back_test:
-            start_index = self.sim_index#simu index will be reduced by get_client_rate.
+        if self.back_test:
+            start_index = self.sim_index#simu index will be reduced by get_ohlc_from_client.
         if self.auto_index and length == 1:
             _length  = length
             length += 1
             
         ## save data when mode is back test
         ## if length is less than stored length - step_index. Then update time fit logic
-        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, start_index, length)
+        rates = mt5.copy_rates_from_pos(symbol, frame, start_index, length)
         df_rates = pd.DataFrame(rates)
-        df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
-        #df_rates = df_rates.set_index('time')
-        
-        ##MT5 index based on current time. So we need to update the index based on past time.
-        if self.back_test and self.auto_index:
-            if self.__next_time == None:
-                self.__next_time = df_rates['time'].iloc[1]
-                self.logger.debug(f"auto index: initialized with {df_rates['time'].iloc[0]}")
-            else:
-                current_time = df_rates['time'].iloc[0]
-                if current_time == self.__next_time:
-                    self.logger.debug(f"auto index: index is ongoing on {current_time}")
+        if len(df_rates) > 0:
+            df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
+            #df_rates = df_rates.set_index('time')
+            
+            ##MT5 index based on current time. So we need to update the index based on past time.
+            if self.back_test and self.auto_index:
+                if self.__next_time == None:
                     self.__next_time = df_rates['time'].iloc[1]
-                elif current_time > self.__next_time:
-                    self.logger.debug(f"auto index: {current_time} > {self.__next_time}. may time past.")
-                    candidate = self.sim_index
-                    while current_time != self.__next_time:
-                        candidate += 1
-                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, length)
-                        df_rates = pd.DataFrame(rates)
-                        df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
-                        current_time = df_rates['time'].iloc[0]
-                    self.sim_index = candidate
-                    
-                    self.logger.debug(f"auto index: fixed to {current_time}")
-                    self.__next_time = df_rates['time'].iloc[1]
-                    #to avoid infinite loop, don't call oneself
+                    self.logger.debug(f"auto index: initialized with {df_rates['time'].iloc[0]}")
                 else:
-                    self.logger.debug(f"auto index: {current_time} < {self.__next_time} somehow.")
-                    candidate = self.sim_index
-                    while current_time != self.__next_time:
-                        candidate = candidate - 1
-                        rates = mt5.copy_rates_from_pos(self.SYMBOL, self.mt5_frame, candidate, length)
-                        df_rates = pd.DataFrame(rates)
-                        df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
-                        current_time = df_rates['time'].iloc[0]
-                    self.sim_index = candidate
-                    
-                    self.logger.debug(f"auto index: fixed to {current_time}")
-                    self.__next_time = df_rates['time'].iloc[1]
+                    current_time = df_rates['time'].iloc[0]
+                    if current_time == self.__next_time:
+                        self.logger.debug(f"auto index: index is ongoing on {current_time}")
+                        self.__next_time = df_rates['time'].iloc[1]
+                    elif current_time > self.__next_time:
+                        self.logger.debug(f"auto index: {current_time} > {self.__next_time}. may time past.")
+                        candidate = self.sim_index
+                        while current_time != self.__next_time:
+                            candidate += 1
+                            rates = mt5.copy_rates_from_pos(symbol, frame, candidate, length)
+                            df_rates = pd.DataFrame(rates)
+                            df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
+                            current_time = df_rates['time'].iloc[0]
+                        self.sim_index = candidate
+                        
+                        self.logger.debug(f"auto index: fixed to {current_time}")
+                        self.__next_time = df_rates['time'].iloc[1]
+                        #to avoid infinite loop, don't call oneself
+                    else:
+                        self.logger.debug(f"auto index: {current_time} < {self.__next_time} somehow.")
+                        candidate = self.sim_index
+                        while current_time != self.__next_time:
+                            candidate = candidate - 1
+                            rates = mt5.copy_rates_from_pos(symbol, frame, candidate, length)
+                            df_rates = pd.DataFrame(rates)
+                            df_rates['time'] = pd.to_datetime(df_rates['time'], unit='s')
+                            current_time = df_rates['time'].iloc[0]
+                        self.sim_index = candidate
+                        
+                        self.logger.debug(f"auto index: fixed to {current_time}")
+                        self.__next_time = df_rates['time'].iloc[1]
                     
         if self.auto_index and _length:
             return df_rates.iloc[:length]
         else:
             return df_rates
-        
-    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, start = None):
-        
+    
+    def __get_ohlc(self, length, symbols, frame, grouped_by_symbol=True):
+        if frame is None:
+            frame = self.mt5_frame
+        if frame != self.mt5_frame:
+            if frame in self.AVAILABLE_FRAMES:
+                frame = self.AVAILABLE_FRAMES[frame]
+                
         if length is None:
-            return self.__get_all_rates()
+            download_func = self.__download_entire
+            kwargs = {"frame": frame}
         elif length > 0:
-            df_rates = self.__get_rates(length=length, start=start)
-            if self.auto_index:
-                self.sim_index = self.sim_index - 1
-
-            return df_rates
-        else:
-            self.logger.error(f"interval should be greater than 0.")
+            download_func = self.__download
+            kwargs = {"length":length, "frame": frame}
+        DFS = {}
+        df = pd.DataFrame()
+        for symbol in symbols:
+            DFS[symbol] = download_func(symbol=symbol, **kwargs)
+        if len(DFS) > 0:
+            df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+        if len(symbols) > 1:
+            if grouped_by_symbol == False:
+                df.columns = df.columns.swaplevel(0 ,1)
+        elif len(symbols) == 1:
+            df = df[symbols[0]]
+        return df
+        
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol=True):
+        df_rates = self.__get_ohlc(length, symbols, frame, grouped_by_symbol)
+        if self.auto_index:
+            self.sim_index = self.sim_index - 1
+        return df_rates
     
     def cancel_order(self, order):
         if self.__ignore_order is False:

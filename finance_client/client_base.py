@@ -11,12 +11,13 @@ import time
 
 class Client:
     
-    def __init__(self, budget=1000000.0, provider="Default", out_ohlc_columns = ("Open", "High", "Low", "Close"), frame=None, do_render=True, logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, provider="Default", symbols=[], out_ohlc_columns = ("Open", "High", "Low", "Close"), frame=None, do_render=True, logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
         self.do_render = do_render
         self.frame = frame
+        self.symbols = symbols
         if self.do_render:
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1
@@ -205,7 +206,7 @@ class Client:
             data_cp = process.run(data_cp)
         return data_cp
               
-    def get_data_queue(self, symbols:list, data_length:int, frame:int):
+    def get_data_queue(self, data_length:int, symbols:list=[], frame:int=None):
         """
             to get data when frame time past
             when this function is called multiple times
@@ -218,14 +219,17 @@ class Client:
         """
         if data_length <= 0:
             self.logger.warning(f"data_length must be greater than 1. change length to 1")
+            data_length = 1
+        if frame is None:
+            frame = self.frame
             
-            if self.__data_queue == None:
-                self.__data_queue = queue.Queue()    
-            timer_thread = threading.Thread(target=self.__timer, args=(symbols, data_length, frame), daemon=True)
-            timer_thread.start()
+        if self.__data_queue is None:
+            self.__data_queue = queue.Queue()    
+        timer_thread = threading.Thread(target=self.__timer, args=(data_length, symbols, frame), daemon=True)
+        timer_thread.start()
         return self.__data_queue
         
-    def __timer(self, symbols:list, data_length:int, frame:int):
+    def __timer(self, data_length:int, symbols:list, frame:int):
         next_time = 0
         frame_seconds = frame*60
         sleep_time = 0
@@ -238,8 +242,8 @@ class Client:
         if sleep_time > 0:
             time.sleep(sleep_time)
         base_time = time.time()
-        while self.__data_queue != None:
-            t = threading.Thread(target=self.__put_data_to_queue, args=(symbols, data_length, frame), daemon=True)
+        while self.__data_queue is not None:
+            t = threading.Thread(target=self.__put_data_to_queue, args=(data_length, symbols, frame), daemon=True)
             t.start()
             next_time = ((base_time - time.time()) % frame_seconds) or frame_seconds
             time.sleep(next_time)
@@ -247,14 +251,12 @@ class Client:
     def stop_quing(self):
         self.__data_queue = None
         
-    def __put_data_to_queue(self, symbols:list, data_length:int, frame:int, idc_processes=[], pre_processes=[]):
-        data = self.get_rates(symbols, data_length, frame, idc_processes, pre_processes)
+    def __put_data_to_queue(self, data_length:int, symbols:list, frame:int, idc_processes=[], pre_processes=[]):
+        data = self.get_ohlc(data_length, symbols, frame, idc_processes, pre_processes)
         self.__data_queue.put(data)
     
     def get_client_params(self):
-        idc_params = utils.indicaters_to_params(self.__idc_processes)
-        pps_params = utils.preprocess_to_params(self.__preprocesses)
-        common_args = { "budget": self.market.budget, "indicater_processes": idc_params, "post_processes": pps_params, "frame": self.frame, "provider": self.market.provider }
+        common_args = { "budget": self.market.positions["budget"], "frame": self.frame, "provider": self.market.provider }
         add_params = self.get_additional_params()
         common_args.update(add_params)
         return common_args
@@ -365,6 +367,8 @@ class Client:
             
         if type(symbols) == str:
             symbols = [symbols]
+        if len(symbols) == 0:
+            symbols = self.symbols
         
         if length is None:
             ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
@@ -525,7 +529,21 @@ class Client:
             self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
         return position
     
-    def get_ohlc_columns(self) -> dict:
+    def _is_grouped_by_symbol(self, columns: pd.MultiIndex):
+        if type(columns) == pd.MultiIndex:
+            open_column = "open"
+            for column in columns.droplevel(0):
+                if open_column == str(column).lower():
+                    return True
+            for column in columns.droplevel(1):
+                if open_column == str(column).lower():
+                    return False
+            print("open column is not found on column")
+            return None
+        else:
+            raise TypeError(f"{type(columns)} is not supported")
+    
+    def get_ohlc_columns(self, symbol:str=None) -> dict:
         """ returns column names of ohlc data.
         
         Returns:
@@ -533,29 +551,41 @@ class Client:
         """
         if self.ohlc_columns == None:
             self.ohlc_columns = {}
-            columns = {}
             temp = self.auto_index
             self.auto_index = False
             temp_r = self.do_render
             self.do_render = False
-            data = self.get_rates(1)
+            data = self.get_ohlc(1)
             self.auto_index = temp
             self.do_render = temp_r
-            for column in data.columns.values:
+            columns = data.columns
+            if type(columns) == pd.MultiIndex:
+                if symbol is None:
+                    if self._is_grouped_by_symbol(columns):
+                        columns = set(columns.droplevel(0))
+                    else:
+                        columns = set(columns.droplevel(1))
+                else:
+                    if symbol in columns.droplevel(0):
+                        #grouped_by_symbol = False
+                        columns = columns.swaplevel(0, 1)
+                    elif symbol not in columns.droplevel(1):
+                        raise ValueError(f"Specified symbol {symbol} not found on columns.")
+                    columns = columns[symbol]
+            for column in columns:
                 column_ = str(column).lower()
                 if column_ == 'open':
-                    columns['Open'] = column
+                    self.ohlc_columns['Open'] = column
                 elif column_ == 'high':
-                    columns['High'] = column
+                    self.ohlc_columns['High'] = column
                 elif column_ == 'low':
-                    columns['Low'] = column
+                    self.ohlc_columns['Low'] = column
                 elif 'close' in column_:
-                    columns['Close'] = column
+                    self.ohlc_columns['Close'] = column
                 elif "time" in column_:#assume time, timestamp or datetime
-                    columns["Time"] = column
+                    self.ohlc_columns["Time"] = column
                 elif "volume" in column_:
-                    columns["Volume"] = column
-            self.ohlc_columns = columns
+                    self.ohlc_columns["Volume"] = column
         return self.ohlc_columns
     
     def revert_preprocesses(self, data: pd.DataFrame=None):
