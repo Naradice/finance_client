@@ -9,6 +9,7 @@ import time, datetime
 class CoinCheckClient(Client):
     kinds = "cc"
     
+    
     def __store_ticks(self, tick):
         tick_time = tick["time"]
         tick_price = tick["price"]
@@ -59,7 +60,7 @@ class CoinCheckClient(Client):
         else:
             self.next_frame = self.next_frame + self.frame_delta
     
-    def __init__(self, ACCESS_ID=None, ACCESS_SECRET=None, initialized_with = None, return_intermidiate_data=False, simulation=False, budget=1000000, indicater_processes: list = [], post_processes: list = [], frame: int = 30, do_render=False, logger=None):
+    def __init__(self, ACCESS_ID=None, ACCESS_SECRET=None, initialized_with = None, return_intermidiate_data=False, simulation=False, budget=1000000, frame: int=30, do_render=False, logger=None):
         """ CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
         Create order with API. Need to specify the credentials 
         Currentry BTC/JPY is only supported
@@ -73,7 +74,7 @@ class CoinCheckClient(Client):
             do_render (bool, optional): If true, plot ohlc data by matplotlib. Defaults to False.
             logger (_type_, optional): you can pass your logger. Defaults to None and use default logger.
         """
-        super().__init__(budget, indicater_processes, post_processes, frame, "CoinCheck", do_render, "ccheck", logger)
+        super().__init__(budget, "CoinCheck", [], frame=frame, do_render=do_render, logger_name="ccheck", logger=logger)
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
         
         self.ticker = apis.Ticker()
@@ -110,9 +111,11 @@ class CoinCheckClient(Client):
         if initialized_with is None:
             self.logger.info("get_rates returns shortened or filled with 0 data without initialization as Coincheck don't provide historical data API.")
         elif isinstance(initialized_with , Client):
+            if type(initialized_with.symbols) is list:
+                self.symbols = initialized_with.symbols
             if initialized_with.frame != frame:
                 raise ValueError("initialize client and frame should be same.")
-            self.data = initialized_with.get_rates()
+            self.data = initialized_with.get_ohlc()
             ## update columns name with cc policy
             ohlc_dict = initialized_with.get_ohlc_columns()
             new_column_dict = {ohlc_dict["Open"]: 'open', ohlc_dict["High"]: "high", ohlc_dict["Low"]: "low", ohlc_dict["Close"]: "close"}
@@ -136,7 +139,7 @@ class CoinCheckClient(Client):
             if self.data.index[-1].tzinfo != "UTC":
                 ##convert them to UTC
                 try:
-                    self.data.index = self.date.index.tz_convert("UTC")
+                    self.data.index = self.data.index.tz_convert("UTC")
                 except Exception as e:
                     self.logger.info("can't convert timezone on initialization")
                     
@@ -201,11 +204,11 @@ class CoinCheckClient(Client):
     def get_future_rates(self, interval) -> pd.DataFrame:
         self.logger.info("This is not available on this client type.")
     
-    def get_current_ask(self) -> float:
+    def get_current_ask(self, symbols=[]) -> float:
         tick = self.ticker.get()
         return tick["ask"]
     
-    def get_current_bid(self) -> float:
+    def get_current_bid(self, symbols=[]) -> float:
         tick = self.ticker.get()
         return tick["bid"]
             
