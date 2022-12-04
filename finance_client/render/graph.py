@@ -15,7 +15,7 @@ class Rendere:
         self.__data = {}
         self.__is_shown = False
         self.__indicater_process_info = {
-            utils.BBANDpreProcess.kinds : {
+            utils.BBANDProcess.kinds : {
                     "function": self.overlap_bolinger_band,
                     "columns":("MV", "Width"),
                     "option": ('alpha',)
@@ -91,7 +91,7 @@ class Rendere:
             next_empty_index = 0
         return next_empty_index
     
-    def __register_data(self, type_:str, data, title:str, index:int, options:dict = None):
+    def __register_data(self, symbols:list, type_:str, data, title:str, index:int, options:dict = None):
         if index == -1:
             index_ = self.__get_nextempy_index()
             if index_ == -1:
@@ -102,7 +102,7 @@ class Rendere:
             #noisy
             #if len(self.__data) > 0 and index_ in self.__data:
             #    print("Warning: specified index will overwrite data in register_{type_}: {index_}")
-        self.__data[index_] = {'type': type_, 'data':data, 'title':title}
+        self.__data[index_] = {'type': type_, 'data':data, 'title':title, 'symbols': symbols}
         # store additional params
         if options != None:
             for key, content in options.items():
@@ -209,7 +209,7 @@ class Rendere:
         else:
             print("index not in the data")
     
-    def register_ohlc(self, ohlc:pd.DataFrame, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
+    def register_ohlc(self, symbols:list, ohlc:pd.DataFrame, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
         """
         register ohlc to plot later
         Args:
@@ -235,12 +235,12 @@ class Rendere:
                 ohlc_columns = (open, high, low, close)
         else:
             raise TypeError(f"only dataframe is available as ohlc for now.")
-        idx = self.__register_data('ohlc', ohlc, title, index, {'columns': ohlc_columns})
+        idx = self.__register_data(symbols,'ohlc', ohlc, title, index, {'columns': ohlc_columns})
         self.__data[idx]["trade_history"] = [[] for i in  range(0, len(ohlc))]
         return idx
 
-    def register_ohlc_with_indicaters(self, data:pd.DataFrame, idc_processes:list, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
-        idx = self.register_ohlc(data, index=index, title=title, ohlc_columns=ohlc_columns)
+    def register_ohlc_with_indicaters(self, symbols:list, data:pd.DataFrame, idc_processes:list, index=-1, title='OHLC Candle', ohlc_columns=('Open', 'High', 'Low', 'Close')):
+        idx = self.register_ohlc(data, symbols, index=index, title=title, ohlc_columns=ohlc_columns)
         idc_plot_processes = []
         for idc in idc_processes:
             if idc.kinds in self.__indicater_process_info:
@@ -315,6 +315,8 @@ class Rendere:
         low = content['columns'][2]
         close = content['columns'][3]
         title = content['title']
+        symbols = content['symbols']
+        
         do_plot_prediction = False
         if "predictions" in content:
             prediction = content['predictions']

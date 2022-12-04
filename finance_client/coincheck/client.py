@@ -9,6 +9,7 @@ import time, datetime
 class CoinCheckClient(Client):
     kinds = "cc"
     
+    
     def __store_ticks(self, tick):
         tick_time = tick["time"]
         tick_price = tick["price"]
@@ -59,7 +60,7 @@ class CoinCheckClient(Client):
         else:
             self.next_frame = self.next_frame + self.frame_delta
     
-    def __init__(self, ACCESS_ID=None, ACCESS_SECRET=None, initialized_with = None, return_intermidiate_data=False, simulation=False, budget=1000000, indicater_processes: list = [], post_processes: list = [], frame: int = 30, do_render=False, logger=None):
+    def __init__(self, ACCESS_ID=None, ACCESS_SECRET=None, initialized_with = None, return_intermidiate_data=False, simulation=False, budget=1000000, frame: int=30, do_render=False, logger=None):
         """ CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
         Create order with API. Need to specify the credentials 
         Currentry BTC/JPY is only supported
@@ -73,7 +74,7 @@ class CoinCheckClient(Client):
             do_render (bool, optional): If true, plot ohlc data by matplotlib. Defaults to False.
             logger (_type_, optional): you can pass your logger. Defaults to None and use default logger.
         """
-        super().__init__(budget, indicater_processes, post_processes, frame, "CoinCheck", do_render, "ccheck", logger)
+        super().__init__(budget, "CoinCheck", [], frame=frame, do_render=do_render, logger_name="ccheck", logger=logger)
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
         
         self.ticker = apis.Ticker()
@@ -110,9 +111,11 @@ class CoinCheckClient(Client):
         if initialized_with is None:
             self.logger.info("get_rates returns shortened or filled with 0 data without initialization as Coincheck don't provide historical data API.")
         elif isinstance(initialized_with , Client):
+            if type(initialized_with.symbols) is list:
+                self.symbols = initialized_with.symbols
             if initialized_with.frame != frame:
                 raise ValueError("initialize client and frame should be same.")
-            self.data = initialized_with.get_rates()
+            self.data = initialized_with.get_ohlc()
             ## update columns name with cc policy
             ohlc_dict = initialized_with.get_ohlc_columns()
             new_column_dict = {ohlc_dict["Open"]: 'open', ohlc_dict["High"]: "high", ohlc_dict["Low"]: "low", ohlc_dict["Close"]: "close"}
@@ -136,7 +139,7 @@ class CoinCheckClient(Client):
             if self.data.index[-1].tzinfo != "UTC":
                 ##convert them to UTC
                 try:
-                    self.data.index = self.date.index.tz_convert("UTC")
+                    self.data.index = self.data.index.tz_convert("UTC")
                 except Exception as e:
                     self.logger.info("can't convert timezone on initialization")
                     
@@ -184,29 +187,32 @@ class CoinCheckClient(Client):
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, interval:int):
-        if interval is None:
-            return self.data.copy()
-        elif interval > 0:
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None):
+        if length is None:
             if self.__return_intermidiate_data:
-                return pd.concat([self.data, self.frame_ohlcv]).iloc[-interval:]
+                return pd.concat([self.data, self.frame_ohlcv])
             else:
-                return self.data.iloc[-interval:]
+                return self.data.copy()
+        elif length > 0:
+            if self.__return_intermidiate_data:
+                return pd.concat([self.data, self.frame_ohlcv]).iloc[-length:]
+            else:
+                return self.data.iloc[-length:]
         else:
             self.logger.error(f"intervl should be greater than 0.")
     
     def get_future_rates(self, interval) -> pd.DataFrame:
         self.logger.info("This is not available on this client type.")
     
-    def get_current_ask(self) -> float:
+    def get_current_ask(self, symbols=[]) -> float:
         tick = self.ticker.get()
         return tick["ask"]
     
-    def get_current_bid(self) -> float:
+    def get_current_bid(self, symbols=[]) -> float:
         tick = self.ticker.get()
         return tick["bid"]
             
-    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
         #buy_amount = ask_rate * amount
         #response = apis.create_market_buy_order(amount=buy_amount, stop_loss_rate=sl)
         ## api don't return amount, so use pending order instead.
@@ -218,17 +224,21 @@ class CoinCheckClient(Client):
                 ask_rate = self.get_current_ask()
             response = apis.create_pending_buy_order(rate=ask_rate, amount=amount, stop_loss_rate=sl)
             if response["success"]:
-                return response["id"]
+                return True, response["id"]
             else:
-                print(f"error happened: {response}")
+                err_msg = f"error happened: {response}"
+                print(err_msg)
+                return False, err_msg
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        self.logger.error("sell is not allowed.")
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        err_meg = "sell is not allowed."
+        self.logger.error(err_meg)
+        return False, err_meg
     
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         self.logger.error("sell is not allowed, so buy settlement is not available.")
     
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result_id):
+    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result_id):
         if self.simulation:
             pass
         else:
@@ -245,7 +255,7 @@ class CoinCheckClient(Client):
                     return result
                 else:
                     time.sleep(10)
-                    return self.sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
+                    return self._sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
             
     
     def get_params(self) -> dict:

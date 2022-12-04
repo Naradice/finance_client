@@ -11,13 +11,13 @@ import time
 
 class Client:
     
-    def __init__(self, budget=1000000.0, indicater_processes:list=[], post_processes: list=[], frame:int=Frame.MIN5, provider="Default", do_render=True, logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, provider="Default", symbols=[], out_ohlc_columns = ("Open", "High", "Low", "Close"), frame=None, do_render=True, logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
-        self.__timer_thread = None
-        self.__data_queue_length = None
         self.do_render = do_render
+        self.frame = frame
+        self.symbols = symbols
         if self.do_render:
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1
@@ -31,7 +31,7 @@ class Client:
             raise e
         self.ohlc_columns = None
         
-        if logger == None:
+        if logger is None:
             logger_config = settings["log"]
         
             try:
@@ -41,42 +41,22 @@ class Client:
                     os.makedirs(log_folder)
                 logger_config["handlers"]["fileHandler"]["filename"] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
                 config.dictConfig(logger_config)
+                if logger_name == None:
+                    logger_name == __name__
+                self.logger = getLogger(logger_name)
+                self.market = market.Manager(budget)
             except Exception as e:
-                self.logger.error(f"fail to set configure file: {e}")
+                print(f"fail to set configure file: {e}")
                 raise e
-            if logger_name == None:
-                logger_name == __name__
-            self.logger = getLogger(logger_name)
-            self.market = market.Manager(budget)
         else:
             self.logger = logger
             self.market = market.Manager(budget, logger=logger, provider=provider)
-        try:
-            self.frame = int(frame)
-        except Exception as e:
-            self.logger.error(e)
         
-        self.__idc_processes = []
-        self.__additional_length_for_prc = 0
-        self.add_indicaters(indicater_processes)
-        self.__postprocesses = []
-        self.add_postprocesses(post_processes)
-        
-    def initialize_process_params(self):
-        if len(self.__postprocesses) > 0:
-            try:
-                current_all_rates = self.get_rates()
-                ##run process to initialize 
-                self.run_processes(current_all_rates)
-            except Exception as e:
-                self.logger.error(f"error is occured on param initialization of processes")
-                self.logger.error(e)
-                exit()
+        self.out_ohlc_columns = out_ohlc_columns
     
     def initialize_budget(self, budget):
         self.market(budget)
         
-    ## call from an actual client        
     def open_trade(self, is_buy, amount:float, order_type:str, symbol:str, price:float=None, tp=None, sl=None, option_info=None):
         """ by calling this in your client, order function is called and position is stored
 
@@ -85,35 +65,54 @@ class Client:
             amount (float): amount of trade unit
             stop (_type_): _description_
             order_type (str): Market, 
-            symbol (str): currency. ex USDJPY.
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
             option_info (any, optional): store info you want to position. Defaults to None.
 
         Returns:
-            Position: you can specify position or position.id to close the position
+            Success (bool): True if order is completed
+            Position (Position): you can specify position or position.id to close the position
         """
         if order_type == "Market":
             self.logger.debug("market order is requested.")
             if is_buy:
                 if price == None:
-                    ask_rate = self.get_current_ask()
+                    ask_rate = self.get_current_ask(symbol)
                 else:
                     ask_rate = price
-                result = self.market_buy(symbol, ask_rate, amount, tp, sl, option_info)
-                return self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                if ask_rate and ask_rate > 0:
+                    suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
+                    if suc:
+                        return True, self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                    else:
+                        self.logger.error(f"Order is failed as {result}")
+                        return False, result
+                else:
+                    err_msg = f"current rate is not valid: {ask_rate}"
+                    self.logger.error(f"Order is failed as {err_msg}")
+                    return False, err_msg
             else:
                 if price == None:
-                    bid_rate = self.get_current_bid()
+                    bid_rate = self.get_current_bid(symbol)
                 else:
                     bid_rate = price
-                result = self.market_sell(symbol, bid_rate, amount, tp, sl, option_info)
-                return self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                if bid_rate and bid_rate > 0:
+                    suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
+                    if suc:
+                        return True, self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
+                    else:
+                        self.logger(f"Order is failed as {result}")
+                        return False, result
+                else:
+                    err_msg = f"current rate is not valid: {ask_rate}"
+                    self.logger(f"Order is failed as {err_msg}")
+                    return False, err_msg
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
             
     def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
-        sell_for_settlement or buy_for_settlement is calleds
+        sell_for_settlement or _buy_for_settlement is calleds
 
         Args:
             price (float, optional): price for settlement. If not specified, current value is used.
@@ -133,17 +132,17 @@ class Client:
         position_plot = 0
         if position.order_type == "ask":
             self.logger.debug(f"close long position is ordered for {id}")
-            if (price == None):
-                price = self.get_current_bid()
+            if (price is None):
+                price = self.get_current_bid(position.symbol)
                 self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
-            self.sell_for_settlment(position.symbol , price, amount, position.option, position.result)
+            self._sell_for_settlment(position.symbol , price, amount, position.option, position.result)
             position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close long position is ordered for {id}")
-            if (price == None):
+            if (price is None):
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
-                price = self.get_current_ask()
-            self.buy_for_settlement(position.symbol, price, amount, position.option, position.result)
+                price = self.get_current_ask(position.symbol)
+            self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             position_plot = -1
         else:
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
@@ -151,33 +150,33 @@ class Client:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         return self.market.close_position(position, price, amount)
     
-    def close_all_positions(self):
+    def close_all_positions(self, symbols=[]):
         """close all open_position.
-        sell_for_settlement or buy_for_settlement is calleds for each position
+        sell_for_settlement or _buy_for_settlement is calleds for each position
         """
-        positions = self.market.get_open_positions()
+        positions = self.market.get_open_positions(symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
             results.append(result)
         return results
 
-    def close_long_positions(self):
+    def close_long_positions(self, symbols=[]):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.market.get_open_positions(order_type="ask")
+        positions = self.market.get_open_positions(order_type="ask", symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
             results.append(result)
         return results
 
-    def close_short_positions(self):
+    def close_short_positions(self, symbols=[]):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.market.get_open_positions(order_type="bid")
+        positions = self.market.get_open_positions(order_type="bid", symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -187,137 +186,82 @@ class Client:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def run_processes(self, data:pd.DataFrame) -> pd.DataFrame:
+    def __get_required_length(self, processes:list) -> int:
+        required_length_list = [0]
+        for process in processes:
+            required_length_list.append(process.get_minimum_required_length())
+        return max(required_length_list)
+    
+    def run_processes(self, data:pd.DataFrame, symbols:list = [], idc_processes = [], pre_processes=[], grouped_by_symbol=False) -> pd.DataFrame:
         """
-        Ex. you can define MACD as process. The results of the process are stored as dataframe[key] = values
+        Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
         """
         data_cp = data.copy()
-        columns_dict = self.get_ohlc_columns()
-        date_data = None
         
-        for process in self.__idc_processes:
-            values_dict = process.run(data_cp)
-            for column, values in values_dict.items():
-                data_cp[column] = values
+        for process in idc_processes:
+            idc_df = process.run(data_cp, symbols, grouped_by_symbol)
+            data_cp = pd.concat([data_cp, idc_df], axis=1)
         
-        if "Time" in columns_dict and columns_dict["Time"] != None:
-            date_column = columns_dict["Time"]
-            columns = list(data_cp.columns.copy())
-            date_data = data_cp[date_column].copy()
-            #df = df.set_index(date_column)
-            columns.remove(date_column)
-            data_cp = data_cp[columns]
-                    
-        for process in self.__postprocesses:
-            values_dict = process.run(data_cp)
-            for column, values in values_dict.items():
-                data_cp[column] = values
-                
-        if type(date_data) != type(None):
-            data_cp[date_column] = date_data
-        #data_cp = data_cp.dropna(how = 'any')
+        for process in pre_processes:
+            data_cp = process.run(data_cp)
         return data_cp
-    
-    def have_process(self, process: utils.ProcessBase):
-        return process in self.__idc_processes
-        
-    def add_indicater(self, process: utils.ProcessBase):
-        if self.have_process(process) == False:
-            self.__idc_processes.append(process)
-            required_length = process.get_minimum_required_length()
-            if self.__additional_length_for_prc < required_length:
-                self.__additional_length_for_prc = required_length
-        else:
-            self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
-            
-    def add_indicaters(self, processes: list):
-        for process in processes:
-            self.add_indicater(process)
-    
-    def __add_postprocess(self, process: utils.ProcessBase):
-        if self.have_process(process) == False:
-            self.__postprocesses.append(process)
-            additional_length = process.get_minimum_required_length()
-            self.__additional_length_for_prc += additional_length
-        else:
-            self.logger.info(f"process {process.key} is already added. If you want to add it, please change key value.")
-    
-    def add_postprocesses(self, processes: list):
-        for process in processes:
-            self.__add_postprocess(process)
-        
-    def get_rate_with_indicaters(self, interval=None) -> pd.DataFrame:
-        temp = self.do_render
-        self.do_render = False
-        if interval is None:
-            required_length = 1
-            ohlc = self.get_rates()
-        else:
-            required_length = interval + self.__additional_length_for_prc
-            ohlc = self.get_rates(required_length)
-            
-        self.do_render = temp
-        if type(ohlc) == pd.DataFrame and len(ohlc) >= required_length:
-            data = self.run_processes(ohlc)
-            if self.do_render:
-                self.__plot_data_width_indicaters(data)
-            if interval is None:
-                return data
-            else:
-                return data.iloc[-interval:]
-        else:
-            self.logger.error(f"data length is insufficient to caliculate indicaters.")
-            return ohlc
-        
-    def get_data_queue(self, data_length = int):
-        if self.__data_queue == None:
-            self.__timer_thread = threading.Thread(target=self.__timer, daemon=True)
-            self.__timer_thread.start()
-            self.__data_queue = queue.Queue()
-        if data_length > 0:
-            self.__data_queue_length = data_length
-        else:
+              
+    def get_data_queue(self, data_length:int, symbols:list=[], frame:int=None):
+        """
+            to get data when frame time past
+            when this function is called multiple times
+        Args:
+            symbols (list): _description_
+            data_length (int, optional): data length of rates. get all rates are not allowed. Defaults to .
+
+        Returns:
+            Queue: Queue return data by Queue.get() when frame time past
+        """
+        if data_length <= 0:
             self.logger.warning(f"data_length must be greater than 1. change length to 1")
-            self.__data_queue_length = 1
+            data_length = 1
+        if frame is None:
+            frame = self.frame
+            
+        if self.__data_queue is None:
+            self.__data_queue = queue.Queue()    
+        timer_thread = threading.Thread(target=self.__timer, args=(data_length, symbols, frame), daemon=True)
+        timer_thread.start()
         return self.__data_queue
         
-    def __timer(self):
+    def __timer(self, data_length:int, symbols:list, frame:int):
         next_time = 0
-        interval = self.frame*60
-
-        if self.frame <= 60:
+        frame_seconds = frame*60
+        sleep_time = 0
+        
+        if frame <= 60:
             base_time = datetime.datetime.now()
-            target_min = datetime.timedelta(minutes=(self.frame- base_time.minute % self.frame))
+            target_min = datetime.timedelta(minutes=(frame- base_time.minute % frame))
             target_time = base_time + target_min
             sleep_time = datetime.datetime.timestamp(target_time) - datetime.datetime.timestamp(base_time) - base_time.second
         if sleep_time > 0:
             time.sleep(sleep_time)
         base_time = time.time()
-        while self.__data_queue != None:
-            t = threading.Thread(target=self.__put_data_to_queue, daemon=True)
+        while self.__data_queue is not None:
+            t = threading.Thread(target=self.__put_data_to_queue, args=(data_length, symbols, frame), daemon=True)
             t.start()
-            next_time = ((base_time - time.time()) % interval) or interval
+            next_time = ((base_time - time.time()) % frame_seconds) or frame_seconds
             time.sleep(next_time)
             
     def stop_quing(self):
         self.__data_queue = None
         
-    def __put_data_to_queue(self):
-        if len(self.__idc_processes) > 0:
-            data = self.get_rate_with_indicaters(self.__data_queue_length)
-        else:
-            data = self.get_rates(self.__data_queue_length)
+    def __put_data_to_queue(self, data_length:int, symbols:list, frame:int, idc_processes=[], pre_processes=[]):
+        data = self.get_ohlc(data_length, symbols, frame, idc_processes, pre_processes)
         self.__data_queue.put(data)
     
     def get_client_params(self):
-        idc_params = utils.indicaters_to_params(self.__idc_processes)
-        pps_params = utils.postprocess_to_params(self.__postprocesses)
-        common_args = { "budget": self.market.budget, "indicater_processes": idc_params, "post_processes": pps_params, "frame": self.frame, "provider": self.market.provider }
+        common_args = { "budget": self.market.positions["budget"], "frame": self.frame, "provider": self.market.provider }
         add_params = self.get_additional_params()
         common_args.update(add_params)
         return common_args
     
-    def __check_order_completion(self, ohlc_df: pd.DataFrame):
+    def __check_order_completion(self, ohlc_df: pd.DataFrame, symbols:list):
         if len(self.market.listening_positions) > 0:
             positions = self.market.listening_positions.copy()
             self.logger.debug("start checking the tp and sl of positions")
@@ -365,7 +309,7 @@ class Client:
                     else:
                         self.logger.error(f"unkown order_type: {position.order_type}")
 
-    def __plot_data(self, data_df: pd.DataFrame):
+    def __plot_data(self, symbols:list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
             ohlc_columns = self.get_ohlc_columns()
             args_dict = {
@@ -376,14 +320,14 @@ class Client:
                     ohlc_columns['Close']
                 )
             }
-            result = self.__rendere.register_ohlc(data_df, **args_dict)
+            result = self.__rendere.register_ohlc(symbols, data_df, **args_dict)
             self.__ohlc_index = result
             self.__is_graph_initialized = True
         else:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
     
-    def __plot_data_width_indicaters(self, data_df: pd.DataFrame):
+    def __plot_data_width_indicaters(self, symbols:list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
             ohlc_columns = self.get_ohlc_columns()
             args_dict = {
@@ -396,36 +340,68 @@ class Client:
                 "idc_processes": self.__idc_processes,
                 "index": self.__ohlc_index
             }
-            result = self.__rendere.register_ohlc_with_indicaters(data_df, **args_dict)
+            result = self.__rendere.register_ohlc_with_indicaters(symbols, data_df, **args_dict)
             self.__ohlc_index = result
             self.__is_graph_initialized = True
         else:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_rates(self, interval:int = None) -> pd.DataFrame:
-        """ get ohlc data with interval length
+    def get_ohlc(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[], grouped_by_symbol=True) -> pd.DataFrame:
+        """ get ohlc data with length length
 
         Args:
-            interval (int | None): specify data length > 1. If None is provided, return all date.
-            data is sorted from older to latest. data are returnes with length from latest data
-            Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
+            length (int | None): specify data length > 1. If None is specified, return all date.
+            symbols (list<str>): list of symbols. Defaults to [].
+            frame (int | None): specify frame to get time series data. If None, default value is used instead.
+            idc_processes (Process, optional) : list of indicater process. Dafaults to []
+            pre_processes (Process, optional) : list of pre process. Defaults to []
+            
         Returns:
-            pd.DataFrame: ohlc data.
+            pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
+            Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
-        rates = self.get_rates_from_client(interval=interval)
-        t = threading.Thread(target=self.__check_order_completion, args=(rates,), daemon=True)
-        t.start()
-        if self.do_render:
-            self.__plot_data(rates)
-        return rates
+        do_run_process = False
+        if len(idc_processes) > 0 or len(pre_processes) > 0:
+            do_run_process = True
+            
+        if type(symbols) == str:
+            symbols = [symbols]
+        if len(symbols) == 0:
+            symbols = self.symbols
         
+        if length is None:
+            ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+        else:
+            required_length = length
+            if do_run_process:
+                required_length = length + self.__get_required_length(idc_processes + pre_processes)
+            ohlc_df = self._get_ohlc_from_client(length=required_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+        
+        t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
+        t.start()
+        
+        if do_run_process:
+            if type(ohlc_df) == pd.DataFrame and len(ohlc_df) >= required_length:
+                data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
+                if self.do_render:
+                    self.__plot_data_width_indicaters(symbols, data)
+                if length is None:
+                    return data
+                else:
+                    return data.iloc[-length:]
+            else:
+                self.logger.error(f"data length is insufficient to caliculate indicaters.")
+        elif self.do_render:
+            self.__plot_data(symbols, ohlc_df)
+        return ohlc_df
+      
     ## Need to implement in the actual client ##
     
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, interval:int):
+    def _get_ohlc_from_client(self,length, symbols:list, frame:int, grouped_by_symbol:bool):
         return {}
     
     def get_future_rates(self, interval) -> pd.DataFrame:
@@ -437,16 +413,16 @@ class Client:
     def get_current_bid(self) -> float:
         print("Need to implement get_current_bid on your client")
             
-    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+        return True, None
+    
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        return True, None
+    
+    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        pass
-    
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        pass
-    
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         pass
     
     def get_params(self) -> dict:
@@ -553,7 +529,21 @@ class Client:
             self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
         return position
     
-    def get_ohlc_columns(self) -> dict:
+    def _is_grouped_by_symbol(self, columns: pd.MultiIndex):
+        if type(columns) == pd.MultiIndex:
+            open_column = "open"
+            for column in columns.droplevel(0):
+                if open_column == str(column).lower():
+                    return True
+            for column in columns.droplevel(1):
+                if open_column == str(column).lower():
+                    return False
+            print("open column is not found on column")
+            return None
+        else:
+            raise TypeError(f"{type(columns)} is not supported")
+    
+    def get_ohlc_columns(self, symbol:str=None) -> dict:
         """ returns column names of ohlc data.
         
         Returns:
@@ -561,32 +551,44 @@ class Client:
         """
         if self.ohlc_columns == None:
             self.ohlc_columns = {}
-            columns = {}
             temp = self.auto_index
             self.auto_index = False
             temp_r = self.do_render
             self.do_render = False
-            data = self.get_rates(1)
+            data = self.get_ohlc(1)
             self.auto_index = temp
             self.do_render = temp_r
-            for column in data.columns.values:
+            columns = data.columns
+            if type(columns) == pd.MultiIndex:
+                if symbol is None:
+                    if self._is_grouped_by_symbol(columns):
+                        columns = set(columns.droplevel(0))
+                    else:
+                        columns = set(columns.droplevel(1))
+                else:
+                    if symbol in columns.droplevel(0):
+                        #grouped_by_symbol = False
+                        columns = columns.swaplevel(0, 1)
+                    elif symbol not in columns.droplevel(1):
+                        raise ValueError(f"Specified symbol {symbol} not found on columns.")
+                    columns = columns[symbol]
+            for column in columns:
                 column_ = str(column).lower()
                 if column_ == 'open':
-                    columns['Open'] = column
+                    self.ohlc_columns['Open'] = column
                 elif column_ == 'high':
-                    columns['High'] = column
+                    self.ohlc_columns['High'] = column
                 elif column_ == 'low':
-                    columns['Low'] = column
+                    self.ohlc_columns['Low'] = column
                 elif 'close' in column_:
-                    columns['Close'] = column
+                    self.ohlc_columns['Close'] = column
                 elif "time" in column_:#assume time, timestamp or datetime
-                    columns["Time"] = column
+                    self.ohlc_columns["Time"] = column
                 elif "volume" in column_:
-                    columns["Volume"] = column
-            self.ohlc_columns = columns
+                    self.ohlc_columns["Volume"] = column
         return self.ohlc_columns
     
-    def revert_postprocesses(self, data: pd.DataFrame=None):
+    def revert_preprocesses(self, data: pd.DataFrame=None):
         if data is None:
             data = self.get_rates()
         data = data.copy()
@@ -600,6 +602,67 @@ class Client:
                 #df = df.set_index(date_column)
                 columns.remove(date_column)
                 data = data[columns]
-        for ps in self.__postprocesses:
+        for ps in self.__preprocesses:
             data = ps.revert(data)
         return data
+    
+    def roll_data(self, data: pd.DataFrame, to_frame:int=None, to_freq:str=None, grouped_by_symbol=True) -> pd.DataFrame:
+        """ Roll time series data by specified frequency.
+
+        Args:
+            data (pd.DataFrame): time series data. columns should be same as what get_ohlc_columns returns
+            to_frame (int, optional): target frame minutes to roll data. If None, to_freq should be specified.
+            freq (str, optional): target freq value defined in pandas. Defaults to None.
+            grouped_by_symbol (bool, optional): specify if data is grouped_by_symbol or not. Defaults to True
+            
+        Raises:
+            Exception: if both to_frame and to_freq are None
+
+        Returns:
+            pd.DataFrame: rolled data. Only columns handled on get_ohlc_columns are returned
+        """
+        if to_frame is None and to_freq is None:
+            raise Exception("Either to_frame or freq should be provided.")
+        
+        if to_freq is None:
+            freq = Frame.to_panda_freq(to_frame)
+        else:
+            freq = to_freq
+        
+        if grouped_by_symbol:
+            data.columns = data.columns.swaplevel(0, 1)
+            
+        ohlc_columns_dict = self.get_ohlc_columns()
+        rolled_data_dict = {}
+        if "Open" in ohlc_columns_dict:
+            opn_clm = ohlc_columns_dict["Open"]
+            ##assume index isn't Multi index
+            rolled_opn = data[opn_clm].groupby(pd.Grouper(level=0, freq=freq)).first()
+            rolled_data_dict[opn_clm] = rolled_opn
+        if "High" in ohlc_columns_dict:
+            high_clm = ohlc_columns_dict["High"]
+            rolled_high = data[high_clm].groupby(pd.Grouper(level=0, freq=freq)).max()
+            rolled_data_dict[high_clm] = rolled_high
+        if "Low" in ohlc_columns_dict:
+            low_clm = ohlc_columns_dict["Low"]
+            rolled_low = data[low_clm].groupby(pd.Grouper(level=0, freq=freq)).min()
+            rolled_data_dict[low_clm] = rolled_low
+        if "Close" in ohlc_columns_dict:
+            cls_clm = ohlc_columns_dict["Close"]
+            rolled_cls = data[cls_clm].groupby(pd.Grouper(level=0, freq=freq)).last()
+            rolled_data_dict[cls_clm] = rolled_cls
+        if "Volume" in ohlc_columns_dict:
+            vlm_clm = ohlc_columns_dict["Volume"]
+            rolled_vlm = data[vlm_clm].groupby(pd.Grouper(level=0, freq=freq)).sum()
+            rolled_data_dict[vlm_clm] = rolled_vlm
+        
+        if len(rolled_data_dict) > 0:
+            rolled_df = pd.concat(rolled_data_dict.values(), axis=1, keys=rolled_data_dict.keys())
+            if grouped_by_symbol:
+                data.columns = data.columns.swaplevel(0, 1)
+                rolled_df.columns = rolled_df.columns.swaplevel(0, 1)
+                rolled_df.sort_index(level=0, axis=1, inplace=True)
+            return rolled_df
+        else:
+            self.logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
+            return pd.DataFrame()

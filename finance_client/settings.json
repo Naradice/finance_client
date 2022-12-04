@@ -17,6 +17,9 @@
         },
         "SBI":{
             "trade_unit":1
+        },
+        "csv":{
+            "trade_unit":1
         }
     },
     "log":{
@@ -37,7 +40,7 @@
             },
             "fileHandler": {
                 "class": "logging.FileHandler",
-                "level": "DEBUG",
+                "level": "WARN",
                 "formatter": "simple",
                 "filename": "finance_client"
             }
@@ -57,7 +60,7 @@
             "finance_client.test": {
                 "level": "DEBUG",
                 "handlers": ["consoleHandler", "fileHandler"],
-                "propagate": false  
+                "propagate": true  
             }
         },
     

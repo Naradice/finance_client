@@ -24,14 +24,14 @@ class ESClient(Client):
     def get_current_spread(self):
         pass
     
-    def market_sell(self, symbol, price, amount, tp=None, sl=None):
-        pass
+    def _market_sell(self, symbol, price, amount, tp=None, sl=None):
+        return False, None
             
-    def buy_for_settlement(self, symbol, price, amount, option, result):
+    def _buy_for_settlement(self, symbol, price, amount, option, result):
         pass
     
-    def market_buy(self, symbol, price, amount, tp=None, sl=None):
-        pass
+    def _market_buy(self, symbol, price, amount, tp=None, sl=None):
+        return False, None
     
     def buy_order(self, value, tp=None, sl=None):
         pass
@@ -42,7 +42,7 @@ class ESClient(Client):
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
 
-    def sell_for_settlment(self, symbol, price, amount, option, result):
+    def _sell_for_settlment(self, symbol, price, amount, option, result):
         pass
     
     def get_rates(self, interval):

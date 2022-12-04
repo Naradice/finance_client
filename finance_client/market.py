@@ -65,37 +65,45 @@ class Manager:
             with open(self.file_path, mode="r") as fp:
                 _positions = json.load(fp)
                 
-            budget = _positions["budget"]
-            self.positions["budget"] = budget
-            long_position_list = _positions["ask"]
-            short_position_list = _positions["bid"]
-            
-            for _position in long_position_list:
-                position = Position(_position["order_type"], _position["symbol"], _position["price"], _position["amount"], _position["tp"], _position["sl"], _position["option"], _position["result"], _position["id"])
-                self.positions["ask"][position.id] = position
-                if position.tp is not None or position.sl is not None:
-                    self.listening_positions[position.id] = position
-                    
-            for _position in short_position_list:
-                position = Position(_position["order_type"], _position["symbol"], _position["price"], _position["amount"], _position["tp"], _position["sl"], _position["option"], _position["result"], _position["id"])
-                self.positions["bid"][position.id] = position
-                if position.tp is not None or position.sl is not None:
-                    self.listening_positions[position.id] = position
+            if self.provider in _positions:
+                _position = _positions[self.provider]
+                if self.__start_budget is None:
+                    budget = _position["budget"]
+                    self.positions["budget"] = budget
+                long_position_list = _position["ask"]
+                short_position_list = _position["bid"]
+                
+                for _position in long_position_list:
+                    position = Position(_position["order_type"], _position["symbol"], _position["price"], _position["amount"], _position["tp"], _position["sl"], _position["option"], _position["result"], _position["id"])
+                    self.positions["ask"][position.id] = position
+                    if position.tp is not None or position.sl is not None:
+                        self.listening_positions[position.id] = position
+                        
+                for _position in short_position_list:
+                    position = Position(_position["order_type"], _position["symbol"], _position["price"], _position["amount"], _position["tp"], _position["sl"], _position["option"], _position["result"], _position["id"])
+                    self.positions["bid"][position.id] = position
+                    if position.tp is not None or position.sl is not None:
+                        self.listening_positions[position.id] = position
                 
                     
     def __save_positions(self):
-        print(self.positions)
+        _positions = {}
+        if os.path.exists(self.file_path):
+            with open(self.file_path, mode="r") as fp:
+                _positions = json.load(fp)
+        
         _position = {
             "budget": self.positions["budget"],
             "ask": [ self.positions["ask"][position_id].to_dict() for position_id in self.positions["ask"]],
             "bid": [self.positions["bid"][position_id].to_dict() for position_id in self.positions["bid"]]
         }
+        
+        _positions[self.provider]= _position
         with open(self.file_path, mode="w") as fp:
-            json.dump(_position, fp)
+            json.dump(_positions, fp)
     
     def __init__(self, budget, provider="Default", logger = None):        
         self.__locked = False
-        self.__initialize_positions()
         dir = os.path.dirname(__file__)
         try:
             with open(os.path.join(dir, './settings.json'), 'r') as f:
@@ -134,6 +142,7 @@ class Manager:
             raise Exception(error_txt)
         
         self.trade_unit = SymbolInfo["trade_unit"]
+        self.__initialize_positions()
         self.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
     
     def initialize_budget(self, budget=None):
@@ -195,16 +204,26 @@ class Manager:
             return self.positions["bid"][id]
         return None
     
-    def get_open_positions(self, order_type:str = None) -> list:
+    def get_open_positions(self, order_type:str = None, symbols=[]) -> list:
         positions = []
+        is_all_symbols = False
+        if type(symbols) == list:
+            is_all_symbols = len(symbols) == 0
+        elif type(symbols) == str:
+            symbols = [symbols]
+        else:
+            self.logger.error(f"Unkown type is specified as symbols: {type(symbols)}")
+            return []
         if order_type:
             order_type = self.__check_order_type(order_type=order_type)
             for id, position in self.positions[order_type].items():
-                positions.append(position)
-        else:
-            for position_type_key in ["ask", "bid"]:
-                for id, position in self.positions[position_type_key].items():
+                if is_all_symbols or position.symbol in symbols:
                     positions.append(position)
+        else:
+            for order_type in ["ask", "bid"]:
+                for id, position in self.positions[order_type].items():
+                    if is_all_symbols or position.symbol in symbols:
+                        positions.append(position)
         return positions
     
     def close_position(self, position:Position, price: float, amount: float = None):

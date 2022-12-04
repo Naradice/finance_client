@@ -1,14 +1,13 @@
 from finance_client.coincheck.client import CoinCheckClient
 import finance_client.frames as Frame
 from finance_client.client_base import Client
-from finance_client.csv.client import CSVClient, MultiFrameClient
+from finance_client.csv.client import CSVClient
 from finance_client.mt5.client import MT5Client
 from finance_client.vantage.client import VantageClient
 import finance_client.utils as utils
 
 available_clients = {
     CSVClient.kinds : CSVClient,
-    MultiFrameClient.kinds: MultiFrameClient,
     MT5Client.kinds: MT5Client,
     VantageClient.kinds: VantageClient,
     CoinCheckClient.kinds: CoinCheckClient

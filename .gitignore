@@ -21,3 +21,5 @@ tests/env.test.json
 finance_client/data_source/*/es_config.json
 finance_client/data_source/gmo/config.json
 *.npz
+sandbox/
+data_source

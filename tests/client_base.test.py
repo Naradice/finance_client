@@ -22,7 +22,7 @@ class TestClient(Client):
     def get_additional_params(self):
         return {}
 
-    def get_rates_from_client(self, interval:int):
+    def _get_ohlc_from_client(self, interval:int=None, symbols:list=[], frame:int=None):
         df = self.data.iloc[self.step_index - interval+1: self.step_index+1]
         self.step_index += 1
         return df
@@ -36,16 +36,16 @@ class TestClient(Client):
     def get_current_bid(self) -> float:
         return random.choice(self.data["Low"].iloc[self.step_index], self.data["Open"].iloc[self.step_index])
             
-    def market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+        return True, None
+    
+    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+        return True, None
+    
+    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass
     
-    def market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
-        pass
-    
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        pass
-    
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         pass
     
     def get_params(self) -> dict:

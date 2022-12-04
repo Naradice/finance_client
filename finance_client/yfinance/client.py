@@ -39,17 +39,22 @@ class YahooClient(CSVClient):
         if frame in availables:
             return availables[frame]
     
-    def create_filename(self, symbol:str):
+    def _create_filename(self, symbol:str):
         file_name = f"yfinance_{symbol}_{Frame.to_str(self.frame)}.csv"
         return file_name
+    
+    def _file_name_generator(self, symbol):
+        file_name = self._create_filename(symbol)
+        file_path = get_file_path(self.kinds, file_name=file_name)
+        return file_path
     
     def get_additional_params(self):
         return {}
     
-    def __init__(self, symbol, auto_step_index=False, frame: int = Frame.MIN5, adjust_close:bool=False, start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
+    def __init__(self, symbols=[], auto_step_index=False, frame: int = Frame.MIN5, adjust_close:bool=False, start_index=None, seed=1017, slip_type="random", do_render=False, idc_processes=[], post_process=[], budget=1000000, logger=None):
         """Get ohlc rate from yfinance
         Args:
-            symbol (str|list): stock symbol.
+            symbols (str|list): stock symbol.
             auto_step_index (bool, optional): increase step when get_rates is called. Defaults to False.
             frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
@@ -69,6 +74,7 @@ class YahooClient(CSVClient):
             self.OHLC_COLUMNS[3] = "Adj Close"
         self.VOLUME_COLUMN = ["Volume"]
         self.TIME_INDEX_NAME = "Datetime"
+        self.__updated_time = {}
 
         if frame not in self.available_frames:
             raise ValueError(f"{frame} is not supported")
@@ -76,21 +82,17 @@ class YahooClient(CSVClient):
         self.__frame_delta = datetime.timedelta(minutes=frame)
         self.debug = False
         
-        if type(symbol) == list:
-            print(f"multi symbols is not supported on get_rates etc for now.")
-            self.symbols = symbol
-        elif type(symbol) == str:
-            self.symbols = [symbol]
+        if type(symbols) == list:
+            self.symbols = symbols
+        elif type(symbols) == str:
+            symbols = [symbols]
+            self.symbols = symbols
         else:
+            #TODO: initialize logger 
             raise TypeError("symbol must be str or list.")
         
-        #TODO: initialize logger 
-        file_name = self.create_filename(self.symbols[0])
-        file_path = get_file_path(self.kinds, file_name=file_name)
-        print(f"data is stored on {file_path}")
-        self.__get_all_rates()
-        #TODO: support multi symbols on CSV Client
-        super().__init__(auto_step_index=auto_step_index, file=file_path, frame=frame, provider="yfinance", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, idc_processes=idc_processes, post_process=post_process, budget=budget, logger=logger)
+        self.__get_rates(self.symbols)
+        super().__init__(auto_step_index=auto_step_index, file_name_generator=self._file_name_generator ,symbols=self.symbols ,frame=frame, provider="csv", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, budget=budget, logger=logger)
     
     def __tz_convert(self, df):
         if 'tz_convert' in dir(df.index):
@@ -108,89 +110,89 @@ class YahooClient(CSVClient):
             except Exception as e:
                 print(f'failed tz_convert of index: ({type(df.index)}) by {e}')
         return df
+    
+    def __download(self, symbol, interval):
+        existing_last_date = datetime.datetime.min.date()
+        existing_rate_df = read_csv(self.kinds, self._create_filename(symbol), [self.TIME_INDEX_NAME], pandas_option={"index_col":self.TIME_INDEX_NAME})
+        if existing_rate_df is not None:
+            if len(existing_rate_df) > 0:
+                if self.frame < Frame.D1:
+                    existing_rate_df = self.__tz_convert(existing_rate_df)
+                existing_rate_df = existing_rate_df.sort_index()
+                # get last date of existing data
+                existing_last_date = existing_rate_df.index[-1].date()
+            else:
+                existing_rate_df = None
+                
+        end = datetime.datetime.utcnow().date()
+        delta = None
+        kwargs = {
+            'group_by': 'ticker'
+        }
+        isDataRemaining = False
+        if interval in self.max_periods:
+            delta = self.max_periods[interval]
+            start = end - delta
+            kwargs["end"] = end
+            kwargs["start"] = start
+            isDataRemaining = True
+        
+        mrange_delta = None
+        mrange = datetime.datetime.min.date()
+        if interval in self.max_range:
+            mrange_delta = self.max_range[interval]
+            mrange = end - mrange_delta
+        # compare today - max range with last date of exsisting date to decide range                
+        if existing_last_date > mrange:
+            mrange = existing_last_date
+            start = mrange
+            kwargs["start"] = start
+        # compare start and range. If today- range > start, change start to range then change flag true
+        if "start" in kwargs:
+            if mrange >= start:
+                start = mrange
+                kwargs["start"] = start
+                isDataRemaining = False
+            print(f"from {start} to {end} of {symbol}")
+        df = yf.download(symbol, interval=interval, **kwargs)
+        ticks_df = df.copy()
+        if self.frame < Frame.D1:
+            ticks_df = self.__tz_convert(ticks_df)
+        if len(df) > 0:
+            while isDataRemaining:
+                end = end - delta
+                start = end - delta
+                if start < mrange:
+                    start = mrange
+                    isDataRemaining = False
+                    
+                print(f"from {start} to {end} of {symbol}")
+                sleep(1)#to avoid a load
+                df = yf.download(symbol, interval=interval, group_by='ticker', start=start, end=end)
+                if len(df) != 0:
+                    if self.frame < Frame.D1:
+                        df = self.__tz_convert(df)
+                    ticks_df = pd.concat([df, ticks_df])
+                    ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
+                else:
+                    isDataRemaining = False
+            ticks_df = ticks_df.sort_index()
+        if len(ticks_df) > 0:
+            if existing_rate_df is not None:
+                ticks_df = pd.concat([existing_rate_df, ticks_df])
+                ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
+                ticks_df = ticks_df.sort_index()
+        return ticks_df
 
-    def __get_all_rates(self):
-        if len(self.symbols) > 0:
+    def __get_rates(self, symbols):
+        if len(symbols) > 0:
             interval = self.frame_to_str(self.frame)
             DFS = {}
-            existing_last_date = datetime.datetime.min.date()
-            for symbol in self.symbols:
-                file_name = self.create_filename(symbol)
-                existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col":self.TIME_INDEX_NAME})
-                if existing_rate_df is not None:
-                    if len(existing_rate_df) > 0:
-                        if self.frame < Frame.D1:
-                            existing_rate_df = self.__tz_convert(existing_rate_df)
-                        existing_rate_df = existing_rate_df.sort_index()
-                        # get last date of existing data
-                        existing_last_date = existing_rate_df.index[-1].date()
-                    else:
-                        existing_rate_df = None
-                        
-                end = datetime.datetime.utcnow().date()
-                delta = None
-                kwargs = {
-                    'group_by': 'ticker'
-                }
-                isDataRemaining = False
-                if interval in self.max_periods:
-                    delta = self.max_periods[interval]
-                    start = end - delta
-                    kwargs["end"] = end
-                    kwargs["start"] = start
-                    isDataRemaining = True
-                
-                mrange_delta = None
-                mrange = datetime.datetime.min.date()
-                if interval in self.max_range:
-                    mrange_delta = self.max_range[interval]
-                    mrange = end - mrange_delta
-                # compare today - max range with last date of exsisting date to decide range                
-                if existing_last_date > mrange:
-                    mrange = existing_last_date
-                    start = mrange
-                    kwargs["start"] = start
-                # compare start and range. If today- range > start, change start to range then change flag true
-                if "start" in kwargs:
-                    if mrange >= start:
-                        start = mrange
-                        kwargs["start"] = start
-                        isDataRemaining = False
-                    
-                    print(f"from {start} to {end} of {symbol}")
-                df = yf.download(symbol, interval=interval, **kwargs)
-                ticks_df = df.copy()
-                if self.frame < Frame.D1:
-                    ticks_df = self.__tz_convert(ticks_df)
-                if len(df) > 0:
-                    while isDataRemaining:
-                        end = end - delta
-                        start = end - delta
-                        if start < mrange:
-                            start = mrange
-                            isDataRemaining = False
-                            
-                        print(f"from {start} to {end} of {symbol}")
-                        sleep(1)#to avoid a load
-                        df = yf.download(symbol, interval=interval, group_by='ticker', start=start, end=end)
-                        if len(df) != 0:
-                            if self.frame < Frame.D1:
-                                df = self.__tz_convert(df)
-                            ticks_df = pd.concat([df, ticks_df])
-                            ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
-                        else:
-                            isDataRemaining = False
-                    ticks_df = ticks_df.sort_index()
-                
-                if len(ticks_df) > 0:
-                    if existing_rate_df is not None:
-                        ticks_df = pd.concat([existing_rate_df, ticks_df])
-                        ticks_df = ticks_df[~ticks_df.index.duplicated(keep="first")]
-                        ticks_df = ticks_df.sort_index()
-                write_df_to_csv(ticks_df, self.kinds, file_name, panda_option={"index_label":self.TIME_INDEX_NAME})
+            for symbol in symbols:
+                ticks_df = self.__download(symbol, interval)
+                write_df_to_csv(ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label":self.TIME_INDEX_NAME})
                 DFS[symbol] = ticks_df
-            
-            self.__updated_time = datetime.datetime.now()
+                self.__updated_time[symbol] = datetime.datetime.now()
             if len(DFS) > 1:
                 df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
             else:
@@ -198,22 +200,31 @@ class YahooClient(CSVClient):
             return df
         return pd.DataFrame()
     
-    def update_rates(self):
-        current_time = datetime.datetime.now()
-        delta = current_time - self.__updated_time
-        if delta > self.__frame_delta:
-            last_date = self.data.index[-1]
-            new_data_df = self.__get_all_rates()
-            #new_data_df[self.TIME_INDEX_NAME] = new_data_df.index
-            #new_data_df = new_data_df.reset_index()
-            new_last_date = new_data_df.index[-1]
-            if last_date != new_last_date:
-                self.data = new_data_df
-                return True
-            else:
-                return False
-        else:
-            False
+    def _update_rates(self, symbols=[]):
+        _symbols = set(symbols) & set(self.symbols)
+        isUpdated = False
+        if len(_symbols) > 0:
+            symbols_require_update = []
+            for _symbol in _symbols:
+                current_time = datetime.datetime.now()
+                delta = current_time - self.__updated_time[_symbol]
+                if delta > self.__frame_delta:
+                    symbols_require_update.append(_symbol)
+            if len(symbols_require_update) > 0:
+                df = self.__get_rates(symbols_require_update)
+                if len(df) > 0:
+                    isUpdated = True
+        return isUpdated
+    
+    def _get_ohlc_from_client(self,length, symbols:list, frame:int, grouped_by_symbol:bool):
+        #frame rolling is handled in csv client
+        interval = self.frame_to_str(self.frame)
+        for symbol in symbols:
+            if symbol not in self.symbols:
+                ticks_df = self.__download(symbol, interval)
+                write_df_to_csv(ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label":self.TIME_INDEX_NAME})
+                self.__updated_time[symbol] = datetime.datetime.now()
+        return super()._get_ohlc_from_client(length, symbols, frame, grouped_by_symbol)
     
     def cancel_order(self, order):
         pass

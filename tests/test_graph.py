@@ -37,7 +37,7 @@ class TestRender(unittest.TestCase):
         
     def test_plot_bband_from_client_out(self):
         r = Rendere()
-        bban = utils.BBANDpreProcess(target_column='close', window=14)
+        bban = utils.BBANDProcess(target_column='close', window=14)
         client = CSVClient(file=csv_file, columns = ['high', 'low','open','close'], date_column="time", idc_processes=[bban])
         df = client.get_rate_with_indicaters(30)
         index = r.register_ohlc_with_indicaters(df, [bban])
