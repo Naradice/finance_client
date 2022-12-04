@@ -42,10 +42,10 @@ class TestClient(Client):
     def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
         return True, None
     
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass
     
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         pass
     
     def get_params(self) -> dict:

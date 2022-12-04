@@ -112,7 +112,7 @@ class Client:
     def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
-        sell_for_settlement or buy_for_settlement is calleds
+        sell_for_settlement or _buy_for_settlement is calleds
 
         Args:
             price (float, optional): price for settlement. If not specified, current value is used.
@@ -135,14 +135,14 @@ class Client:
             if (price is None):
                 price = self.get_current_bid(position.symbol)
                 self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
-            self.sell_for_settlment(position.symbol , price, amount, position.option, position.result)
+            self._sell_for_settlment(position.symbol , price, amount, position.option, position.result)
             position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close long position is ordered for {id}")
             if (price is None):
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
                 price = self.get_current_ask(position.symbol)
-            self.buy_for_settlement(position.symbol, price, amount, position.option, position.result)
+            self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             position_plot = -1
         else:
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
@@ -152,7 +152,7 @@ class Client:
     
     def close_all_positions(self, symbols=[]):
         """close all open_position.
-        sell_for_settlement or buy_for_settlement is calleds for each position
+        sell_for_settlement or _buy_for_settlement is calleds for each position
         """
         positions = self.market.get_open_positions(symbols=symbols)
         results = []
@@ -419,10 +419,10 @@ class Client:
     def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
         return True, None
     
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         pass
     
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         pass
     
     def get_params(self) -> dict:

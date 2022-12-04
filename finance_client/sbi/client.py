@@ -64,10 +64,10 @@ class SBIClient(Client):
         self.logger.info(err_msg)
         return False, err_msg
     
-    def buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
         return self.rpa_client.sell_to_close_buy_order(symbol, amount)
     
-    def sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         return self.rpa_client.sell_to_close_buy_order(symbol, amount)
     
     def get_params(self) -> dict:

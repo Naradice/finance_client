@@ -27,7 +27,7 @@ class ESClient(Client):
     def _market_sell(self, symbol, price, amount, tp=None, sl=None):
         return False, None
             
-    def buy_for_settlement(self, symbol, price, amount, option, result):
+    def _buy_for_settlement(self, symbol, price, amount, option, result):
         pass
     
     def _market_buy(self, symbol, price, amount, tp=None, sl=None):
@@ -42,7 +42,7 @@ class ESClient(Client):
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
 
-    def sell_for_settlment(self, symbol, price, amount, option, result):
+    def _sell_for_settlment(self, symbol, price, amount, option, result):
         pass
     
     def get_rates(self, interval):
