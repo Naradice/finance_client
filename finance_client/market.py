@@ -151,6 +151,10 @@ class Manager:
         self.positions["budget"] = budget
         self.__start_budget = budget
         self.logger.info(f"MarketManager updated budget to {budget}")
+    
+    @property
+    def budget(self):
+        return self.positions["budget"]
 
     def __wait_lock(self):
         while self.__locked:

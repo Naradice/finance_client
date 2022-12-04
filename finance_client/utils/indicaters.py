@@ -685,6 +685,7 @@ def SlopeFromSeries(ser: pd.Series, window: int):
         pd.Series: slope values
     """
     slopes = [0 for i in range(window-1)]
+    index = ser.index
     for i in range(window, len(ser)+1):
         y = ser.iloc[i-window:i]
         x = np.array(range(window))
@@ -695,6 +696,8 @@ def SlopeFromSeries(ser: pd.Series, window: int):
         results = model.fit()
         slopes.append(results.params[-1])
     slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
+    slope_ser = pd.Series(np.array(slope_angle))
+    slope_ser.index = index
     return pd.Series(np.array(slope_angle))
 
 def SlopeFromOHLC(ohlc_df: pd.DataFrame, window: int, column="Close",
