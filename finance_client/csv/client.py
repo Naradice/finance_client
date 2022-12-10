@@ -718,6 +718,23 @@ class CSVClient(CSVClientBase):
     def min(self):
         self.data.max()
     
+    def get_train_data(self, index, length, columns=[], symbols=[]) -> list:
+        if len(symbols) > 0:
+            target_symbols = symbols
+        else:
+            target_symbols = self.symbols
+        
+        if len(columns) > 0:
+            target_columns = columns
+        else:
+            target_columns = self.data[target_symbols].columns
+        
+        inputs = []
+        for symbol in target_symbols:
+            for column in target_columns:
+                inputs += self.data[symbol][column][index-length+1:index+1].values.tolist()
+        return inputs
+
 
 class CSVChunkClient(CSVClientBase):
     
