@@ -523,11 +523,16 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size,
         return trend, brick_size, next_criteria_index
     
     CONST_INDEX_PLUS = 30
-    
-    criteria_index = sr[pd.notna(sr)].index[0]
-    current_criteria = sr.iloc[criteria_index]
     total_brick_num_sr = pd.Series(0, index=sr.index)
     brick_value_sr = pd.Series(0, index=sr.index)
+    
+    try:
+        criteria_index = sr[pd.notna(sr)].index[0]
+    except IndexError:
+        renko_df = pd.DataFrame.from_dict({total_brick_name:total_brick_num_sr, brick_num_name:brick_value_sr})
+        renko_df.index = org_index
+        return renko_df
+    current_criteria = sr.iloc[criteria_index]
 
     trend = None
     start_index = criteria_index
@@ -544,7 +549,9 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size,
         else:
             trend, block_num, next_criteria_index = trendy(uptrend, downtrend)
     if trend is None:
-        trend = 0
+        renko_df = pd.DataFrame.from_dict({total_brick_name:total_brick_num_sr, brick_num_name:brick_value_sr})
+        renko_df.index = org_index
+        return renko_df
     
     global_trend = trend
     while True:
