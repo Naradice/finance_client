@@ -189,7 +189,7 @@ class Client:
     def get_positions(self) -> list:
         return self.market.get_open_positions()
     
-    def __get_required_length(self, processes:list) -> int:
+    def _get_required_length(self, processes:list) -> int:
         required_length_list = [0]
         for process in processes:
             required_length_list.append(process.get_minimum_required_length())
@@ -377,11 +377,11 @@ class Client:
             ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
             required_length = 0
             if do_run_process:
-                required_length += self.__get_required_length(idc_processes + pre_processes)
+                required_length += self._get_required_length(idc_processes + pre_processes)
         else:
             required_length = length
             if do_run_process:
-                required_length = length + self.__get_required_length(idc_processes + pre_processes)
+                required_length = length + self._get_required_length(idc_processes + pre_processes)
             ohlc_df = self._get_ohlc_from_client(length=required_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
         
         t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)

@@ -493,12 +493,10 @@ class CSVClient(CSVClientBase):
             return __symbols, data
         return  target_symbols, pd.DataFrame()
     
-    def __get_rates(self, length:int=None, symbols:list=[], frame:int=None):
+    def __get_rates(self, index, length:int=None, symbols:list=[], frame:int=None):
         if length is None:
             self._update_rates(symbols)
             rates = self.data.copy()
-            if self.auto_step_index:
-                self._step_index += 1
             if frame is not None and self.frame < frame:
                 rates = self.roll_data(rates, frame, grouped_by_symbol=True)
             if len(symbols) != 0:
@@ -507,44 +505,29 @@ class CSVClient(CSVClientBase):
                     rates = rates[symbols]
                 except Exception as e:
                     self.logger.error(f"{symbols} is not in data. Return entire symbols: {e}")
-            return rates[:self._step_index].copy()
+            return rates[:index].copy()
         elif length >= 1:
             rates = None
             out_length = length
             if frame is not None and self.frame < frame:
                 length = math.ceil(frame/self.frame) * length
-            if self._step_index >= length-1:
-                try:
-                    #return data which have length length
-                    if len(symbols) > 0:
-                        rates = self.data[symbols]
-                    else:
-                        rates = self.data.copy()
-                    rates = rates.iloc[self._step_index - length:self._step_index].copy()
-                    if self.dropna:
-                        rates = self.data.dropna()
-                except Exception as e:
-                    self.logger.error(f"can't find data fom {self._step_index - length} to {self._step_index}: {e}")
-            else:
-                if self._update_rates(symbols):
-                    return self.__get_rates(length, symbols, frame)
+            try:
+                #return data which have length length
+                if len(symbols) > 0:
+                    rates = self.data[symbols]
                 else:
-                    if self._auto_reset:
-                        ## todo initialize based on parameters
-                        self._step_index = random.randint(0, len(self.data))
-                        ## todo: raise index change event
-                        return self.__get_rates(length, symbols, frame)
-                    else:
-                        self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
-                        rates = self.data[symbols]
-                        rates = rates.iloc[:length].copy()
+                    rates = self.data.copy()
+                rates = rates.iloc[index - length:index].copy()
+                if self.dropna:
+                    rates = self.data.dropna()
+            except Exception as e:
+                self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
+
             if frame is not None and self.frame < frame:
                 rates = self.roll_data(rates, frame, grouped_by_symbol=True)
                 if self.dropna:
                     rates = self.data.dropna()
             rates = rates.iloc[:out_length].copy()
-            if self.auto_step_index:
-                self._step_index += 1
             return rates
         else:
             raise Exception("interval should be greater than 0.")
@@ -566,10 +549,22 @@ class CSVClient(CSVClientBase):
             return pd.DataFrame()
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
-        rates = self.__get_rates(length, target_symbols, frame)
+        target_index = self._step_index
+        if target_index < length-1:
+            if self._update_rates(symbols) is False:
+                if self._auto_reset:
+                    ## todo initialize based on parameters
+                    self._step_index = random.randint(0, len(self.data))
+                    target_index = self._step_index
+                else:
+                    self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
+                    target_index = length
+        rates = self.__get_rates(target_index, length, target_symbols, frame)
         if grouped_by_symbol == False and type(rates.columns) is pd.MultiIndex:
             rates.columns = rates.columns.swaplevel(0, 1)
             rates.sort_index(level=0, axis=1, inplace=True)
+        if self.auto_step_index:
+            self._step_index += 1
         return rates
 
     def get_future_rates(self, length=1, back_length=0, symbols:list=[]):
@@ -718,22 +713,23 @@ class CSVClient(CSVClientBase):
     def min(self):
         self.data.max()
     
-    def get_train_data(self, index, length, columns=[], symbols=[]) -> list:
+    def get_train_data(self, index, length, columns=[], symbols=[], idc_processes=[], pre_processes=[], frame=None) -> pd.DataFrame:
         if len(symbols) > 0:
             target_symbols = symbols
         else:
             target_symbols = self.symbols
         
+        required_length = length + self._get_required_length(idc_processes + pre_processes)
+        ohlc_df = self.__get_rates(index, required_length, symbols, frame)
+        data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, True)
+        
         if len(columns) > 0:
             target_columns = columns
         else:
-            target_columns = self.data[target_symbols].columns
+            target_columns = data[target_symbols].columns
+            
+        return pd.concat([data[symbol][target_columns].iloc[-length:].T for symbol in target_symbols])
         
-        inputs = []
-        for symbol in target_symbols:
-            for column in target_columns:
-                inputs += self.data[symbol][column][index-length+1:index+1].values.tolist()
-        return inputs
 
 
 class CSVChunkClient(CSVClientBase):

@@ -544,7 +544,7 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size,
         else:
             trend, block_num, next_criteria_index = trendy(uptrend, downtrend)
     if trend is None:
-        raise Exception("can't initialize renko.")
+        trend = 0
     
     global_trend = trend
     while True:

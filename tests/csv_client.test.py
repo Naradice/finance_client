@@ -24,12 +24,14 @@ logger = getLogger("finance_client.test")
 
 file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/yfinance'))
 symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
-datetime_column = "Datetime"
+datetime_column = "Time"
 ohlc_columns = ["Open", "High", "Low", "Close"]
 additional_column = ["Adj Close", "Volume"]
 csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
-csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
-csv_file_5min = f'{file_base}/yfinance_{symbols[0]}_MIN5.csv'
+#csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
+csv_file = os.path.abspath('L:/data/csv/USDJPY_forex_min30.csv')
+#csv_file_5min = f'{file_base}/yfinance_{symbols[0]}_MIN5.csv'
+csv_file_5min = os.path.abspath('L:/data/csv/USDJPY_forex_min5.csv')
 csv_files_5min = [f'{file_base}/yfinance_{symbol}_MIN5.csv' for symbol in symbols[:2]]
 
 class TestCSVClient(unittest.TestCase):
@@ -42,6 +44,8 @@ class TestCSVClient(unittest.TestCase):
         length = 10
         rates = client.get_ohlc(length)
         self.assertEqual(len(rates.Close), length)
+        rates = client.get_ohlc()
+        self.assertGreater(len(rates.Close), length)
 
     def test_get_next_tick(self):
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
@@ -98,7 +102,7 @@ class TestCSVClient(unittest.TestCase):
         delta = df.index[1] - df.index[0]
         delta_ex = datetime.timedelta(minutes=30)
         self.assertEqual(delta, delta_ex)
-
+"""
 class TestCSVClientMulti(unittest.TestCase):
     
     def test_initialize_with_files(self):
@@ -446,54 +450,6 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         self.assertGreaterEqual(df.min().min(), 0)
         self.assertLessEqual(df.max().max(), 1)
 
-    """
-    def test_get_current_value_with_no_slip(self):
-        KEY_NONE = "none"
-        
-        SYMBOL_COUNT = 3
-        DATA_LENGTH = 10
-        files = csv_files[:SYMBOL_COUNT]
-        
-        client = CSVChunkClient(files=files, slip_type=KEY_NONE, start_index=DATA_LENGTH, chunksize=100, logger=logger)
-        df = client.get_ohlc(DATA_LENGTH)
-        target_symbols = client.symbols
-        ask_values = client.get_current_ask(target_symbols)
-        bid_values = client.get_current_bid(target_symbols)
-        for symbol in target_symbols:
-            if pd.isna(ask_values[symbol]) == False:
-                self.assertLessEqual(bid_values[symbol], ask_values[symbol])
-        
-    def test_get_current_value_with_pct_slip(self):
-        KEY_PCT = "pct"
-        SYMBOL_COUNT = 3
-        DATA_LENGTH = 10
-        files = csv_files[:SYMBOL_COUNT]
-        
-        client = CSVChunkClient(files=files, slip_type=KEY_PCT, start_index=DATA_LENGTH, chunksize=100, logger=logger)
-        df = client.get_ohlc(DATA_LENGTH)
-        target_symbols = client.symbols
-        ask_values = client.get_current_ask(target_symbols)
-        bid_values = client.get_current_bid(target_symbols)
-        for symbol in target_symbols:
-            if pd.isna(ask_values[symbol]) == False:
-                self.assertLessEqual(bid_values[symbol], ask_values[symbol])
-    
-    def test_get_current_value_with_random_slip(self):
-        KEY_RDM = "random"
-        SYMBOL_COUNT = 3
-        DATA_LENGTH = 10
-        files = csv_files[:SYMBOL_COUNT]
-        
-        client = CSVChunkClient(files=files, slip_type=KEY_RDM, start_index=DATA_LENGTH, chunksize=100, logger=logger)
-        df = client.get_ohlc(DATA_LENGTH)
-        target_symbols = client.symbols
-        ask_values = client.get_current_ask(target_symbols)
-        bid_values = client.get_current_bid(target_symbols)
-        for symbol in target_symbols:
-            if pd.isna(ask_values[symbol]) == False:
-                self.assertLessEqual(bid_values[symbol], ask_values[symbol])
-    """
-
     def test_get_data_with_limited_symbols(self):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
@@ -517,17 +473,6 @@ class TestCSVClientMultiWOInit(unittest.TestCase):
         #client = CSVClient(file_name_generator=generator, logger=logger)
         #ohlc_df = client.get_ohlc(length=10, symbols=symbols[3])
         #self.assertEqual(len(ohlc_df), 10)
-
-"""
-class TestCSVClientMultiChunkWOInit():
-    pass
-
-class TestCSVClientMultiWOInit():
-    pass
-
-class TestCSVClientMultiChunkWOInit():
-    pass
-"""
 
 class TestCCSVClientMultiTrade(unittest.TestCase):
     
@@ -561,6 +506,66 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
             df = client.get_ohlc(10)
         self.assertEqual(len(results), 1)
         self.assertNotEqual(results[0][0], results[0][1])
+"""
+
+"""
+class TestCSVClientMultiChunkWOInit():
+    pass
+
+class TestCSVClientMultiWOInit():
+    pass
+
+class TestCSVClientMultiChunkWOInit():
+    pass
+"""
+
+"""
+def test_get_current_value_with_no_slip(self):
+    KEY_NONE = "none"
     
+    SYMBOL_COUNT = 3
+    DATA_LENGTH = 10
+    files = csv_files[:SYMBOL_COUNT]
+    
+    client = CSVChunkClient(files=files, slip_type=KEY_NONE, start_index=DATA_LENGTH, chunksize=100, logger=logger)
+    df = client.get_ohlc(DATA_LENGTH)
+    target_symbols = client.symbols
+    ask_values = client.get_current_ask(target_symbols)
+    bid_values = client.get_current_bid(target_symbols)
+    for symbol in target_symbols:
+        if pd.isna(ask_values[symbol]) == False:
+            self.assertLessEqual(bid_values[symbol], ask_values[symbol])
+    
+def test_get_current_value_with_pct_slip(self):
+    KEY_PCT = "pct"
+    SYMBOL_COUNT = 3
+    DATA_LENGTH = 10
+    files = csv_files[:SYMBOL_COUNT]
+    
+    client = CSVChunkClient(files=files, slip_type=KEY_PCT, start_index=DATA_LENGTH, chunksize=100, logger=logger)
+    df = client.get_ohlc(DATA_LENGTH)
+    target_symbols = client.symbols
+    ask_values = client.get_current_ask(target_symbols)
+    bid_values = client.get_current_bid(target_symbols)
+    for symbol in target_symbols:
+        if pd.isna(ask_values[symbol]) == False:
+            self.assertLessEqual(bid_values[symbol], ask_values[symbol])
+
+def test_get_current_value_with_random_slip(self):
+    KEY_RDM = "random"
+    SYMBOL_COUNT = 3
+    DATA_LENGTH = 10
+    files = csv_files[:SYMBOL_COUNT]
+    
+    client = CSVChunkClient(files=files, slip_type=KEY_RDM, start_index=DATA_LENGTH, chunksize=100, logger=logger)
+    df = client.get_ohlc(DATA_LENGTH)
+    target_symbols = client.symbols
+    ask_values = client.get_current_ask(target_symbols)
+    bid_values = client.get_current_bid(target_symbols)
+    for symbol in target_symbols:
+        if pd.isna(ask_values[symbol]) == False:
+            self.assertLessEqual(bid_values[symbol], ask_values[symbol])
+"""
+
 if __name__ == '__main__':
     unittest.main()
