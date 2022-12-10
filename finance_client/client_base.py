@@ -17,7 +17,10 @@ class Client:
         self.__data_queue = None
         self.do_render = do_render
         self.frame = frame
-        self.symbols = symbols
+        if type(symbols) == str:
+            self.symbols = [symbols]
+        else:
+            self.symbols = symbols
         if self.do_render:
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1
@@ -372,6 +375,9 @@ class Client:
         
         if length is None:
             ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+            required_length = 0
+            if do_run_process:
+                required_length += self.__get_required_length(idc_processes + pre_processes)
         else:
             required_length = length
             if do_run_process:
