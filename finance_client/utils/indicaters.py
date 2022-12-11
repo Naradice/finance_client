@@ -562,9 +562,8 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size,
             next_criteria_index = criteria_index
             next_start_index = to_index
         else:
-            global_trend = trend
             brick_num = total_brick_num_sr.iloc[criteria_index]
-            if brick_num/trend >= 0:#continuaus trend
+            if global_trend/trend >= 0:#continuaus trend
                 next_brick_num = brick_num + new_brick_num
             else:
                 next_brick_num = brick_num + new_brick_num
@@ -573,6 +572,7 @@ def RenkoFromSeries(data_sr:pd.Series, brick_size,
             total_brick_num_sr.iloc[next_criteria_index] = next_brick_num
             criteria_index = next_criteria_index
             next_start_index = next_criteria_index + 1
+            global_trend = trend
             
         if next_start_index < len(sr):
             to_index = next_start_index + CONST_INDEX_PLUS
