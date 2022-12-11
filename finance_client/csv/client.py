@@ -560,15 +560,19 @@ class CSVClient(CSVClientBase):
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
         target_index = self._step_index
-        if target_index < length-1:
+        if target_index > len(self):
             if self._update_rates(symbols) is False:
                 if self._auto_reset:
                     ## todo initialize based on parameters
                     self._step_index = random.randint(0, len(self.data))
                     target_index = self._step_index
                 else:
-                    self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
-                    target_index = length
+                    self.logger.warning(f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index")
+                    self._step_index = self._step_index -1
+                    target_index = self._step_index
+        if target_index < length-1:
+            self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
+            target_index = length
         rates = self.__get_rates(target_index, length, target_symbols, frame)
         if grouped_by_symbol == False and type(rates.columns) is pd.MultiIndex:
             rates.columns = rates.columns.swaplevel(0, 1)
