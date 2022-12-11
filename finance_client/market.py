@@ -188,6 +188,7 @@ class Manager:
         budget = self.positions["budget"]
         if required_budget <= budget:
             position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
+            self.positions[order_type][position.id] = position
             ## then reduce budget
             self.positions["budget"] = budget - required_budget
             ## check if tp/sl exists
