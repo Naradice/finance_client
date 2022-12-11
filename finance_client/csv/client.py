@@ -308,7 +308,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                     files.append(file_name)
                     
         self.base_point = 0.01
-        self.frame = None
+        self.frame = frame
         self.symbols = []
         
         if len(files) > 0:

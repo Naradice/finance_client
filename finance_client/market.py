@@ -257,11 +257,11 @@ class Manager:
                     return price, position.price, price_diff, profit
                 else:
                     self.__locked = False
-                    self.logger.info("info: positionis already removed.")
+                    self.logger.info("info: position is already removed.")
                     
                 ## remove position from listening
-                if position.id in self.listening_positions:
-                    self.listening_positions.pop(position.id)
+                self.remove_position_from_listening(position)
+                    
             else:
                 self.logger.debug("lock returned false somehow.")
         else:
@@ -269,3 +269,7 @@ class Manager:
                 
     def check_order_in_tick(ask:float, bid:float):
         pass
+    
+    def remove_position_from_listening(self, position):
+        if position.id in self.listening_positions:
+            self.listening_positions.pop(position.id)
