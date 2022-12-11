@@ -337,8 +337,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             self._step_index = random.randint(0, len(self))
         else:
             self._step_index = 0
-        if self._step_index < len(self):
-            self.logger.warning(f"step index {self._step_index} is less than data length {len(self)}")
+        if self._step_index > len(self):
+            self.logger.warning(f"step index {self._step_index} is greater than data length {len(self)}")
     
     def get_current_index(self):
         return self._step_index
