@@ -56,6 +56,7 @@ class Manager:
         "bid": {}
     }
     
+    __singleton = {}
     listening_positions = {}
 
     file_path = f'{os.getcwd()}/positions.json'
@@ -86,7 +87,7 @@ class Manager:
                         self.listening_positions[position.id] = position
                 
                     
-    def __save_positions(self):
+    def save_positions(self):
         _positions = {}
         if os.path.exists(self.file_path):
             with open(self.file_path, mode="r") as fp:
@@ -101,49 +102,52 @@ class Manager:
         _positions[self.provider]= _position
         with open(self.file_path, mode="w") as fp:
             json.dump(_positions, fp)
-    
-    def __init__(self, budget, provider="Default", logger = None):        
-        self.__locked = False
-        dir = os.path.dirname(__file__)
-        try:
-            with open(os.path.join(dir, './settings.json'), 'r') as f:
-                settings = json.load(f)
-        except Exception as e:
-            self.logger.error(f"fail to load settings file: {e}")
-            raise e
-        
-        if logger == None:
-            logger_config = settings["log"]
-        
-            try:
-                log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-                log_folder = os.path.join(os.path.dirname(__file__), 'logs')
-                if os.path.exists(log_folder) == False:
-                    os.makedirs(log_folder)
-                logger_config["handlers"]["fileHandler"]["filename"] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
-                config.dictConfig(logger_config)
-            except Exception as e:
-                self.logger.error(f"fail to set configure file: {e}")
-                raise e
-            self.logger = getLogger(__name__)
-        else:
-            self.logger = logger
             
-        self.positions["budget"] = budget
-        self.__start_budget = budget
-        
-        providers = settings["providers"]
-        if provider in providers:
-            SymbolInfo = providers[provider]
-            self.provider = provider
-        else:
-            error_txt = f"provider {provider} is not defined in settings.json"
-            self.logger.error(error_txt)
-            raise Exception(error_txt)
-        
-        self.trade_unit = SymbolInfo["trade_unit"]
-        self.__initialize_positions()
-        self.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
+    def __new__(cls, budget,  provider="Default", logger = None):
+        if provider not in cls.__singleton:
+            singleton = super(Manager, cls).__new__(cls)
+            singleton.__locked = False
+            dir = os.path.dirname(__file__)
+            try:
+                with open(os.path.join(dir, './settings.json'), 'r') as f:
+                    settings = json.load(f)
+            except Exception as e:
+                print(f"fail to load settings file: {e}")
+                raise e
+            
+            if logger is None:
+                logger_config = settings["log"]
+                try:
+                    log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
+                    log_folder = os.path.join(os.path.dirname(__file__), 'logs')
+                    if os.path.exists(log_folder) == False:
+                        os.makedirs(log_folder)
+                    logger_config["handlers"]["fileHandler"]["filename"] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
+                    config.dictConfig(logger_config)
+                except Exception as e:
+                    print(f"fail to set configure file: {e}")
+                    raise e
+                singleton.logger = getLogger(__name__)
+            else:
+                singleton.logger = logger
+                
+            singleton.positions["budget"] = budget
+            singleton.__start_budget = budget
+            
+            providers = settings["providers"]
+            if provider in providers:
+                SymbolInfo = providers[provider]
+                singleton.provider = provider
+            else:
+                error_txt = f"provider {provider} is not defined in settings.json"
+                singleton.logger.error(error_txt)
+                raise Exception(error_txt)
+            
+            singleton.trade_unit = SymbolInfo["trade_unit"]
+            singleton.__initialize_positions()
+            singleton.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
+            cls.__singleton[provider] = singleton
+        return cls.__singleton[provider]
     
     def initialize_budget(self, budget=None):
         if budget == None:
@@ -175,8 +179,6 @@ class Manager:
     def __store_position(self, position):
         self.positions[position.order_type][position.id] = position
         self.logger.debug(f"position is stored: {position}")
-        #insert position info to file
-        self.__save_positions()
             
     def open_position(self, order_type:str, symbol:str, price:float, amount: float, tp=None, sl=None, option = None, result=None):
         order_type = self.__check_order_type(order_type)
@@ -188,7 +190,6 @@ class Manager:
             position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
             ## then reduce budget
             self.positions["budget"] = budget - required_budget
-            self.__store_position(position)
             ## check if tp/sl exists
             if tp is not None or sl is not None:
                 self.listening_positions[position.id] = position
