@@ -310,14 +310,6 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         self.base_point = 0.01
         self.frame = None
         self.symbols = []
-        if start_index:
-            self._step_index = start_index
-        elif start_random_index:
-            #assign initial value later
-            self._step_index = 0
-        else:
-            start_index = 0
-            self._step_index = start_index
         
         if len(files) > 0:
             if type(files) == str:
@@ -336,8 +328,17 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             self.symbols = list(__symbols)
                             
         self._auto_reset = auto_reset_index
-        if start_random_index and self.data is not None:
+        if start_index:
+            if start_index >= 0:
+                self._step_index = start_index
+            else:
+                self._step_index = len(self) - start_index
+        elif start_random_index:
             self._step_index = random.randint(0, len(self))
+        else:
+            self._step_index = 0
+        if self._step_index < len(self):
+            self.logger.warning(f"step index {self._step_index} is less than data length {len(self)}")
     
     def get_current_index(self):
         return self._step_index
