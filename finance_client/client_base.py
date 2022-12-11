@@ -379,10 +379,14 @@ class Client:
             if do_run_process:
                 required_length += self._get_required_length(idc_processes + pre_processes)
         else:
-            required_length = length
+            required_length = 0
             if do_run_process:
-                required_length = length + self._get_required_length(idc_processes + pre_processes)
-            ohlc_df = self._get_ohlc_from_client(length=required_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+                required_length += self._get_required_length(idc_processes + pre_processes)
+            if length < required_length:
+                target_length = required_length
+            else:
+                target_length = length
+            ohlc_df = self._get_ohlc_from_client(length=target_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
         
         t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
