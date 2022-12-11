@@ -521,7 +521,7 @@ class RenkoProcess(ProcessBase):
         raise Exception("update is not implemented yet on renko process")
         
     def get_minimum_required_length(self):
-        return self.option['window']
+        return self.option['window'] + 30
     
     def revert(self, data_set:tuple):
         #pass
