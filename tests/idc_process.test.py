@@ -27,15 +27,15 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv'))
+file_path = os.path.abspath('L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv')
 ohlc_columns = ["open", "high", "low", "close"]
 date_column = "time"
 
 class TestIndicaters(unittest.TestCase):
-    client = CSVClient(file=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False)
+    client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False, start_index=200)
         
     def test_cci_process(self):
-        ohlc = self.client.get_rates(110)
+        ohlc = self.client.get_ohlc(110)
         cci_prc = utils.CCIProcess(14, ohlc_column=ohlc_columns)
         input_data_1 = ohlc.iloc[:100].copy()
         self.assertEqual(len(input_data_1), 100)
@@ -108,31 +108,29 @@ class TestIndicaters(unittest.TestCase):
             out_ex.append(out_ex[i -1] * (1 - alpha) + input[i]*alpha)
     
     def test_renko_process(self):
-        client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, logger=logger)
+        client = CSVClient(files=file_path,columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
         prc = utils.RenkoProcess(window=120, ohlc_column=ohlc_columns)
         column = prc.columns["NUM"]
-        client.add_indicater(prc)
         start_time = datetime.datetime.now()
-        data = client.get_rate_with_indicaters(300)
+        data = client.get_ohlc(300, idc_processes=[prc])
         end_time = datetime.datetime.now()
         logger.debug(f"renko process took {end_time - start_time}")
         self.assertEqual(column in data.columns, True)
         self.assertEqual(len(data[column]), 300)
     
     def test_slope_process(self):
-        client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, logger=logger)
+        client = CSVClient(files=file_path,columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
         prc = utils.SlopeProcess(window=5, target_column=ohlc_columns[3])
         slp_column = prc.columns["Slope"]
-        client.add_indicater(prc)
         start_time = datetime.datetime.now()
-        data = client.get_rate_with_indicaters(100)
+        data = client.get_ohlc(100, idc_processes=[prc])
         end_time = datetime.datetime.now()
         logger.debug(f"slope process took {end_time - start_time}")
         self.assertEqual(slp_column in data.columns, True)
         self.assertEqual(len(data[slp_column]), 100)
         
     def test_macdslope_process(self):
-        client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, logger=logger)
+        client = CSVClient(files=file_path,columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
         macd = utils.MACDProcess(target_column=ohlc_columns[3])
         macd_column = macd.columns["MACD"]
         signal_column = macd.columns["Signal"]
@@ -140,9 +138,8 @@ class TestIndicaters(unittest.TestCase):
         s_prc = utils.SlopeProcess(key="s",window=5, target_column=signal_column)
         slp_column = prc.columns["Slope"]
         s_slp_column = s_prc.columns["Slope"]
-        client.add_indicaters([macd, prc, s_prc])
         start_time = datetime.datetime.now()
-        data = client.get_rate_with_indicaters(100)
+        data = client.get_ohlc(100, idc_processes=[macd, prc, s_prc])
         end_time = datetime.datetime.now()
         logger.debug(f"macd slope process took {end_time - start_time}")
         self.assertEqual(slp_column in data.columns, True)
@@ -152,16 +149,15 @@ class TestIndicaters(unittest.TestCase):
         self.assertNotEqual(data[slp_column].iloc[-1], data[s_slp_column].iloc[-1])
 
     def test_range_process(self):
-        client = CSVClient(file=file_path,columns=ohlc_columns, date_column=date_column, auto_refresh_index=False,logger=logger)
+        client = CSVClient(files=file_path,columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
         slope_window = 4
         range_p = utils.RangeTrendProcess(slope_window=slope_window)
         bband_p = utils.BBANDProcess(alpha=2, target_column=ohlc_columns[3])
-        client.add_indicaters([bband_p, range_p])
         start_time = datetime.datetime.now()
-        client.get_rate_with_indicaters()
+        client.get_ohlc(100, idc_processes=[bband_p, range_p])
         end_time = datetime.datetime.now()
         logger.debug(f"range process took {end_time - start_time}")
-        data = client.get_rate_with_indicaters(100)
+        data = client.get_ohlc(100, idc_processes=[bband_p, range_p])
         self.assertEqual(len(data), 100)
         ran = data[range_p.columns[range_p.RANGE_KEY]]
         self.assertLessEqual(ran.max(), 1)
@@ -231,13 +227,7 @@ class TestIndicaters(unittest.TestCase):
         ds = pd.DataFrame({'open': open, 'high': high, 'low':low, 'close':close, 'time': time})
         
         columns_to_ignore = ['time']
-        mm = utils.MinMaxPreProcess(scale=(-1,1), entire_mode=False, columns_to_ignore=columns_to_ignore)
-        result = mm.run(ds)
-        check = 'time' in result
-        self.assertFalse(check)
-        del mm
-        
-        mm = utils.MinMaxPreProcess(scale=(-1,1), entire_mode=True, columns_to_ignore=columns_to_ignore)
+        mm = utils.MinMaxPreProcess(scale=(-1,1), columns_to_ignore=columns_to_ignore)
         result = mm.run(ds)
         check = 'time' in result
         self.assertFalse(check)
@@ -247,7 +237,7 @@ class TestIndicaters(unittest.TestCase):
         high = [random.random()*123 for index in range(100)]
         low = [h_value - 1 for h_value in high]
         ds = pd.DataFrame({'high':high, 'low': low})
-        mm = utils.MinMaxPreProcess(scale=(-1,1), entire_mode=True)
+        mm = utils.MinMaxPreProcess(scale=(-1,1))
         
         result = mm.run(ds)
         self.assertEqual(result['high'].max(), 1)

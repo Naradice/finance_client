@@ -705,7 +705,7 @@ def SlopeFromSeries(ser: pd.Series, window: int):
     slope_angle = (np.rad2deg(np.arctan(np.array(slopes))))
     slope_ser = pd.Series(np.array(slope_angle))
     slope_ser.index = index
-    return pd.Series(np.array(slope_angle))
+    return slope_ser
 
 def SlopeFromOHLC(ohlc_df: pd.DataFrame, window: int, column="Close",
                   slope_name="Slope"):
