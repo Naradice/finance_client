@@ -16,6 +16,7 @@ class Client:
         dir = os.path.dirname(__file__)
         self.__data_queue = None
         self.do_render = do_render
+        self.__pending_order_results = {}
         self.frame = frame
         if type(symbols) == str:
             self.symbols = [symbols]
@@ -125,8 +126,15 @@ class Client:
         """
         if position is not None:
             id = position.id
-        elif id is not None:
-            position = self.market.get_position(id)
+        
+        if id is not None:
+            if id in self.__pending_order_results:
+                closed_result = self.__pending_order_results[id]
+                self.logger.info("Specified position was already closed.")
+                self.__pending_order_results.pop(id)
+                return closed_result
+            if position is None:
+                position = self.market.get_position(id)
         else:
             self.logger.error("Either position or id should be specified.")
             return None
@@ -135,14 +143,14 @@ class Client:
         position_plot = 0
         if position.order_type == "ask":
             self.logger.debug(f"close long position is ordered for {id}")
-            if (price is None):
+            if price is None:
                 price = self.get_current_bid(position.symbol)
                 self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
             self._sell_for_settlment(position.symbol , price, amount, position.option, position.result)
             position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close long position is ordered for {id}")
-            if (price is None):
+            if price is None:
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
                 price = self.get_current_ask(position.symbol)
             self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
@@ -278,14 +286,16 @@ class Client:
                 if position.sl is not None:
                     if position.order_type == "ask":
                         if position.sl >= tick[low_column]:
-                            self.market.close_position(position, position.sl)
+                            result = self.market.close_position(position, position.sl)
+                            self.__pending_order_results[position.id] = result
                             self.logger.info("Position is closed to stop loss")
                             if self.do_render:
                                 self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             continue
                     elif position.order_type == "bid":
                         if position.sl <= tick[high_column]:
-                            self.market.close_position(position, position.sl)
+                            result = self.market.close_position(position, position.sl)
+                            self.__pending_order_results[position.id] = result
                             self.logger.info("Position is closed to stop loss")
                             if self.do_render:
                                 self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
@@ -298,14 +308,16 @@ class Client:
                     if position.order_type == "ask":
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
-                            self.market.close_position(position, position.tp)
+                            result = self.market.close_position(position, position.tp)
+                            self.__pending_order_results[position.id] = result
                             self.logger.info("Position is closed to take profit")
                             if self.do_render:
                                 self.__rendere.add_trade_history_to_latest_tick(-2, position.tp, self.__ohlc_index)
                     elif position.order_type == "bid":
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
-                            self.market.close_position(position, position.tp)
+                            result = self.market.close_position(position, position.tp)
+                            self.__pending_order_results[position.id] = result
                             self.logger.info("Position is closed to take profit")
                             if self.do_render:
                                 self.__rendere.add_trade_history_to_latest_tick(-1, position.tp, self.__ohlc_index)
