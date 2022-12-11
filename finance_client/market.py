@@ -254,7 +254,6 @@ class Manager:
                     self.logger.info(f"closed result:: profit {profit}, return_budget: {return_budget}")
                     self.positions["budget"] += return_budget
                     self.__locked = False
-                    self.__save_positions()
                     return price, position.price, price_diff, profit
                 else:
                     self.__locked = False
