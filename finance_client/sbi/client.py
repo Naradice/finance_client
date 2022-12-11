@@ -11,7 +11,7 @@ class SBIClient(Client):
     PASS_KEY="sbi_password"
     TRADE_PASS_KEY="sbi_trade_password"
     
-    def __init__(self, symbols:list, id:str=None, password:str=None, trade_password:str=None, use_yfinance=True, auto_step_index=True, adjust_close=True, frame: int=Frame.D1, provider="Default", do_render=True, logger_name=None, logger=None):
+    def __init__(self, symbols:list, id:str=None, password:str=None, trade_password:str=None, use_yfinance=True, auto_step_index=True, adjust_close=True, start_index=0, frame: int=Frame.D1, provider="Default", do_render=False, logger_name=None, logger=None):
         if id is None:
             if self.ID_KEY in os.environ:
                 id = os.environ[self.ID_KEY]
@@ -32,7 +32,7 @@ class SBIClient(Client):
         if budget is None:
             raise Exception("Failed to initialize with getting budget.")
         if use_yfinance:
-            self.client = YahooClient(symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close)
+            self.client = YahooClient(symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close, start_index=start_index)
         else:
             print("get_rate is not available if you specify use_yfinance=False")
         super().__init__(budget=budget, provider=provider, frame=frame, do_render=do_render, logger_name=logger_name, logger=logger)
@@ -40,8 +40,8 @@ class SBIClient(Client):
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, interval:int=None, symbols:list=[], frame:int=None):
-        return self.client._get_ohlc_from_client(interval, symbols, frame)
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol=True):
+        return self.client._get_ohlc_from_client(length, symbols, frame, grouped_by_symbol)
     
     def get_future_rates(self, interval, symbols=[]) -> pd.DataFrame:
         return self.client.get_future_rates(interval, symbols=symbols)

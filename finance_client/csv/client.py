@@ -89,7 +89,16 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             delta = (data.index[1:] - data.index[:-1]).min()
         else:
             delta = (data.index[:-1] - data.index[1:]).min()
-        frame = int(delta.total_seconds()/60)
+        
+        if type(delta) == pd.Timedelta:
+            frame = int(delta.total_seconds()/60)
+        else:
+            if self.frame is None:
+                self.logger.error(f"index has unexpected type: {type(data.index)} made {type(delta)} for {self.symbols}")
+                frame = delta
+            else:
+                frame = self.frame
+        
         if self.frame is None:
             self.frame = frame
         else:
