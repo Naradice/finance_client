@@ -1,12 +1,10 @@
-from time import sleep
-from turtle import position
-import uuid
 import datetime
 import json
 import os
-from logging import getLogger, config
-import json
-import pickle
+import uuid
+from logging import config, getLogger
+from time import sleep
+
 
 class Position:
     
@@ -33,8 +31,11 @@ class Position:
             self.sl = None
         self.timestamp = datetime.datetime.utcnow()
         
-    def __str__(self) -> str:
+    def __str__(self):
         return f'(order_type:{self.order_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol})'
+
+    def __repr__(self):
+        return self.__str__()
     
     def to_dict(self):
         return {"order_type": self.order_type, "price":self.price, "amount":self.amount, "option": json.dumps(self.option), 
@@ -159,6 +160,14 @@ class Manager:
     @property
     def budget(self):
         return self.positions["budget"]
+    
+    @property
+    def ask_positions(self):
+        return self.positions["ask"]
+    
+    @property
+    def bid_positions(self):
+        return self.positions["bid"]
 
     def __wait_lock(self):
         while self.__locked:

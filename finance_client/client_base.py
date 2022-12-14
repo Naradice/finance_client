@@ -1,13 +1,17 @@
+import datetime
+import json
+import os
 import queue
 import threading
-import pandas as pd
-import finance_client.utils as utils
-import finance_client.market as market
-import finance_client.frames as Frame
-from finance_client.render import graph
-from logging import getLogger, config
-import os, json, datetime
 import time
+from logging import config, getLogger
+
+import pandas as pd
+
+from . import frames as Frame
+from . import market, utils
+from .render import graph
+
 
 class Client:
     
@@ -443,10 +447,10 @@ class Client:
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass
     
-    def get_current_ask(self) -> float:
+    def get_current_ask(self, symbols=[]) -> pd.Series:
         print("Need to implement get_current_ask on your client")
     
-    def get_current_bid(self) -> float:
+    def get_current_bid(self, symbols=[]) -> pd.Series:
         print("Need to implement get_current_bid on your client")
             
     def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
@@ -702,3 +706,59 @@ class Client:
         else:
             self.logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
             return pd.DataFrame()
+    
+    def get_budget(self) -> tuple:
+        ask_states, bid_states = self.get_portfolio()
+        in_use = 0
+        profit = 0
+        for state in ask_states:
+            in_use += state[1]*state[2]
+            profit += state[4]
+            
+        for state in bid_states:
+            in_use += state[1]
+            profit += state[4]
+        return self.market.budget, in_use, profit
+    
+    def get_portfolio(self) -> tuple:
+        portfolio = {"ask":{}, "bid":{}}
+        ask_positions = self.market.ask_positions
+        ask_symbols = []
+        if len(ask_positions) > 0:
+            for id, position in ask_positions.items():
+                symbol = position.symbol
+                ask_symbols.append(symbol)
+                if symbol in portfolio["ask"]:
+                    portfolio["ask"][symbol].append(position)
+                else:
+                    portfolio["ask"][symbol] = [position]
+                    
+        bid_positions = self.market.bid_positions
+        bid_symbols = []
+        if len(bid_positions) > 0:
+            for id, position in bid_positions.items():
+                symbol = position.symbol
+                bid_symbols.append(symbol)
+                if symbol in portfolio["bid"]:
+                    portfolio["bid"][symbol].append(position)
+                else:
+                    portfolio["bid"][symbol] = [position]
+        
+        bid_rates = self.get_current_bid(ask_symbols)
+        ask_position_states = []
+        for symbol, positions in portfolio["ask"].items():
+            bid_rate = bid_rates[symbol]
+            for position in positions:
+                profit = (bid_rate - position.price) * position.amount
+                profit_rate = bid_rate/position.price
+                ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
+        
+        ask_rates = self.get_current_ask(bid_symbols)
+        bid_position_states = []
+        for symbol, positions in portfolio["bid"].items():
+            ask_rate = ask_rates[symbol]
+            for position in positions:
+                profit = (position.price - ask_rate) * position.amount
+                profit_rate = position.price/ask_rate
+                bid_position_states.append((symbol, position.price, position.amount, ask_rate, profit, profit_rate))
+        return ask_position_states, bid_position_states
