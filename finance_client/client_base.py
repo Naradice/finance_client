@@ -745,18 +745,26 @@ class Client:
                     portfolio["bid"][symbol] = [position]
         
         bid_rates = self.get_current_bid(ask_symbols)
+        if type(bid_rates) == pd.Series:
+            get_bid_rate = lambda symbol: bid_rates[symbol]
+        else:
+            get_bid_rate = lambda symbol: bid_rates
         ask_position_states = []
         for symbol, positions in portfolio["ask"].items():
-            bid_rate = bid_rates[symbol]
+            bid_rate = get_bid_rate(symbol)
             for position in positions:
                 profit = (bid_rate - position.price) * position.amount
                 profit_rate = bid_rate/position.price
                 ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
         
         ask_rates = self.get_current_ask(bid_symbols)
+        if type(ask_rates) == pd.Series:
+            get_ask_rate = lambda symbol: ask_rates[symbol]
+        else:
+            get_ask_rate = lambda symbol: ask_rates
         bid_position_states = []
         for symbol, positions in portfolio["bid"].items():
-            ask_rate = ask_rates[symbol]
+            ask_rate = get_ask_rate(symbol)
             for position in positions:
                 profit = (position.price - ask_rate) * position.amount
                 profit_rate = position.price/ask_rate
