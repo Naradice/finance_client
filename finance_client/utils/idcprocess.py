@@ -196,7 +196,7 @@ class EMAProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            ema = indicaters.EMAMulti(symbols, data, window, grouped_by_symbol=grouped_by_symbol, ema_name=column)
+            ema = indicaters.EMAMulti(symbols, data, target_column, window, grouped_by_symbol=grouped_by_symbol, ema_name=column)
         else:
             ema = indicaters.EMA(data[target_column], window)
             ema.columns = [column]

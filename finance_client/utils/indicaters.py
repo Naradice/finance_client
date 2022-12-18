@@ -90,11 +90,14 @@ def EMA(data, interval, alpha=None):
     else:
         raise Exception("data list has no value")
 
-def EMAMulti(symbols:list, data:pd.DataFrame, interval:int, alpha=None, grouped_by_symbol=False,
+def EMAMulti(symbols:list, data:pd.DataFrame, target_column:str, interval:int, alpha=None, grouped_by_symbol=False,
              ema_name="EMA"):
     df = data.copy()
     if grouped_by_symbol == False:
+        df = df[target_column][symbols]
+    else:
         df.columns = df.columns.swaplevel(0, 1)
+        df = df[target_column][symbols]
     df = df[symbols]
     ema_df = EMA(df, interval, alpha)
     elements, columns = create_multi_out_lists(symbols, [ema_df], [ema_name], grouped_by_symbol)
