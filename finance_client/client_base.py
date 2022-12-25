@@ -646,7 +646,7 @@ class Client:
             data = ps.revert(data)
         return data
     
-    def roll_data(self, data: pd.DataFrame, to_frame:int=None, to_freq:str=None, grouped_by_symbol=True) -> pd.DataFrame:
+    def roll_ohlc_data(self, data: pd.DataFrame, to_frame:int=None, to_freq:str=None, grouped_by_symbol=True, Open="Open", High="High", Low="Low", Close="Close", Volume="Volume") -> pd.DataFrame:
         """ Roll time series data by specified frequency.
 
         Args:
@@ -674,25 +674,39 @@ class Client:
             
         ohlc_columns_dict = self.get_ohlc_columns()
         rolled_data_dict = {}
-        if "Open" in ohlc_columns_dict:
-            opn_clm = ohlc_columns_dict["Open"]
-            ##assume index isn't Multi index
+        if Open: 
+            if Open in ohlc_columns_dict:
+                opn_clm = ohlc_columns_dict[Open]
+            else:
+                opn_clm = Open
             rolled_opn = data[opn_clm].groupby(pd.Grouper(level=0, freq=freq)).first()
             rolled_data_dict[opn_clm] = rolled_opn
-        if "High" in ohlc_columns_dict:
-            high_clm = ohlc_columns_dict["High"]
+        if High: 
+            if High in ohlc_columns_dict:
+                high_clm = ohlc_columns_dict[High]
+            else:
+                high_clm = High
             rolled_high = data[high_clm].groupby(pd.Grouper(level=0, freq=freq)).max()
             rolled_data_dict[high_clm] = rolled_high
-        if "Low" in ohlc_columns_dict:
-            low_clm = ohlc_columns_dict["Low"]
+        if Low: 
+            if Low in ohlc_columns_dict:
+                low_clm = ohlc_columns_dict[Low]
+            else:
+                low_clm = Low
             rolled_low = data[low_clm].groupby(pd.Grouper(level=0, freq=freq)).min()
             rolled_data_dict[low_clm] = rolled_low
-        if "Close" in ohlc_columns_dict:
-            cls_clm = ohlc_columns_dict["Close"]
+        if Close: 
+            if Close in ohlc_columns_dict:
+                cls_clm = ohlc_columns_dict[Close]
+            else:
+                cls_clm = Close
             rolled_cls = data[cls_clm].groupby(pd.Grouper(level=0, freq=freq)).last()
             rolled_data_dict[cls_clm] = rolled_cls
-        if "Volume" in ohlc_columns_dict:
-            vlm_clm = ohlc_columns_dict["Volume"]
+        if Volume: 
+            if Volume in ohlc_columns_dict:
+                vlm_clm = ohlc_columns_dict[Volume]
+            else:
+                vlm_clm = Volume
             rolled_vlm = data[vlm_clm].groupby(pd.Grouper(level=0, freq=freq)).sum()
             rolled_data_dict[vlm_clm] = rolled_vlm
         

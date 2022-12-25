@@ -431,7 +431,7 @@ class CSVClient(CSVClientBase):
         if out_frame is not None:
             if self.frame < out_frame:
                 #Rolled result has NaN regardless market is open or not.
-                self.data = self.roll_data(self.data, out_frame, grouped_by_symbol=True)
+                self.data = self.roll_ohlc_data(self.data, out_frame, grouped_by_symbol=True)
                 if  dropna:
                     self.data = self.data.dropna()
                 self.frame = out_frame
@@ -508,7 +508,7 @@ class CSVClient(CSVClientBase):
             self._update_rates(symbols)
             rates = self.data.copy()
             if frame is not None and self.frame < frame:
-                rates = self.roll_data(rates, frame, grouped_by_symbol=True)
+                rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
             if len(symbols) != 0:
                 try:
                     #data is grouped by symbol by csv read
@@ -534,7 +534,7 @@ class CSVClient(CSVClientBase):
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
 
             if frame is not None and self.frame < frame:
-                rates = self.roll_data(rates, frame, grouped_by_symbol=True)
+                rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
                 if self.dropna:
                     rates = self.data.dropna()
             rates = rates.iloc[:out_length].copy()
@@ -742,7 +742,7 @@ class CSVClient(CSVClientBase):
         if len(columns) > 0:
             target_columns = columns
         else:
-            target_columns = data[target_symbols].columns
+            target_columns = data[target_symbols[0]].columns
             
         return pd.concat([data[symbol][target_columns].iloc[-length:].T for symbol in target_symbols])
         
