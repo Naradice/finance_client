@@ -737,6 +737,9 @@ class CSVClient(CSVClientBase):
         
         required_length = length + self._get_required_length(idc_processes + pre_processes)
         ohlc_df = self.__get_rates(index, required_length, symbols, frame)
+        for process in pre_processes:
+            if process.initialization_required:
+                process.initialize(self.data)
         data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, True)
         
         if len(columns) > 0:
