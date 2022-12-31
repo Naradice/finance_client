@@ -15,7 +15,8 @@ from .render import graph
 
 class Client:
     
-    def __init__(self, budget=1000000.0, provider="Default", symbols=[], out_ohlc_columns = ("Open", "High", "Low", "Close"), frame=None, do_render=True, logger_name=None, logger=None):
+    def __init__(self, budget=1000000.0, provider="Default", symbols=[], out_ohlc_columns = ("Open", "High", "Low", "Close"), 
+                 idc_process=None, pre_process=None, economic_keys=None, frame=None, do_render=True, logger_name=None, logger=None):
         self.auto_index = None
         dir = os.path.dirname(__file__)
         self.__data_queue = None
@@ -61,6 +62,18 @@ class Client:
             self.market = market.Manager(budget, logger=logger, provider=provider)
         
         self.out_ohlc_columns = out_ohlc_columns
+        if idc_process is None:
+            self.idc_process = []
+        else:
+            self.idc_process = idc_process
+        if pre_process is None:
+            self.pre_process = []
+        else:
+            self.pre_process = pre_process
+        if economic_keys is None:
+            self.eco_keys = []
+        else:
+            self.eco_keys = economic_keys
     
     def initialize_budget(self, budget):
         self.market(budget)
@@ -224,6 +237,16 @@ class Client:
         for process in pre_processes:
             data_cp = process.run(data_cp)
         return data_cp
+    
+    def get_economic_idc(self, keys, start, end):
+        data = []
+        for key in keys:
+            idc_data = utils.get_indicater(key, start, end)
+            if idc_data is not None:
+                data.append(idc_data)
+        if len(data) > 0:
+            return pd.concat(data, axis=1)
+        return pd.DataFrame()
               
     def get_data_queue(self, data_length:int, symbols:list=[], frame:int=None):
         """
@@ -380,7 +403,7 @@ class Client:
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
         
-    def get_ohlc(self, length:int = None, symbols:list=[], frame:int=None, idc_processes=[], pre_processes=[], grouped_by_symbol=True) -> pd.DataFrame:
+    def get_ohlc(self, length:int = None, symbols:list=None, frame:int=None, idc_processes=None, pre_processes=None, economic_keys=None, grouped_by_symbol=True) -> pd.DataFrame:
         """ get ohlc data with length length
 
         Args:
@@ -394,14 +417,34 @@ class Client:
             pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
             Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
+        
+        if symbols is None:
+            symbols = []
+        
+        if frame is None:
+            frame = self.frame
+        
+        if idc_processes is None:
+            idc_processes = self.idc_process
+        if pre_processes is None:
+            pre_processes = self.pre_process
+        if economic_keys is None:
+            economic_keys = self.eco_keys
+        
         do_run_process = False
         if len(idc_processes) > 0 or len(pre_processes) > 0:
             do_run_process = True
+        
+        do_add_eco_idc = False
+        if len(economic_keys) > 0:
+            do_add_eco_idc = True
             
         if type(symbols) == str:
             symbols = [symbols]
         if len(symbols) == 0:
             symbols = self.symbols
+            
+        data_freq = Frame.to_panda_freq(frame)
         
         if length is None:
             ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
@@ -417,6 +460,9 @@ class Client:
             else:
                 target_length = length
             ohlc_df = self._get_ohlc_from_client(length=target_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+            
+        ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+        ohlc_df.dropna(thresh=4, inplace=True)
         
         t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
@@ -426,15 +472,30 @@ class Client:
                 data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
                 if self.do_render:
                     self.__plot_data_width_indicaters(symbols, data)
-                if length is None:
-                    return data
-                else:
-                    return data.iloc[-length:]
             else:
                 self.logger.error(f"data length is insufficient to caliculate indicaters.")
-        elif self.do_render:
-            self.__plot_data(symbols, ohlc_df)
-        return ohlc_df
+        else:
+            data = ohlc_df
+            
+        if do_add_eco_idc:
+            first_index = ohlc_df.index[0]
+            end_index = ohlc_df.index[-1]
+            indicaters_df = self.get_economic_idc(economic_keys, first_index, end_index)
+            indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+            if frame < Frame.D1:
+                if indicaters_df.index.tzinfo is None:
+                    indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
+            indicaters_df = indicaters_df.fillna(method="ffill")
+            data = pd.concat([data, indicaters_df], axis=1)
+            data.dropna(thresh=4, inplace=True)
+            
+        if self.do_render:
+            self.__plot_data(symbols, data)
+            
+        if length is None:
+            return data
+        else:
+            return data.iloc[-length:]
       
     ## Need to implement in the actual client ##
     
@@ -646,7 +707,7 @@ class Client:
             data = ps.revert(data)
         return data
     
-    def roll_ohlc_data(self, data: pd.DataFrame, to_frame:int=None, to_freq:str=None, grouped_by_symbol=True, Open="Open", High="High", Low="Low", Close="Close", Volume="Volume") -> pd.DataFrame:
+    def roll_ohlc_data(self, data: pd.DataFrame, to_frame:int=None, to_freq:str=None, grouped_by_symbol=True, Open="Open", High="High", Low="Low", Close="Close", Volume=None) -> pd.DataFrame:
         """ Roll time series data by specified frequency.
 
         Args:

@@ -1,14 +1,14 @@
 import numpy
-from finance_client.utils import indicaters
 import pandas as pd
-from finance_client.utils.convert import get_symbols
-from finance_client.utils.process import ProcessBase
+
+from .convert import get_symbols
+from .indicaters import technical
+from .process import ProcessBase
 
 """ process class to add indicater for data_client, dataset, env etc
     is_input, is_output are used for machine learning
 """
 
-#TODO: make output DataFrame
 def get_available_processes() -> dict:
     processes = {
         'MACD': MACDProcess,
@@ -106,10 +106,10 @@ class MACDProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            macd_df = indicaters.MACDFromOHLCMulti(symbols, data, target_column, short_window, long_window, signal_window, grouped_by_symbol,
+            macd_df = technical.MACDFromOHLCMulti(symbols, data, target_column, short_window, long_window, signal_window, grouped_by_symbol,
                                                    short_ema_name=cs_ema, long_ema_name=cl_ema, macd_name=c_macd, signal_name=c_signal)
         else:
-            macd_df = indicaters.MACDFromOHLC(data, target_column, short_window, long_window, signal_window,
+            macd_df = technical.MACDFromOHLC(data, target_column, short_window, long_window, signal_window,
                                               short_ema_name=cs_ema, long_ema_name=cl_ema, macd_name=c_macd, signal_name=c_signal)
         
         self.last_data = macd_df.iloc[-self.get_minimum_required_length():]
@@ -131,7 +131,7 @@ class MACDProcess(ProcessBase):
             c_signal = self.columns[self.KEY_SIGNAL]
             
             
-            short_ema, long_ema, MACD = indicaters.update_macd(
+            short_ema, long_ema, MACD = technical.update_macd(
                 new_tick=tick,
                 short_ema_value=self.last_data[cs_ema].iloc[-1],
                 long_ema_value=self.last_data[cl_ema].iloc[-1],
@@ -154,7 +154,7 @@ class MACDProcess(ProcessBase):
         #assume ShortEMA is in 1st
         short_ema = data_set[0]
         short_window = self.option['short_window']
-        out = indicaters.revert_EMA(short_ema, short_window)
+        out = technical.revert_EMA(short_ema, short_window)
         return True, out
 
 class EMAProcess(ProcessBase):
@@ -196,9 +196,9 @@ class EMAProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            ema = indicaters.EMAMulti(symbols, data, target_column, window, grouped_by_symbol=grouped_by_symbol, ema_name=column)
+            ema = technical.EMAMulti(symbols, data, target_column, window, grouped_by_symbol=grouped_by_symbol, ema_name=column)
         else:
-            ema = indicaters.EMA(data[target_column], window)
+            ema = technical.EMA(data[target_column], window)
             ema.columns = [column]
             
         self.last_data = ema.iloc[-self.get_minimum_required_length():]
@@ -211,7 +211,7 @@ class EMAProcess(ProcessBase):
         column = self.columns["EMA"]
         
         
-        short_ema, long_ema, MACD = indicaters.update_ema(
+        short_ema, long_ema, MACD = technical.update_ema(
             new_tick=tick,
             column=target_column,
             window = window)
@@ -227,7 +227,7 @@ class EMAProcess(ProcessBase):
         #assume EMA is in 1st
         ema = data_set[0]
         window = self.option['window']
-        out = indicaters.revert_EMA(ema, window)
+        out = technical.revert_EMA(ema, window)
         return True, out
 
 class BBANDProcess(ProcessBase):
@@ -280,10 +280,10 @@ class BBANDProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            bb_df = indicaters.BolingerFromOHLCMulti(symbols, data, window=window, alpha=alpha, grouped_by_symbol=grouped_by_symbol,
+            bb_df = technical.BolingerFromOHLCMulti(symbols, data, window=window, alpha=alpha, grouped_by_symbol=grouped_by_symbol,
                                                 mean_name=c_ema, upper_name=c_ub, lower_name=c_lb, width_name=c_width, std_name=None)
         else:
-            bb_df = indicaters.BolingerFromOHLC(data, target_column, window=window, alpha=alpha,
+            bb_df = technical.BolingerFromOHLC(data, target_column, window=window, alpha=alpha,
                                                 mean_name=c_ema, upper_name=c_ub, lower_name=c_lb, width_name=c_width, std_name=None)
         
         self.last_data = bb_df.iloc[-self.get_minimum_required_length():]
@@ -359,10 +359,10 @@ class ATRProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            atr_df = indicaters.ATRFromMultiOHLC(symbols, data, target_columns, window=window, grouped_by_symbol=grouped_by_symbol,
+            atr_df = technical.ATRFromMultiOHLC(symbols, data, target_columns, window=window, grouped_by_symbol=grouped_by_symbol,
                                                  tr_name=None, atr_name=c_atr)
         else:
-            atr_df = indicaters.ATRFromOHLC(data, target_columns, window=window, tr_name=None, atr_name=c_atr)
+            atr_df = technical.ATRFromOHLC(data, target_columns, window=window, tr_name=None, atr_name=c_atr)
         last_ohlc = data.iloc[-self.get_minimum_required_length():]
         last_atr = atr_df.iloc[-self.get_minimum_required_length():]
     
@@ -376,7 +376,7 @@ class ATRProcess(ProcessBase):
         c_atr = self.columns[self.KEY_ATR]
         
         pre_data = self.last_data.iloc[-1]
-        new_atr_value = indicaters.update_ATR(pre_data, tick, target_columns, c_atr, window)
+        new_atr_value = technical.update_ATR(pre_data, tick, target_columns, c_atr, window)
         df = tick.copy()
         df[c_atr] = new_atr_value
         self.last_data = self.concat(self.last_data.iloc[1:], df)
@@ -437,10 +437,10 @@ class RSIProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            rsi_df = indicaters.RSIFromOHLCMulti(symbols, data, target_column, window=window, grouped_by_symbol=grouped_by_symbol,                                 
+            rsi_df = technical.RSIFromOHLCMulti(symbols, data, target_column, window=window, grouped_by_symbol=grouped_by_symbol,                                 
                                                 mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi)
         else:
-            rsi_df = indicaters.RSIFromOHLC(data, target_column, window=window,
+            rsi_df = technical.RSIFromOHLC(data, target_column, window=window,
                                                 mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi)
             
         last_ohlc = data.iloc[-self.get_minimum_required_length():]
@@ -458,7 +458,7 @@ class RSIProcess(ProcessBase):
         columns = (c_gain, c_loss, c_rsi, target_column)
         
         pre_data = self.last_data.iloc[-1]
-        new_gain_val, new_loss_val, new_rsi_value = indicaters.update_RSI(pre_data, tick, columns, window)
+        new_gain_val, new_loss_val, new_rsi_value = technical.update_RSI(pre_data, tick, columns, window)
         tick[c_gain] = new_gain_val
         tick[c_loss] = new_loss_val
         tick[c_rsi] = new_rsi_value
@@ -511,10 +511,10 @@ class RenkoProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            renko_df = indicaters.RenkoFromMultiOHLC(symbols, data, ohlc_columns=ohlc_column, atr_window=window, grouped_by_symbol=grouped_by_symbol,
+            renko_df = technical.RenkoFromMultiOHLC(symbols, data, ohlc_columns=ohlc_column, atr_window=window, grouped_by_symbol=grouped_by_symbol,
                                                      total_brick_name=renko_value, brick_num_name=renko_block_num)
         else:
-            renko_df = indicaters.RenkoFromOHLC(data, ohlc_columns=ohlc_column, atr_window=window, total_brick_name=renko_value, brick_num_name=renko_block_num)
+            renko_df = technical.RenkoFromOHLC(data, ohlc_columns=ohlc_column, atr_window=window, total_brick_name=renko_value, brick_num_name=renko_block_num)
         return renko_df
         
     def update(self, tick:pd.Series, symbols:list=[]):
@@ -562,9 +562,9 @@ class SlopeProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            slope_df = indicaters.SlopeFromOHLCMulti(symbols, data, window=window, column=column, grouped_by_sygnal=grouped_by_symbol, slope_name=out_column)
+            slope_df = technical.SlopeFromOHLCMulti(symbols, data, window=window, column=column, grouped_by_sygnal=grouped_by_symbol, slope_name=out_column)
         else:
-            slope_df = indicaters.SlopeFromOHLC(data, window=window, column=column, slope_name=out_column)
+            slope_df = technical.SlopeFromOHLC(data, window=window, column=column, slope_name=out_column)
         #slope_df.columns = [out_column]
         #data = pd.concat([data, slope_df], axis=1)
         #return data
@@ -622,9 +622,9 @@ class CCIProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            cci_df = indicaters.CommodityChannelIndexMulti(symbols, data, window, ohlc_column, grouped_by_sygnal=grouped_by_symbol, cci_name=out_column)
+            cci_df = technical.CommodityChannelIndexMulti(symbols, data, window, ohlc_column, grouped_by_sygnal=grouped_by_symbol, cci_name=out_column)
         else:
-            cci_df = indicaters.CommodityChannelIndex(data, window, ohlc_column, cci_name=out_column)
+            cci_df = technical.CommodityChannelIndex(data, window, ohlc_column, cci_name=out_column)
         
         return cci_df
     
@@ -842,7 +842,7 @@ class RangeTrendProcess(ProcessBase):
         slope_dfs = pd.concat(slope_df_list, axis=1)
         possibility_dfs = pd.concat(possibility_df_list, axis=1)
         cls = [self.columns[self.KEY_TREND], self.columns[self.KEY_RANGE]]
-        elements, columns = indicaters.create_multi_out_lists(symbols, [slope_dfs, possibility_dfs], cls, grouped_by_symbol=grouped_by_symbol)
+        elements, columns = technical.create_multi_out_lists(symbols, [slope_dfs, possibility_dfs], cls, grouped_by_symbol=grouped_by_symbol)
         out_df = pd.concat(elements, axis=1)
         if self.is_multi_mode:
             out_df.columns = columns
@@ -871,38 +871,3 @@ class RangeTrendProcess(ProcessBase):
     def revert(self, data_set:tuple):
         print("not supported for now")
         return False, None 
-
-####
-# Not implemented as I can't caliculate required length
-"""
-class RollingProcess(ProcessBase):
-    kinds = 'Roll'
-    last_tick:pd.DataFrame = None
-    
-    def __init__(self, key = "roll", frame_from:int = 5, frame_to: int = 30, is_input=True, is_output=True):
-        super().__init__(key)
-        self.frame_from = frame_from
-        self.frame_to = frame_to
-        self.is_input = is_input
-        self.is_output = is_output
-        raise NotImplemented
-    
-    @classmethod
-    def load(self, key:str, params:dict):
-        raise NotImplemented
-        
-    def run(self, data: pd.DataFrame) -> dict:
-        raise NotImplemented
-        return None
-    
-    def update(self, tick:pd.Series):
-        raise NotImplemented
-        return None
-        
-    
-    def get_minimum_required_length(self):
-        raise NotImplemented
-    
-    def revert(self, data_set: tuple):
-        raise NotImplemented
-"""

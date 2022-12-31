@@ -1,5 +1,7 @@
-import pandas as pd
 from collections.abc import Iterable
+
+import pandas as pd
+
 
 def mini_max(data, min=None, max=None, scale=(0, 1)):
     if type(data) is pd.DataFrame:

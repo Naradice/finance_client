@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from .convert import concat_df_symbols
+
 
 def __create_out_lists(elements, column_names):
     out_elements = []

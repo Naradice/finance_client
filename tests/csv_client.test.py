@@ -1,13 +1,21 @@
-import unittest, os, json, sys, datetime
+import datetime
+import json
+import os
+import sys
+import unittest
+
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client.csv.client import CSVClient, CSVChunkClient
+from logging import config, getLogger
+
+import pandas as pd
+
 import finance_client.frames as Frame
 from finance_client import utils
-from logging import getLogger, config
-import pandas as pd
+from finance_client.csv.client import CSVChunkClient, CSVClient
+
 try:
     with open(os.path.join(module_path, 'finance_client/settings.json'), 'r') as f:
         settings = json.load(f)
@@ -36,11 +44,12 @@ csv_files_5min = [f'{file_base}/yfinance_{symbol}_MIN5.csv' for symbol in symbol
 
 class TestCSVClient(unittest.TestCase):
     
+    """
     def test_init(self):
         client = CSVClient(logger=logger)
 
     def test_get_rates(self):
-        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
+        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column, start_index=10)
         length = 10
         rates = client.get_ohlc(length)
         self.assertEqual(len(rates.Close), length)
@@ -102,6 +111,12 @@ class TestCSVClient(unittest.TestCase):
         delta = df.index[1] - df.index[0]
         delta_ex = datetime.timedelta(minutes=30)
         self.assertEqual(delta, delta_ex)
+"""
+
+    def test_add_indicaters(self):
+        client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1))
+        data = client.get_ohlc(100)
+        print(data)
 """
 class TestCSVClientMulti(unittest.TestCase):
     

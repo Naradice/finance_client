@@ -1,11 +1,19 @@
-import unittest, os, json, sys, datetime, random, time
+import datetime
+import json
+import os
+import random
+import sys
+import time
+import unittest
+
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(module_path)
-from finance_client.client_base import Client
+import pandas as pd
+
 import finance_client.frames as Frame
 from finance_client import utils
+from finance_client.client_base import Client
 
-import pandas as pd
 
 class TestClient(Client):
     
@@ -22,8 +30,8 @@ class TestClient(Client):
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, interval:int=None, symbols:list=[], frame:int=None):
-        df = self.data.iloc[self.step_index - interval+1: self.step_index+1]
+    def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol=None):
+        df = self.data.iloc[self.step_index - length+1: self.step_index+1]
         self.step_index += 1
         return df
     
@@ -79,26 +87,15 @@ class TestClient(Client):
 
 class TestCSVClient(unittest.TestCase):
     
-    def test_process(self):
-        client = Client()
-        process = utils.ProcessBase("base")
-        invalid = client.have_process(process)
-        self.assertEqual(invalid, False)
-        client.add_indicater(process)
-        process2 = utils.ProcessBase("base")
-        valid = client.have_process(process2)
-        self.assertEqual(valid, True)
-        client.add_indicaters([process, process2])
-    
     def test_get_rates_wo_plot(self):
         client = TestClient(do_rendere=False)
-        rates = client.get_rates(100)
+        rates = client.get_ohlc(100)
         self.assertEqual(len(rates["Open"]), 100)
         
     def test_get_rates_with_plot(self):
         client = TestClient(do_rendere=True)
         for i in range(0, 10):
-            client.get_rates(100)
+            client.get_ohlc(100)
             time.sleep(1)
 
     

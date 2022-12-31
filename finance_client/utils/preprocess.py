@@ -1,7 +1,10 @@
-from finance_client.utils import standalization, convert
-import pandas as pd
-from finance_client.utils.process import ProcessBase
 from collections.abc import Iterable
+
+import pandas as pd
+
+from finance_client.utils import convert, standalization
+from finance_client.utils.process import ProcessBase
+
 
 def get_available_processes() -> dict:
     processes = {

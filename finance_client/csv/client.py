@@ -1,11 +1,18 @@
+import datetime
+import difflib
+import math
+import os
+import random
+from abc import ABCMeta, abstractmethod
+
 import numpy
 import pandas as pd
-import random, difflib, os, datetime, math
+
 import finance_client.frames as Frame
 from finance_client.client_base import Client
 from finance_client.utils.convert import get_symbols
-from finance_client.utils.csvrw import write_df_to_csv, read_csv
-from abc import ABCMeta, abstractmethod
+from finance_client.utils.csvrw import read_csv, write_df_to_csv
+
 
 class CSVClientBase(Client, metaclass=ABCMeta):
     kinds = 'csv'
@@ -85,25 +92,24 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
     def _initialize_date_index(self, data:pd.DataFrame, ascending:bool):
         data = data.sort_index(ascending=ascending)
-        if ascending:
-            delta = (data.index[1:] - data.index[:-1]).min()
-        else:
-            delta = (data.index[:-1] - data.index[1:]).min()
         
-        if type(delta) == pd.Timedelta:
-            frame = int(delta.total_seconds()/60)
+        if ascending:
+            delta = data.index[1:] - data.index[:-1]
         else:
-            if self.frame is None:
-                self.logger.error(f"index has unexpected type: {type(data.index)} made {type(delta)} for {self.symbols}")
-                frame = delta
-            else:
-                frame = self.frame
+            delta = (data.index[:-1] - data.index[1:]).to_series().mode()
+        df = delta.to_series()
+        delta = df.mode().values[0]
+        delta = delta / numpy.timedelta64(1, 's')
+        delta = delta / 60
+        
+        frame = delta
         
         if self.frame is None:
             self.frame = frame
         else:
             if self.frame != frame:
-                self.logger.warning("different frame data is provided. it break some features")
+                self.logger.warning("different frame data is provided. it break some features. use index frame instead")
+                self.frame = frame
         
         if self.frame < Frame.D1:
             if data.index.tzinfo is None:
@@ -114,16 +120,14 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         is_date_found = True
         if data is not None and len(data) > 0:
             if start_date is not None and type(start_date) is datetime.datetime:
-                #data[data.index >= start_date.astimezone(datetime.timezone.utc)].index[0]
-                start_date = start_date.astimezone(datetime.timezone.utc)
-                is_date_found = False
-                for index in range(self._step_index, len(data.index)):
-                    if data.index[index] >= start_date:
-                        # date is retrievd by [:step_index], so we need to plus 1
-                        self._step_index = index + 1
-                        is_date_found = True
-                        break
-                if is_date_found is False:
+                #start_date = start_date.astimezone(datetime.timezone.utc)
+                start_date = start_date.replace(tzinfo=datetime.timezone.utc)
+                remaining_length = len(data.index[data.index >= start_date])
+                if remaining_length > 0:
+                    start_index = len(data.index) - remaining_length
+                    # date is retrievd by [:step_index], so we need to plus 1
+                    self._step_index = start_index + 1
+                else:
                     self._step_index = len(data.index)
                     self.logger.warning(f"start date {start_date} doesn't exit in the index")
         return is_date_found
@@ -261,13 +265,16 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
     def __init__(self, files:list = [], columns = [], date_column = None, 
                  file_name_generator=None, symbols = [], frame:int=None, out_frame:int=None,
+                 idc_process=None, pre_process=None, economic_keys=None,
                  start_index = 0, start_date = None, start_random_index=False, auto_step_index=True, skiprows=None, auto_reset_index=False,
                  slip_type="random", budget=1000000, 
                  do_render=False, seed=1017, provider="csv", logger=None):
         """CSV Client Base
         Need to change codes to use settings file
         """
-        super().__init__(budget=budget,do_render=do_render, symbols=symbols, out_ohlc_columns=columns, frame=frame, provider=provider, logger_name=__name__, logger=logger)
+        super().__init__(budget=budget,do_render=do_render, symbols=symbols, out_ohlc_columns=columns, 
+                         idc_process=idc_process, pre_process=pre_process, economic_keys=economic_keys,
+                         frame=frame, provider=provider, logger_name=__name__, logger=logger)
         random.seed(seed)
         self.data = None
         self.files = []
@@ -311,6 +318,17 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         self.frame = frame
         self.symbols = []
         
+        self._auto_reset = auto_reset_index
+        if start_index:
+            if start_index >= 0:
+                self._step_index = start_index
+            else:
+                raise ValueError("start index should be greater than 0.")
+        elif start_random_index:
+            self._step_index = random.randint(1, len(self))
+        else:
+            self._step_index = 1
+        
         if len(files) > 0:
             if type(files) == str:
                 self.files = [os.path.abspath(files)]
@@ -326,19 +344,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             self._initialize_file_name_func(files)
             self.data, __symbols = self._read_csv(self.files, symbols, columns, date_column, skiprows, start_date, frame)
             self.symbols = list(__symbols)
-                            
-        self._auto_reset = auto_reset_index
-        if start_index:
-            if start_index >= 0:
-                self._step_index = start_index
-            else:
-                self._step_index = len(self) - start_index
-        elif start_random_index:
-            self._step_index = random.randint(0, len(self))
-        else:
-            self._step_index = 0
         if self._step_index > len(self):
             self.logger.warning(f"step index {self._step_index} is greater than data length {len(self)}")
+
     
     def get_current_index(self):
         return self._step_index
@@ -403,7 +411,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 class CSVClient(CSVClientBase):
                 
     def __init__(self, files: list=[], columns=[], date_column=None, file_name_generator=None, symbols=[], frame:int=None, out_frame: int = None, 
-                 start_index=0, start_date=None, start_random_index=False, auto_step_index=True, skiprows=None, dropna=False,
+                 idc_process=None, pre_process=None, economic_keys=None,
+                 start_index=0, start_date=None, start_random_index=False, auto_step_index=True, skiprows=None,
                  auto_reset_index=False, slip_type="random", budget=1000000, do_render=False, seed=1017, provider="csv", logger=None):
         """CSV Client for time series data like bitcoin, stock, finance
         
@@ -415,25 +424,26 @@ class CSVClient(CSVClientBase):
             symbols (list, optional): symbols name of data. Used to specify columns names.
             frame (int, optional): input frame. Specify time series span by minutes. Defaults None and determined by data.
             out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
+            idc_process (list<Process>): list of technical indicater processes
+            pre_process (list<PreProcess>): list of pre-process
+            economic_keys (list<str>): list of key of technical indicaters
             start_index (int, optional): specify minimum index. If not specified, start from 0. Defauls to None.
             start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
             start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
             auto_step_index (bool, optional): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
             skiprows (int, optional): specify number to skip row of csv. For multi symbols, row is skipped for each files. Defaults None, not skipped.
-            dropna (bool ,option): option to drop na from entire data read from csv files. If any column has Non on start_date, it is dropped. Defaults to False.
             auto_reset_index ( bool, optional): refreh the index when index reach the end. Defaults False
             slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. prcent or pct: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters. 
             seed (int, optional): specify random seed. Defaults to 1017
         """
-        self.dropna = dropna
-        super().__init__(files, columns, date_column, file_name_generator, symbols, frame, out_frame, start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, provider, logger)
+        super().__init__(files, columns, date_column, file_name_generator, symbols, frame, out_frame, 
+                         idc_process, pre_process, economic_keys,
+                         start_index, start_date, start_random_index, auto_step_index, skiprows, auto_reset_index, slip_type, budget, do_render, seed, provider, logger)
         if out_frame is not None:
             if self.frame < out_frame:
                 #Rolled result has NaN regardless market is open or not.
                 self.data = self.roll_ohlc_data(self.data, out_frame, grouped_by_symbol=True)
-                if  dropna:
-                    self.data = self.data.dropna()
                 self.frame = out_frame
     
     def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
@@ -476,8 +486,6 @@ class CSVClient(CSVClientBase):
             else:
                 raise Exception("Couldn't daterming date column")
         data = self._initialize_date_index(data, True)
-        if self.dropna:
-            data = data.dropna()
         self._proceed_step_until_date(data, start_date)
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
         return data, __symbols
@@ -528,15 +536,11 @@ class CSVClient(CSVClientBase):
                 else:
                     rates = self.data.copy()
                 rates = rates.iloc[index - length:index].copy()
-                if self.dropna:
-                    rates = self.data.dropna()
             except Exception as e:
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
 
             if frame is not None and self.frame < frame:
                 rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
-                if self.dropna:
-                    rates = self.data.dropna()
             rates = rates.iloc[:out_length].copy()
             return rates
         else:
@@ -570,9 +574,10 @@ class CSVClient(CSVClientBase):
                     self.logger.warning(f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index")
                     self._step_index = self._step_index -1
                     target_index = self._step_index
-        if target_index < length-1:
-            self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
-            target_index = length
+        if length is not None:
+            if target_index < length-1:
+                self.logger.warning(f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index.")
+                target_index = length
         rates = self.__get_rates(target_index, length, target_symbols, frame)
         if grouped_by_symbol == False and type(rates.columns) is pd.MultiIndex:
             rates.columns = rates.columns.swaplevel(0, 1)
@@ -603,7 +608,7 @@ class CSVClient(CSVClientBase):
             raise Exception(f"length should be greater than 0. {length} is provided.")
     
     def get_current_ask(self, symbols=[]):
-        last_10_ticks = self.data.iloc[self._step_index - 11:self._step_index].fillna(method="ffill")
+        last_10_ticks = self.data.iloc[:self._step_index].fillna(method="ffill")
         tick = last_10_ticks.iloc[-1]
         open_column = self.ohlc_columns["Open"]
         high_column = self.ohlc_columns["High"]
@@ -639,7 +644,7 @@ class CSVClient(CSVClientBase):
         return self._get_current_ask(open_value, high_value)
 
     def get_current_bid(self, symbols=[]):
-        last_10_ticks = self.data.iloc[self._step_index - 11:self._step_index].fillna(method="ffill")
+        last_10_ticks = self.data.iloc[:self._step_index].fillna(method="ffill")
         tick = last_10_ticks.iloc[-1]
         open_column = self.ohlc_columns["Open"]
         low_column = self.ohlc_columns["Low"]
