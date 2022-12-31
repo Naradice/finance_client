@@ -14,6 +14,8 @@ install_requires = [
     'python-dotenv',
     #for yfinance
     'yfinance'
+    #for economic indicators
+    'pandas_datareader'
 ]
 
 setup(name='finance_client',
