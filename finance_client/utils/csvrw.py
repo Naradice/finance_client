@@ -17,8 +17,7 @@ def get_datafolder_path():
                 return default_data_folder
     return default_data_folder
 
-def add_csv_extension(file_name:str) -> str:
-    ext = ".csv"
+def add_extension(file_name:str, ext:str=".csv") -> str:
     names = file_name.split(ext)
     if len(names) > 1:
         return f"{''.join(names)}{ext}"
@@ -27,11 +26,32 @@ def add_csv_extension(file_name:str) -> str:
     
 def get_file_path(provider:str, file_name:str, create_dirs=False):
     data_folder_base = get_datafolder_path()
-    file = add_csv_extension(file_name)
+    file = add_extension(file_name)
     data_folder = os.path.join(data_folder_base, provider)
     if os.path.exists(data_folder) is False and create_dirs:
         os.makedirs(data_folder)
     file_path = os.path.join(data_folder, file)
+    return file_path
+
+def get_economic_path():
+    data_path = get_datafolder_path()
+    eco_path = os.path.join(data_path, "economic")
+    if os.path.exists(eco_path):
+        return eco_path
+    else:
+        os.makedirs(eco_path)
+        return eco_path
+
+def get_economic_state_file_path():
+    base_path = get_economic_path()
+    file_name = "state.json"
+    file_path = os.path.join(base_path, file_name)
+    return file_path
+
+def get_economic_file_path(key:str):
+    base_path = get_economic_path()
+    file_name = add_extension(key)
+    file_path = os.path.join(base_path, file_name)
     return file_path
 
 def write_df_to_csv(df:pd.DataFrame, provider:str, file_name:str, panda_option:dict=None):

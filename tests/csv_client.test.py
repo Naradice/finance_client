@@ -44,7 +44,6 @@ csv_files_5min = [f'{file_base}/yfinance_{symbol}_MIN5.csv' for symbol in symbol
 
 class TestCSVClient(unittest.TestCase):
     
-    """
     def test_init(self):
         client = CSVClient(logger=logger)
 
@@ -111,7 +110,6 @@ class TestCSVClient(unittest.TestCase):
         delta = df.index[1] - df.index[0]
         delta_ex = datetime.timedelta(minutes=30)
         self.assertEqual(delta, delta_ex)
-"""
 
     def test_add_indicaters(self):
         client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1))
