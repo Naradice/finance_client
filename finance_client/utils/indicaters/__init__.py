@@ -1,1 +1,1 @@
-import economic
+from . import economic

@@ -460,9 +460,10 @@ class Client:
             else:
                 target_length = length
             ohlc_df = self._get_ohlc_from_client(length=target_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
-            
-        ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
-        ohlc_df.dropna(thresh=4, inplace=True)
+        
+        if type(ohlc_df.index) is pd.DatetimeIndex:
+            ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+            ohlc_df.dropna(thresh=4, inplace=True)
         
         t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()

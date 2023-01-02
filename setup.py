@@ -13,7 +13,7 @@ install_requires = [
     'websocket-client',
     'python-dotenv',
     #for yfinance
-    'yfinance'
+    'yfinance',
     #for economic indicators
     'pandas_datareader'
 ]
