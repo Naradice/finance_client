@@ -25,8 +25,16 @@ logger = getLogger("finance_client.test")
 class TestIndicaters(unittest.TestCase):
     
     def test_get_SP500(self):
-        sp500 = addprocess.get_indicater("SP500", datetime.datetime(2020, 1, 1), datetime.datetime.now())
+        start_date = datetime.datetime(2020, 1, 1)
+        sp500 = addprocess.get_indicater("SP500", start_date, datetime.datetime.now(), frame=5)
         print(sp500)
+        self.assertGreaterEqual(sp500.index[0], start_date)
+        
+    def test_get_PMI(self):
+        start_date = datetime.datetime(2020, 1, 1)
+        PMI = addprocess.get_indicater("PMI", start_date, datetime.datetime.now(), frame=5)
+        print(PMI)
+        
     
 if __name__ == '__main__':
     unittest.main()

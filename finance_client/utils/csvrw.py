@@ -1,6 +1,9 @@
 import os
+
 import pandas as pd
-from finance_client.utils.convert import multisymbols_dict_to_df
+
+from .convert import multisymbols_dict_to_df
+
 default_data_folder = f'{os.getcwd()}/data_source'
 env_data_folder_key = 'data_path'
 
