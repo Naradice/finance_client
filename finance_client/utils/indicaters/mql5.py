@@ -1,8 +1,8 @@
 import datetime
-import requests
-
 import io
+
 import pandas as pd
+import requests
 
 from . import countory_code as cc
 from . import indicater_code as ic
@@ -35,6 +35,13 @@ def __convert_country_code(common_code):
     if common_code in conversion_dict:
         return conversion_dict[common_code]
     return None
+
+def __convert_indicater_code(country, common_code):
+    if country == cc.US:
+        conversion_dict = {
+            ic.PMI: "ism-manufacturing-pmi", ic.GDP_qq: "gross-domestic-product-qq",
+            ic.Federal_Reserve_System_Interest_Rate_Decision: "fed-interest-rate-decision",   
+        }
 
 def get_PMI(country:str, start=None, end=None):
     info = get_indicater_info(country, ic.PMI)

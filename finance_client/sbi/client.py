@@ -1,9 +1,16 @@
 import os
-from finance_client.sbi.sbi_util.rpa import STOCK
+
+import pandas as pd
+
+import finance_client.frames as Frame
 from finance_client.client_base import Client
 from finance_client.yfinance.client import YahooClient
-import finance_client.frames as Frame
-import pandas as pd
+
+try:
+    from .sbi_util.sbi_util.rpa import STOCK
+except ImportError:
+    from .sbi_util.rpa import STOCK
+
 
 class SBIClient(Client):
     
@@ -85,6 +92,19 @@ class SBIClient(Client):
     
     def get_min_max(column, data_length = 0):
         pass
+    
+    def get_rating(self, symbols):
+        ratings_dict = self.rpa_client.get_ratings(symbols)
+        ratings_df = pd.DataFrame.from_dict(ratings_dict)
+        del ratings_dict
+        reviwer_number = ratings_df.sum()
+        point_amounts = ratings_df.T * ratings_df.index
+        point_amount = point_amounts.T.sum()
+        mean = point_amount/reviwer_number
+        var = point_amounts.T - mean
+        var = var.pow(2).sum()/reviwer_number
+        ratings_df = pd.concat([mean, var, point_amount], keys=["mean", "var", "amount"], axis=1)
+        return ratings_df
     
     @property
     def max(self):

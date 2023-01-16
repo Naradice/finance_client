@@ -130,16 +130,18 @@ class Client:
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
             
-    def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None):
+    def close_position(self, price:float=None, position:market.Position=None, id=None, amount=None, symbol=None, order_type=None):
         """ close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
-        sell_for_settlement or _buy_for_settlement is calleds
+        _sell_for_settlement or _buy_for_settlement is calleds
 
         Args:
             price (float, optional): price for settlement. If not specified, current value is used.
             position (Position, optional): Position returned by open_trade. Defaults to None.
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
+            symbols (str, optional): 
+            order_type (str, optional)
         """
         if position is not None:
             id = position.id
@@ -152,11 +154,16 @@ class Client:
                 return closed_result, False
             if position is None:
                 position = self.market.get_position(id)
+            if amount is None:
+                amount = position.amount            
         else:
-            self.logger.error("Either position or id should be specified.")
-            return None, False
-        if amount is None:
-            amount = position.amount
+            if symbol is None or order_type is None:
+                self.logger.error("Either id or symbol and order_type should be specified.")
+                return None, False
+            if  amount is None:
+                amount = 1
+            position = market.Position(order_type=order_type, symbol=symbol, amount=amount)
+
         position_plot = 0
         if position.order_type == "ask":
             self.logger.debug(f"close long position is ordered for {id}")

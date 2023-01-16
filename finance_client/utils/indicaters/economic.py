@@ -22,6 +22,8 @@ def __handle_existing_data(key, provider, freq):
     update_required = True
     if freq == "D1":
         check_update_required = lambda current_date, last_date: (current_date - last_date) >= datetime.timedelta(days=1)
+    elif freq == "W1":
+        check_update_required = lambda current_date, last_date: (current_date - last_date) >= datetime.timedelta(days=7) or current_date.weekday < last_date.weekday
     elif freq == "M1":
         check_update_required = lambda current_date, last_date: (current_date >= last_date) and current_date.month != last_date.month
     elif freq == "Y1":

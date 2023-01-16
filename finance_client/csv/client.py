@@ -319,11 +319,12 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         self.symbols = []
         
         self._auto_reset = auto_reset_index
+        _index_update_required = False
         if start_index:
             if start_index >= 0:
                 self._step_index = start_index
             else:
-                raise ValueError("start index should be greater than 0.")
+                _index_update_required = True
         elif start_random_index:
             self._step_index = random.randint(1, len(self))
         else:
@@ -344,6 +345,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             self._initialize_file_name_func(files)
             self.data, __symbols = self._read_csv(self.files, symbols, columns, date_column, skiprows, start_date, frame)
             self.symbols = list(__symbols)
+            if _index_update_required:
+                self._step_index = len(self) + start_index##assume negative value is specified
         if self._step_index > len(self):
             self.logger.warning(f"step index {self._step_index} is greater than data length {len(self)}")
 
@@ -485,8 +488,9 @@ class CSVClient(CSVClientBase):
                 is_date_index = True
             else:
                 raise Exception("Couldn't daterming date column")
-        data = self._initialize_date_index(data, True)
-        self._proceed_step_until_date(data, start_date)
+        if len(data) > 0:
+            data = self._initialize_date_index(data, True)
+            self._proceed_step_until_date(data, start_date)
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols
         return data, __symbols
 
