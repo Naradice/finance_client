@@ -38,6 +38,7 @@ class SBIClient(Client):
         budget = self.rpa_client.get_available_budget()
         if budget is None:
             raise Exception("Failed to initialize with getting budget.")
+        self.client = None
         if use_yfinance:
             self.client = YahooClient(symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close, start_index=start_index)
         else:
@@ -48,16 +49,28 @@ class SBIClient(Client):
         return {}
 
     def _get_ohlc_from_client(self, length:int=None, symbols:list=[], frame:int=None, grouped_by_symbol=True):
-        return self.client._get_ohlc_from_client(length, symbols, frame, grouped_by_symbol)
+        if self.client:
+            return self.client._get_ohlc_from_client(length, symbols, frame, grouped_by_symbol)
+        else:
+            return None
     
     def get_future_rates(self, interval, symbols=[]) -> pd.DataFrame:
-        return self.client.get_future_rates(interval, symbols=symbols)
+        if self.client:
+            return self.client.get_future_rates(interval, symbols=symbols)
+        else:
+            return None
     
     def get_current_ask(self, symbols=[]) -> float:
-        return self.client.get_current_ask(symbols)
+        if self.client:
+            return self.client.get_current_ask(symbols)
+        else:
+            return None
     
     def get_current_bid(self, symbols=[]) -> float:
-        return self.client.get_current_bid(symbols)
+        if self.client:
+            return self.client.get_current_bid(symbols)
+        else:
+            return None
             
     def _market_buy(self, symbol, ask_rate=None, amount=1, tp=None, sl=None, option_info=None):
         suc = self.rpa_client.buy_order(symbol, amount, ask_rate)

@@ -191,22 +191,27 @@ class Manager:
             
     def open_position(self, order_type:str, symbol:str, price:float, amount: float, tp=None, sl=None, option = None, result=None):
         order_type = self.__check_order_type(order_type)
-        ## check if budget has enough amount
-        required_budget = self.trade_unit * amount * price
-        ## if enough, add position
-        budget = self.positions["budget"]
-        if required_budget <= budget:
+        # Market buy without price is ordered during market closed
+        if price is None:
             position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
             self.positions[order_type][position.id] = position
-            ## then reduce budget
-            self.positions["budget"] = budget - required_budget
-            ## check if tp/sl exists
-            if tp is not None or sl is not None:
-                self.listening_positions[position.id] = position
-                self.logger.debug(f"position is stored to listening list")
-            return position
         else:
-            self.logger.info(f"current budget {budget} is less than required {required_budget}")
+            ## check if budget has enough amount
+            required_budget = self.trade_unit * amount * price
+            ## if enough, add position
+            budget = self.positions["budget"]
+            if required_budget <= budget:
+                position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
+                self.positions[order_type][position.id] = position
+                ## then reduce budget
+                self.positions["budget"] = budget - required_budget
+                ## check if tp/sl exists
+                if tp is not None or sl is not None:
+                    self.listening_positions[position.id] = position
+                    self.logger.debug(f"position is stored to listening list")
+                return position
+            else:
+                self.logger.info(f"current budget {budget} is less than required {required_budget}")
             
     def get_position(self, id):
         if id in self.positions["ask"]:
@@ -239,7 +244,7 @@ class Manager:
     
     def close_position(self, position:Position, price: float, amount: float = None):
         if type(position) == Position and type(position.amount) == float or type(position.amount) == int:
-            if amount == None:
+            if amount is None:
                 amount = position.amount
             if position.amount < amount:
                 self.logger.info(f"specified amount is greater than position. use position value. {position.amount} < {amount}")

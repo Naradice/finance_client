@@ -96,37 +96,27 @@ class Client:
         if order_type == "Market":
             self.logger.debug("market order is requested.")
             if is_buy:
-                if price == None:
+                if price is None:
                     ask_rate = self.get_current_ask(symbol)
                 else:
                     ask_rate = price
-                if ask_rate and ask_rate > 0:
-                    suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
-                    if suc:
-                        return True, self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
-                    else:
-                        self.logger.error(f"Order is failed as {result}")
-                        return False, result
+                suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
+                if suc:
+                    return True, self.__open_long_position(symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
                 else:
-                    err_msg = f"current rate is not valid: {ask_rate}"
-                    self.logger.error(f"Order is failed as {err_msg}")
-                    return False, err_msg
+                    self.logger.error(f"Order is failed as {result}")
+                    return False, result
             else:
                 if price == None:
                     bid_rate = self.get_current_bid(symbol)
                 else:
                     bid_rate = price
-                if bid_rate and bid_rate > 0:
-                    suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
-                    if suc:
-                        return True, self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
-                    else:
-                        self.logger(f"Order is failed as {result}")
-                        return False, result
+                suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
+                if suc:
+                    return True, self.__open_short_position(symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result)
                 else:
-                    err_msg = f"current rate is not valid: {ask_rate}"
-                    self.logger(f"Order is failed as {err_msg}")
-                    return False, err_msg
+                    self.logger.error(f"Order is failed as {result}")
+                    return False, result
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
             
@@ -273,7 +263,7 @@ class Client:
             frame = self.frame
             
         if self.__data_queue is None:
-            self.__data_queue = queue.Queue()    
+            self.__data_queue = queue.Queue()
         timer_thread = threading.Thread(target=self.__timer, args=(data_length, symbols, frame), daemon=True)
         timer_thread.start()
         return self.__data_queue
@@ -327,7 +317,7 @@ class Client:
                             result = self.market.close_position(position, position.sl)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
-                                self.logger.info(f"Position is closed to stop loss: {result}")
+                                self.logger.info(f"Long Position is closed to stop loss: {result}")
                                 if self.do_render:
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             self.market.remove_position_from_listening(position)
@@ -337,7 +327,7 @@ class Client:
                             result = self.market.close_position(position, position.sl)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
-                                self.logger.info(f"Position is closed to stop loss: {result}")
+                                self.logger.info(f"Short Position is closed to stop loss: {result}")
                                 if self.do_render:
                                     self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
                             self.market.remove_position_from_listening(position)
@@ -853,3 +843,6 @@ class Client:
                 profit_rate = position.price/ask_rate
                 bid_position_states.append((symbol, position.price, position.amount, ask_rate, profit, profit_rate))
         return ask_position_states, bid_position_states
+    
+    def get_current_date(self):
+        pass
