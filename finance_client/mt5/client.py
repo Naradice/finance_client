@@ -1,11 +1,16 @@
-import datetime, os
+import datetime
+import os
+import random
+from time import sleep
+
 import MetaTrader5 as mt5
 import numpy
 import pandas as pd
-import random
-from finance_client.client_base import Client
+
 import finance_client.frames as Frame
-from finance_client.utils.csvrw import write_df_to_csv, read_csv
+from finance_client.client_base import Client
+from finance_client.utils.csvrw import read_csv, write_df_to_csv
+
 
 class MT5Client(Client):
     
@@ -185,6 +190,14 @@ class MT5Client(Client):
         result = mt5.order_send(request)
         self.logger.debug(f"order result: {result}")
         return result
+    
+    def __get_ask(self, symbol, retry=1):
+        info = mt5.symbol_info_tick(symbol)
+        if info is None:
+            sleep(pow(3, retry))
+            return self.__get_ask(symbol, retry+1)
+        else:
+            return info.ask
 
     def get_current_ask(self, symbols=[]):
         if len(symbols) == 0:
@@ -203,11 +216,19 @@ class MT5Client(Client):
         else:
             ask_values = {}
             for symbol in symbols:
-                ask_values[symbol] = [mt5.symbol_info_tick(symbol).ask]
+                ask_values[symbol] = [self.__get_ask(symbol)]
             ask_srs = pd.DataFrame.from_dict(ask_values).iloc[0]
         if len(symbols) == 1:
             ask_srs = ask_srs[symbols[0]]
         return ask_srs
+    
+    def __get_bid(self, symbol, retry=1):
+        info = mt5.symbol_info_tick(symbol)
+        if info is None:
+            sleep(pow(3, retry))
+            return self.__get_bid(symbol, retry+1)
+        else:
+            return info.bid
     
     def get_current_bid(self, symbols=[]):
         if len(symbols) == 0:
@@ -226,7 +247,7 @@ class MT5Client(Client):
         else:
             bid_values = {}
             for symbol in symbols:
-                bid_values[symbol] = [mt5.symbol_info_tick(symbol).bid]
+                bid_values[symbol] = [self.__get_bid(symbol)]
             bid_srs = pd.DataFrame.from_dict(bid_values).iloc[0]
         if len(symbols) == 1:
             bid_srs = bid_srs[symbols[0]]
