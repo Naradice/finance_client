@@ -152,7 +152,7 @@ class Client:
                 return None, False
             if  amount is None:
                 amount = 1
-            position = market.Position(order_type=order_type, symbol=symbol, amount=amount)
+            position = market.Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=None, sl=None, option=None, result=None, id=None)
 
         position_plot = 0
         if position.order_type == "ask":
@@ -160,14 +160,18 @@ class Client:
             if price is None:
                 price = self.get_current_bid(position.symbol)
                 self.logger.debug(f"order close with current ask rate {price} if market sell is not allowed")
-            self._sell_for_settlment(position.symbol , price, amount, position.option, position.result)
+            result = self._sell_for_settlment(position.symbol , price, amount, position.option, position.result)
+            if result is False:
+                return None, False
             position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close long position is ordered for {id}")
             if price is None:
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
                 price = self.get_current_ask(position.symbol)
-            self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
+            result = self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
+            if result is False:
+                return None, False
             position_plot = -1
         else:
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
