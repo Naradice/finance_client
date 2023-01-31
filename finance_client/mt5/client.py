@@ -416,18 +416,18 @@ class MT5Client(Client):
         rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
         new_rates = rates
 
-        while type(new_rates) != type(None):
+        while new_rates is not None:
             interval = len(new_rates)
             start_index += interval
             new_rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
-            if type(new_rates) != type(None):
+            if new_rates is not None:
                 rates = numpy.concatenate([new_rates, rates])
             else:
                 break
         rate_df = pd.DataFrame(rates)
         rate_df["time"] = pd.to_datetime(rate_df['time'], unit='s')
         
-        if type(existing_rate_df) != type(None):
+        if existing_rate_df is not None:
             rate_df = pd.concat([existing_rate_df, rate_df])
         
         rate_df = rate_df.sort_values("time")
