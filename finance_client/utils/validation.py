@@ -101,8 +101,7 @@ def get_start_end_time(df:pd.DataFrame, datetime_column:str=None, dropna=True):
     Returns:
         Tuple[pd.Series, pd.Series]: each value represents hours in a weekday
     """
-    start_times = None
-    end_times = None
+    
     if type(df.index) == pd.DatetimeIndex:
         datetime_column = df.index.name
         datetime_df = df.index.to_frame()
@@ -110,9 +109,21 @@ def get_start_end_time(df:pd.DataFrame, datetime_column:str=None, dropna=True):
         datetime_df = df[datetime_column]
         datetime_df.index = datetime_df
     else:
-        return start_times, end_times
-    start_times = []
-    end_times = []
+        return None, None
+    
+    START_AT_KEY = "start_at"
+    START_AT_CNT_KEY = "start_at_count"
+    END_AT_KEY = "end_at"
+    END_AT_CNT_KEY = "end_at_count"
+    
+    start_times = {
+        START_AT_KEY: [],
+        START_AT_CNT_KEY: []
+    }
+    end_times = {
+        END_AT_KEY: [],
+        END_AT_CNT_KEY: []
+    }
     
     index = WEEKDAY_STR.keys()
     for weekday in index:
@@ -125,19 +136,30 @@ def get_start_end_time(df:pd.DataFrame, datetime_column:str=None, dropna=True):
         open_datetimes = open_datetimes.hour + open_datetimes.minute/60
         open_datetime_counts = open_datetimes.value_counts()
         if len(open_datetime_counts) > 0:
-            start_times.append(open_datetime_counts.idxmax())
+            argmax_id = open_datetime_counts.idxmax()
+            count = open_datetime_counts[argmax_id]
+            start_times[START_AT_KEY].append(argmax_id)
+            start_times[START_AT_CNT_KEY].append(count)
         else:
-            start_times.append(None)
+            start_times[START_AT_KEY].append(None)
+            start_times[START_AT_CNT_KEY].append(None)
         
         close_datetimes = pd.DatetimeIndex(close_datetimes)
         close_datetimes = close_datetimes.hour + close_datetimes.minute/60
         close_datetime_counts = close_datetimes.value_counts()
         if len(close_datetime_counts) > 0:
-            end_times.append(close_datetime_counts.idxmax())
+            argmax_id = close_datetime_counts.idxmax()
+            count = close_datetime_counts[argmax_id]
+            end_times[END_AT_KEY].append(argmax_id)
+            end_times[END_AT_CNT_KEY].append(count)
         else:
-            end_times.append(None)
-    start = pd.Series(start_times, index=index, name="start_at")
-    end = pd.Series(end_times, index=index, name="end_at")
+            end_times[END_AT_KEY].append(None)
+            end_times[END_AT_CNT_KEY].append(None)
+            
+    start = pd.DataFrame.from_dict(start_times)
+    start.index = index
+    end = pd.DataFrame.from_dict(end_times)
+    end.index = index
     if dropna:
         start.dropna(inplace=True)
         end.dropna(inplace=True)

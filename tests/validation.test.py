@@ -71,15 +71,15 @@ class TestValidation(unittest.TestCase):
     
     def test_get_start_end_time(self):
         start_srs, end_srs = validation.get_start_end_time(df)
-        self.assertEqual(type(start_srs), pd.Series)
-        self.assertEqual(type(end_srs), pd.Series)
+        self.assertEqual(type(start_srs), pd.DataFrame)
+        self.assertEqual(type(end_srs), pd.DataFrame)
         self.assertEqual(len(start_srs), 5)
         self.assertEqual(len(end_srs), 5)
         
     def test_weekly_summary(self):
         weekly_summary_df = validation.weekly_summary(df)
-        self.assertEqual(len(weekly_summary_df), 5)
         print(weekly_summary_df)
+        self.assertEqual(len(weekly_summary_df), 5)
         
 if __name__ == '__main__':
     unittest.main()
