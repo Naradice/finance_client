@@ -43,7 +43,13 @@ class MT5Client(Client):
         Frame.MO1: "m1",
     }
 
-    LAST_IDX = {Frame.H2: 12 * 12 * 560, Frame.H4: 43930, Frame.H8: int(12 * 12 * 560 / 4) + 5400, Frame.D1: 13301, Frame.W1: 2681}
+    LAST_IDX = {
+        Frame.H2: 12 * 12 * 560,
+        Frame.H4: 43930,
+        Frame.H8: int(12 * 12 * 560 / 4) + 5400,
+        Frame.D1: 13301,
+        Frame.W1: 2681,
+    }
 
     def login(self, id, password, server):
         return mt5.login(
@@ -71,7 +77,9 @@ class MT5Client(Client):
         logger=None,
         seed=1017,
     ):
-        super().__init__(budget=budget, frame=frame, symbols=symbols, provider=server, do_render=do_render, logger_name=__name__, logger=logger)
+        super().__init__(
+            budget=budget, frame=frame, symbols=symbols, provider=server, do_render=do_render, logger_name=__name__, logger=logger
+        )
         self.back_test = back_test
         self.debug = False
         self.provider = server
@@ -457,7 +465,12 @@ class MT5Client(Client):
         rate_df = rate_df.sort_values("time")
         rate_df = rate_df.drop_duplicates()
 
-        write_df_to_csv(rate_df, os.path.join(self.kinds, self.provider), file_name, panda_option={"mode": "w", "index": False, "header": True})
+        write_df_to_csv(
+            rate_df,
+            os.path.join(self.kinds, self.provider),
+            file_name,
+            panda_option={"mode": "w", "index": False, "header": True},
+        )
         return rate_df
 
     def __download(self, length, symbol, frame):
@@ -546,7 +559,9 @@ class MT5Client(Client):
             df = df[symbols[0]]
         return df
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, grouped_by_symbol=True):
+    def _get_ohlc_from_client(
+        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol=True
+    ):
         df_rates = self.__get_ohlc(length, symbols, frame, grouped_by_symbol)
         if self.auto_index:
             self.sim_index = self.sim_index - 1

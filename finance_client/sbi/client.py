@@ -54,17 +54,23 @@ class SBIClient(Client):
             raise Exception("Failed to initialize with getting budget.")
         self.client = None
         if use_yfinance:
-            self.client = YahooClient(symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close, start_index=start_index)
+            self.client = YahooClient(
+                symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close, start_index=start_index
+            )
         else:
             print("get_rate is not available if you specify use_yfinance=False")
-        super().__init__(budget=budget, provider=provider, frame=frame, do_render=do_render, logger_name=logger_name, logger=logger)
+        super().__init__(
+            budget=budget, provider=provider, frame=frame, do_render=do_render, logger_name=logger_name, logger=logger
+        )
 
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, grouped_by_symbol=True):
+    def _get_ohlc_from_client(
+        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol=True
+    ):
         if self.client:
-            return self.client._get_ohlc_from_client(length, symbols, frame, grouped_by_symbol)
+            return self.client._get_ohlc_from_client(length, symbols, frame, indices, grouped_by_symbol)
         else:
             return None
 

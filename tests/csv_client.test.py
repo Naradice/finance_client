@@ -113,14 +113,22 @@ class TestCSVClient(unittest.TestCase):
 
     def test_add_indicaters(self):
         client = CSVClient(
-            files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1)
+            files=csv_file_5min,
+            logger=logger,
+            date_column=datetime_column,
+            economic_keys=["SP500"],
+            start_date=datetime.datetime(2020, 1, 1),
         )
         data = client.get_ohlc(100)
         print(data)
 
     def get_current_date(self):
         client = CSVClient(
-            files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1)
+            files=csv_file_5min,
+            logger=logger,
+            date_column=datetime_column,
+            economic_keys=["SP500"],
+            start_date=datetime.datetime(2020, 1, 1),
         )
         date_from_function = client.get_current_date()
         data = client.get_ohlc(10)

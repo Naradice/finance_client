@@ -1,5 +1,7 @@
 from .. import frames as Frame
-from .apis import DIGITAL, FOREX, STOCK
+from .apis.digital import DIGITAL
+from .apis.forex import FOREX
+from .apis.stock import STOCK
 
 available_frame = {
     Frame.MIN1: "1min",

@@ -8,5 +8,8 @@
     "python.linting.flake8Enabled": true,
     "editor.codeActionsOnSave": {
         "source.organizeImports": true
-    }
+    },
+    "python.formatting.blackArgs": [
+        "--line-length=130"
+    ]
 }

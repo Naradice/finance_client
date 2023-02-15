@@ -225,7 +225,9 @@ class YahooClient(CSVClient):
             DFS = {}
             for symbol in symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
+                write_df_to_csv(
+                    ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
+                )
                 DFS[symbol] = ticks_df
                 self.__updated_time[symbol] = datetime.datetime.now()
             if len(DFS) > 1:
@@ -251,15 +253,17 @@ class YahooClient(CSVClient):
                     isUpdated = True
         return isUpdated
 
-    def _get_ohlc_from_client(self, length, symbols: list, frame: int, grouped_by_symbol: bool):
+    def _get_ohlc_from_client(self, length, symbols: list, frame: int, indices, grouped_by_symbol: bool):
         # frame rolling is handled in csv client
         interval = self.frame_to_str(self.frame)
         for symbol in symbols:
             if symbol not in self.symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
+                write_df_to_csv(
+                    ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
+                )
                 self.__updated_time[symbol] = datetime.datetime.now()
-        return super()._get_ohlc_from_client(length, symbols, frame, grouped_by_symbol)
+        return super()._get_ohlc_from_client(length, symbols, frame, indices, grouped_by_symbol)
 
     def cancel_order(self, order):
         pass

@@ -41,7 +41,9 @@ class TestClient(Client):
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, grouped_by_symbol=None):
+    def _get_ohlc_from_client(
+        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol=None
+    ):
         df = self.data.iloc[self.step_index - length + 1 : self.step_index + 1]
         self.step_index += 1
         return df

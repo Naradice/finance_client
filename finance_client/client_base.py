@@ -4,6 +4,7 @@ import os
 import queue
 import threading
 import time
+from abc import ABCMeta, abstractmethod
 from logging import config, getLogger
 
 import numpy as np
@@ -14,7 +15,7 @@ from . import market, utils
 from .render import graph
 
 
-class Client:
+class Client(metaclass=ABCMeta):
     def __init__(
         self,
         budget=1000000.0,
@@ -429,7 +430,9 @@ class Client:
             length (int | None): specify data length > 1. If None is specified, return all date.
             symbols (list[str]): list of symbols. Defaults to [].
             frame (int | None): specify frame to get time series data. If None, default value is used instead.
-            indices (list[int]): specify index copy from. If list has multiple indices,
+            indices (list[int]): specify index copy from. If list has multiple indices, return numpy array as (indices_size, column_size, data_length).
+              step_index is not change if index is specified even auto_indx is True as typically this option is used for machine learning.
+              Defaults None and this case step_index is used.
             idc_processes (Process, optional) : list of indicater process. Dafaults to []
             pre_processes (Process, optional) : list of pre process. Defaults to []
 
@@ -467,7 +470,7 @@ class Client:
         data_freq = Frame.to_panda_freq(frame)
 
         if length is None:
-            ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+            ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, indices=indices, grouped_by_symbol=grouped_by_symbol)
             required_length = 0
             if do_run_process:
                 required_length += self._get_required_length(idc_processes + pre_processes)
@@ -479,7 +482,9 @@ class Client:
                 target_length = required_length
             else:
                 target_length = length
-            ohlc_df = self._get_ohlc_from_client(length=target_length, symbols=symbols, frame=frame, grouped_by_symbol=grouped_by_symbol)
+            ohlc_df = self._get_ohlc_from_client(
+                length=target_length, symbols=symbols, frame=frame, indices=indices, grouped_by_symbol=grouped_by_symbol
+            )
 
         if type(ohlc_df.index) is pd.DatetimeIndex:
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
@@ -489,7 +494,7 @@ class Client:
         t.start()
 
         if do_run_process:
-            if type(ohlc_df) == pd.DataFrame and len(ohlc_df) >= required_length:
+            if isinstance(ohlc_df, pd.DataFrame) and len(ohlc_df) >= required_length:
                 data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
                 if self.do_render:
                     self.__plot_data_width_indicaters(symbols, data)
@@ -518,23 +523,41 @@ class Client:
         else:
             return data.iloc[-length:]
 
-    # Need to implement in the actual client ##
+    # Need to implement in the actual client
 
+    @abstractmethod
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, length, symbols: list, frame: int, grouped_by_symbol: bool):
+    @abstractmethod
+    def _get_ohlc_from_client(self, length, symbols: list, frame: int, indices: list, grouped_by_symbol: bool):
         return {}
 
+    @abstractmethod
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass
 
+    @abstractmethod
     def get_current_ask(self, symbols=[]) -> pd.Series:
         print("Need to implement get_current_ask on your client")
 
+    @abstractmethod
     def get_current_bid(self, symbols=[]) -> pd.Series:
         print("Need to implement get_current_bid on your client")
 
+    @abstractmethod
+    def get_params(self) -> dict:
+        print("Need to implement get_params")
+
+    @abstractmethod
+    def get_next_tick(self, frame=5):
+        print("Need to implement get_next_tick")
+
+    @abstractmethod
+    def __getitem__(self, ndx):
+        return None
+
+    # define market client
     def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
         return True, None
 
@@ -547,18 +570,12 @@ class Client:
     def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         pass
 
-    def get_params(self) -> dict:
-        print("Need to implement get_params")
-
-    # defined by the actual client for dataset or env
-    def close_client(self):
-        pass
-
-    def get_next_tick(self, frame=5):
-        print("Need to implement get_next_tick")
-
+    # defined by the actual client for dataset or env if needed
     def reset(self, mode=None):
         print("Need to implement reset")
+
+    def close_client(self):
+        pass
 
     def get_min_max(column, data_length=0):
         pass
@@ -572,11 +589,6 @@ class Client:
     def min(self):
         print("Need to implement min")
         return -1
-
-    def __getitem__(self, ndx):
-        return None
-
-    ###
 
     def __get_long_position_diffs(self, standalization="minimax"):
         positions = self.market.positions["ask"]
@@ -711,6 +723,9 @@ class Client:
                     self.ohlc_columns["Time"] = column
                 elif "volume" in column_:
                     self.ohlc_columns["Volume"] = column
+                elif "spread" in column_:
+                    self.ohlc_columns["Spread"] = column
+
         return self.ohlc_columns
 
     def revert_preprocesses(self, data: pd.DataFrame = None):
