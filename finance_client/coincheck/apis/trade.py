@@ -1,10 +1,10 @@
-from finance_client.coincheck.apis.servicebase import ServiceBase
+from .servicebase import ServiceBase
 
-class Trade():
-    
+
+class Trade:
     def __init__(self) -> None:
-        self.baseUrl = '/api/trades'
+        self.baseUrl = "/api/trades"
         self.__service = ServiceBase()
-    
-    def all(self, params = {}):
+
+    def all(self, params={}):
         return self.__service.request(ServiceBase.METHOD_GET, self.baseUrl, params)

@@ -1,21 +1,24 @@
-import finance_client.frames as Frame
-from finance_client.vantage.apis import STOCK, FOREX, DIGITAL
-
+from .. import frames as Frame
+from .apis import DIGITAL, FOREX, STOCK
 
 available_frame = {
-    Frame.MIN1:"1min", Frame.MIN5:"5min", 15:"15min", Frame.MIN30:"30min", Frame.H1: "60min",
-    Frame.D1:"DAILY",
-    Frame.W1:"Weekly",
-    Frame.MO1: "Monthly"
+    Frame.MIN1: "1min",
+    Frame.MIN5: "5min",
+    15: "15min",
+    Frame.MIN30: "30min",
+    Frame.H1: "60min",
+    Frame.D1: "DAILY",
+    Frame.W1: "Weekly",
+    Frame.MO1: "Monthly",
 }
 
+
 class __Target:
-    
-    def __init__(self, id:int, name) -> None:
+    def __init__(self, id: int, name) -> None:
         self.id = id
         self.base_name = name
-    
-    # TODO: reduce  if else
+
+    # TODO: reduce if else
     def create_client(self, api_key, logger=None):
         if self.id == 0:
             return STOCK(api_key, logger)
@@ -25,14 +28,14 @@ class __Target:
             return DIGITAL(api_key, logger)
         else:
             raise ValueError(f"{self.base_name} is not supported yet.")
-        
+
     def to_function_name(self, target, frame):
         if type(frame) is int:
             global available_frame
             if frame in available_frame:
                 function_name = ""
                 if self.id == 0 or self.id == 1:
-                    if frame  <= Frame.H1:
+                    if frame <= Frame.H1:
                         function_name = target.base_name + "_INTRADAY"
                     elif frame == Frame.D1:
                         function_name = target.base_name + "_DAILY"
@@ -41,7 +44,7 @@ class __Target:
                     elif frame == Frame.MO1:
                         function_name = target.base_name + "_MONTHLY"
                 elif self.id == 2:
-                    if frame  <= Frame.H1:
+                    if frame <= Frame.H1:
                         function_name = target.base_name + "_INTRADAY"
                     elif frame == Frame.D1:
                         function_name = "DIGITAL_CURRENCY_DAILY"
@@ -51,9 +54,10 @@ class __Target:
                         function_name = "DIGITAL_CURRENCY_MONTHLY"
                 else:
                     function_name = target.base_name
-                return function_name                    
+                return function_name
         else:
             raise TypeError("frame should be specified with finance_client.frames.frame")
+
 
 STOCK = __Target(0, "TIME_SERIES")
 FX = __Target(1, "FX")

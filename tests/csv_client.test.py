@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
@@ -17,7 +17,7 @@ from finance_client import utils
 from finance_client.csv.client import CSVChunkClient, CSVClient
 
 try:
-    with open(os.path.join(module_path, 'finance_client/settings.json'), 'r') as f:
+    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
         settings = json.load(f)
 except Exception as e:
     print(f"fail to load settings file: {e}")
@@ -30,20 +30,20 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config.copy())
 logger = getLogger("finance_client.test")
 
-file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '../finance_client/data_source/yfinance'))
-symbols = ['1333.T', '1332.T', '1605.T', '1963.T', '1812.T', '1801.T', '1928.T', '1802.T', '1925.T', '1808.T', '1803.T', '1721.T']
+file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../finance_client/data_source/yfinance"))
+symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
 datetime_column = "Time"
 ohlc_columns = ["Open", "High", "Low", "Close"]
 additional_column = ["Adj Close", "Volume"]
-csv_files = [f'{file_base}/yfinance_{symbol}_D1.csv' for symbol in symbols]
-#csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
-csv_file = os.path.abspath('L:/data/csv/USDJPY_forex_min30.csv')
-#csv_file_5min = f'{file_base}/yfinance_{symbols[0]}_MIN5.csv'
-csv_file_5min = os.path.abspath('L:/data/csv/USDJPY_forex_min5.csv')
-csv_files_5min = [f'{file_base}/yfinance_{symbol}_MIN5.csv' for symbol in symbols[:2]]
+csv_files = [f"{file_base}/yfinance_{symbol}_D1.csv" for symbol in symbols]
+# csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
+csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
+# csv_file_5min = f'{file_base}/yfinance_{symbols[0]}_MIN5.csv'
+csv_file_5min = os.path.abspath("L:/data/csv/USDJPY_forex_min5.csv")
+csv_files_5min = [f"{file_base}/yfinance_{symbol}_MIN5.csv" for symbol in symbols[:2]]
+
 
 class TestCSVClient(unittest.TestCase):
-    
     def test_init(self):
         client = CSVClient(logger=logger)
 
@@ -59,7 +59,7 @@ class TestCSVClient(unittest.TestCase):
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         df, suc = client.get_next_tick()
         self.assertEqual(type(df), pd.Series)
-    
+
     def test_get_current_ask(self):
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         ask_value = client.get_current_ask()
@@ -71,7 +71,7 @@ class TestCSVClient(unittest.TestCase):
         bid_value = client.get_current_bid()
         print(bid_value)
         self.assertGreater(bid_value, 0)
-            
+
     def test_get_indicaters(self):
         length = 10
         bband = utils.BBANDProcess()
@@ -81,7 +81,7 @@ class TestCSVClient(unittest.TestCase):
         data = client.get_ohlc(length, idc_processes=processes)
         print(data.columns)
         self.assertEqual(len(data[ohlc_columns[3]]), length)
-        
+
     def test_get_indicaters(self):
         length = 10
         bband = utils.BBANDProcess()
@@ -91,7 +91,7 @@ class TestCSVClient(unittest.TestCase):
         data = client.get_ohlc(length, idc_processes=processes)
         print(data.columns)
         self.assertEqual(len(data[ohlc_columns[3]]), length)
-        
+
     def test_get_standalized_indicaters(self):
         length = 10
         bband = utils.BBANDProcess()
@@ -102,7 +102,7 @@ class TestCSVClient(unittest.TestCase):
         data = client.get_ohlc(length, idc_processes=processes, pre_processes=post_prs)
         print(data)
         self.assertEqual(len(data[ohlc_columns[3]]), length)
-        
+
     def test_get_rolled_data(self):
         client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, out_frame=Frame.MIN30)
         df = client.get_ohlc(length=10)
@@ -112,17 +112,22 @@ class TestCSVClient(unittest.TestCase):
         self.assertEqual(delta, delta_ex)
 
     def test_add_indicaters(self):
-        client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1))
+        client = CSVClient(
+            files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1)
+        )
         data = client.get_ohlc(100)
         print(data)
-    
+
     def get_current_date(self):
-        client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1))
+        client = CSVClient(
+            files=csv_file_5min, logger=logger, date_column=datetime_column, economic_keys=["SP500"], start_date=datetime.datetime(2020, 1, 1)
+        )
         date_from_function = client.get_current_date()
         data = client.get_ohlc(10)
         date_from_data = data.index[-1]
         self.assertEqual(date_from_data, date_from_function)
-    
+
+
 """
 class TestCSVClientMulti(unittest.TestCase):
     
@@ -262,7 +267,7 @@ class TestCSVClientMulti(unittest.TestCase):
         ask_values = client.get_current_ask(target_symbols)
         bid_values = client.get_current_bid(target_symbols)
         for symbol in target_symbols:
-            if pd.isna(ask_values[symbol]) == False:
+            if pd.isna(ask_values[symbol]) is False:
                 self.assertLessEqual(bid_values[symbol], ask_values[symbol])
         
     def test_get_current_value_with_pct_slip(self):
@@ -277,7 +282,7 @@ class TestCSVClientMulti(unittest.TestCase):
         ask_values = client.get_current_ask(target_symbols)
         bid_values = client.get_current_bid(target_symbols)
         for symbol in target_symbols:
-            if pd.isna(ask_values[symbol]) == False:
+            if pd.isna(ask_values[symbol]) is False:
                 self.assertLessEqual(bid_values[symbol], ask_values[symbol])
     
     def test_get_current_value_with_random_slip(self):
@@ -292,7 +297,7 @@ class TestCSVClientMulti(unittest.TestCase):
         ask_values = client.get_current_ask(target_symbols)
         bid_values = client.get_current_bid(target_symbols)
         for symbol in target_symbols:
-            if pd.isna(ask_values[symbol]) == False:
+            if pd.isna(ask_values[symbol]) is False:
                 self.assertLessEqual(bid_values[symbol], ask_values[symbol])
 
     def test_get_data_with_limited_symbols(self):
@@ -554,7 +559,7 @@ def test_get_current_value_with_no_slip(self):
     ask_values = client.get_current_ask(target_symbols)
     bid_values = client.get_current_bid(target_symbols)
     for symbol in target_symbols:
-        if pd.isna(ask_values[symbol]) == False:
+        if pd.isna(ask_values[symbol]) is False:
             self.assertLessEqual(bid_values[symbol], ask_values[symbol])
     
 def test_get_current_value_with_pct_slip(self):
@@ -569,7 +574,7 @@ def test_get_current_value_with_pct_slip(self):
     ask_values = client.get_current_ask(target_symbols)
     bid_values = client.get_current_bid(target_symbols)
     for symbol in target_symbols:
-        if pd.isna(ask_values[symbol]) == False:
+        if pd.isna(ask_values[symbol]) is False:
             self.assertLessEqual(bid_values[symbol], ask_values[symbol])
 
 def test_get_current_value_with_random_slip(self):
@@ -584,9 +589,9 @@ def test_get_current_value_with_random_slip(self):
     ask_values = client.get_current_ask(target_symbols)
     bid_values = client.get_current_bid(target_symbols)
     for symbol in target_symbols:
-        if pd.isna(ask_values[symbol]) == False:
+        if pd.isna(ask_values[symbol]) is False:
             self.assertLessEqual(bid_values[symbol], ask_values[symbol])
 """
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

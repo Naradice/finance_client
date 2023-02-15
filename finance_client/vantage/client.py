@@ -1,29 +1,44 @@
-import datetime, os
+import datetime
+
 import pandas as pd
-from finance_client.csv.client import CSVClient
-import finance_client.frames as Frame
+
+from .. import frames as Frame
+from ..csv.client import CSVClient
+from ..utils.convert import str_to_currencies
+from ..utils.csvrw import get_file_path, read_csv, write_df_to_csv
 from . import target
-from finance_client.utils.csvrw import write_df_to_csv, read_csv, get_file_path
-from finance_client.utils.convert import str_to_currencies
+
 
 class VantageClient(CSVClient):
-    
     OHLC_COLUMNS = ["open", "high", "low", "close"]
     VOLUME_COLUMN = ["volume"]
     TIME_INDEX_NAME = "time"
-    
+
     kinds = "vantage"
-    
+
     def get_additional_params(self):
         self.logger.warn("parameters are not saved for vantage as credentials are included.")
         return {}
-    
+
     def _generate_file_name(self, symbol):
         file_name = f"vantage_{symbol}_{self.function_name}_{Frame.to_str(self.frame)}.csv"
         file_path = get_file_path(self.kinds, file_name)
         return file_path
-    
-    def __init__(self, api_key, auto_step_index=False, frame: int = Frame.MIN5, finance_target = target.FX, symbols = ['JPYUSD'], start_index=None, seed=1017, slip_type="random", do_render=False, budget=1000000, logger=None):
+
+    def __init__(
+        self,
+        api_key,
+        auto_step_index=False,
+        frame: int = Frame.MIN5,
+        finance_target=target.FX,
+        symbols=["JPYUSD"],
+        start_index=None,
+        seed=1017,
+        slip_type="random",
+        do_render=False,
+        budget=1000000,
+        logger=None,
+    ):
         """Get ohlc rate from alpha vantage api
         Args:
             api_key (str): apikey of alpha vantage
@@ -49,23 +64,38 @@ class VantageClient(CSVClient):
         if type(symbols) != list:
             try:
                 symbols = list(symbols)
-            except Exception as e:
+            except Exception:
                 raise TypeError(f"{type(symbols)} is not supported as symbols")
         self.symbols = symbols
-            
+
         if finance_target == target.FX or finance_target == target.CRYPTO_CURRENCY:
             self.__currency_trade = True
         else:
             self.__currency_trade = False
-                    
+
         self.client = finance_target.create_client(api_key, logger)
         self.function_name = finance_target.to_function_name(finance_target, frame)
         self.__updated_times = {}
-                    
+
         self.__get_rates(self.symbols)
-        super().__init__(auto_step_index=auto_step_index, file_name_generator=self._generate_file_name, symbols=self.symbols, frame=frame, provider="Vantage", out_frame=None, columns=self.OHLC_COLUMNS, date_column=self.TIME_INDEX_NAME, start_index=start_index, do_render=do_render, seed=seed, slip_type=slip_type, budget=budget, logger=logger)
-    
-    def __convert_response_to_df(self, data_json:dict):
+        super().__init__(
+            auto_step_index=auto_step_index,
+            file_name_generator=self._generate_file_name,
+            symbols=self.symbols,
+            frame=frame,
+            provider="Vantage",
+            out_frame=None,
+            columns=self.OHLC_COLUMNS,
+            date_column=self.TIME_INDEX_NAME,
+            start_index=start_index,
+            do_render=do_render,
+            seed=seed,
+            slip_type=slip_type,
+            budget=budget,
+            logger=logger,
+        )
+
+    def __convert_response_to_df(self, data_json: dict):
         # handle meta data and series column
         columns = list(data_json.keys())
         if len(columns) > 1:
@@ -87,20 +117,20 @@ class VantageClient(CSVClient):
             if "Information" in columns:
                 raise Exception(f"You might call premium API: {data_json['Information']}")
             raise Exception(f"Unexpected response from vantage api: {data_json.values}")
-            
-        #convert dict to data frame
+
+        # convert dict to data frame
         data_df = pd.DataFrame(data_json[series_column]).T
         data_df.index = pd.to_datetime(data_df.index)
         data_df = data_df.sort_index(ascending=True)
-        
+
         # apply timezone info obtained from meta_data
         if data_df.index.tz is None:
             try:
                 data_df.index = data_df.index.tz_localize(time_zone)
             except Exception as e:
                 print(f"can't localize the datetime: {e}")
-                print(f"store datetime without timezone")
-                
+                print("store datetime without timezone")
+
         # filter ohlc and volume
         desired_columns = [*self.OHLC_COLUMNS, *self.VOLUME_COLUMN]
         column_index = []
@@ -108,22 +138,22 @@ class VantageClient(CSVClient):
         for d_column in desired_columns:
             index = 0
             for column in data_df.columns:
-                if d_column in str(column).lower():#assume 1. open
+                if d_column in str(column).lower():  # assume 1. open
                     column_index.append((d_index, index))
                     break
                 index += 1
             d_index += 1
-            
+
         column_names = []
         target_columns = []
         for index in column_index:
             column_names.append(desired_columns[index[0]])
             target_columns.append(data_df.columns[index[1]])
-        
+
         data_df = data_df[target_columns]
         data_df.columns = column_names
         return data_df
-    
+
     def __get_currency_rates(self, from_symbol, to_symbol, frame, size):
         if frame <= Frame.H1:
             data = self.client.get_interday_rates(from_symbol, to_symbol, interval=frame, output_size=size)
@@ -135,10 +165,10 @@ class VantageClient(CSVClient):
             data = self.client.get_monthly_rates(from_symbol, to_symbol, output_size=size)
         else:
             raise ValueError(f"{Frame.to_str(frame)} is not supported")
-        
+
         data_df = self.__convert_response_to_df(data)
         return data_df
-            
+
     def __get_stock_rates(self, symbol, frame, size):
         if frame <= Frame.H1:
             data = self.client.get_interday_rates(symbol, interval=frame, output_size=size)
@@ -153,23 +183,23 @@ class VantageClient(CSVClient):
 
         data_df = self.__convert_response_to_df(data)
         return data_df
-    
-    def __download(self, symbol):            
+
+    def __download(self, symbol):
         file_name = self._generate_file_name(symbol)
-        existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col":self.TIME_INDEX_NAME})            
-        MAX_LENGTH = 950#not accurate
-    
+        existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col": self.TIME_INDEX_NAME})
+        MAX_LENGTH = 950  # not accurate
+
         if existing_rate_df is None:
             interval = MAX_LENGTH
             size = "full"
         else:
             delta = datetime.datetime.now(tz=datetime.timezone.utc) - existing_rate_df.index[-1]
             total_seconds = delta.total_seconds()
-            if (total_seconds/(60*60*24*7)) >= 1:
-                total_seconds = total_seconds * self.client.work_day_in_week/7#remove sat,sun
-            interval = int((total_seconds/60)/self.frame)
+            if (total_seconds / (60 * 60 * 24 * 7)) >= 1:
+                total_seconds = total_seconds * self.client.work_day_in_week / 7  # remove sat,sun
+            interval = int((total_seconds / 60) / self.frame)
             if interval <= MAX_LENGTH:
-                size = "compact"# to be safe
+                size = "compact"  # to be safe
             else:
                 size = "full"
                 if interval > MAX_LENGTH:
@@ -177,20 +207,20 @@ class VantageClient(CSVClient):
         if self.__currency_trade:
             try:
                 from_symbol, to_symbol = str_to_currencies(symbol)
-            except:
+            except Exception:
                 print(f"Faile to parse {symbol} to from/to currency.")
                 return pd.DataFrame()
             new_data_df = self.__get_currency_rates(from_symbol, to_symbol, self.frame, size)
         else:
             new_data_df = self.__get_stock_rates(symbol, self.frame, size)
-            
+
         if existing_rate_df is not None:
             new_data_df = pd.concat([existing_rate_df, new_data_df])
             new_data_df = new_data_df[~new_data_df.index.duplicated(keep="first")]
             new_data_df = new_data_df.sort_index()
-        write_df_to_csv(new_data_df, self.kinds, file_name, panda_option={"index_label":self.TIME_INDEX_NAME})
+        write_df_to_csv(new_data_df, self.kinds, file_name, panda_option={"index_label": self.TIME_INDEX_NAME})
         return new_data_df
-        
+
     def __get_rates(self, symbols):
         if len(symbols) > 0:
             DFS = {}
@@ -201,7 +231,7 @@ class VantageClient(CSVClient):
             df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
             return df
         return pd.DataFrame()
-            
+
     def _update_rates(self, symbols=[]):
         _symbols = set(symbols) & set(self.symbols)
         isUpdated = False
@@ -217,6 +247,6 @@ class VantageClient(CSVClient):
                 if len(df) > 0:
                     isUpdated = True
         return isUpdated
-    
+
     def cancel_order(self, order):
         pass

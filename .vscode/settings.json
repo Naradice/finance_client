@@ -1,0 +1,12 @@
+{
+    "python.linting.flake8Args": [
+        "--max-line-length=150",
+        "--ignore=E501 E203 E731"
+    ],
+    "editor.formatOnSave": true,
+    "python.formatting.provider": "black",
+    "python.linting.flake8Enabled": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    }
+}

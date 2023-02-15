@@ -1,1 +1,1 @@
-from finance_client.mt5.client import MT5Client
+from .client import MT5Client

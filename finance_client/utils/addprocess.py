@@ -1,13 +1,11 @@
 import pandas as pd
 
-from .indicaters.economic import *
 from ..frames import to_panda_freq
 from .indicaters import indicater_code as ic
+from .indicaters.economic import *
 
-__indicaters = {
-    ic.SP500 : SP500,
-    ic.PMI: PMI
-}
+__indicaters = {ic.SP500: SP500, ic.PMI: PMI}
+
 
 def get_indicater(keys, start, end, frame=None, *params):
     if type(keys) is str:
@@ -20,7 +18,7 @@ def get_indicater(keys, start, end, frame=None, *params):
             freq = to_panda_freq(frame)
         else:
             freq = frame
-            
+
     additional_params = []
     for param in params:
         if param in available_additional_params:
@@ -28,7 +26,7 @@ def get_indicater(keys, start, end, frame=None, *params):
         else:
             print(f"Unkown param {param} is specified.")
     additional_params = tuple(additional_params)
-    
+
     e_indicaters = []
     for key in keys:
         if key in __indicaters:

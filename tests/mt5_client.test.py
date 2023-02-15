@@ -1,19 +1,27 @@
+import datetime
+import json
+import os
+import sys
+import unittest
 from time import sleep
-import unittest, os, json, sys, datetime
 
 import numpy
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 
-from finance_client.mt5 import MT5Client
+from logging import config, getLogger
+
+import dotenv
+
 import finance_client.frames as Frame
 from finance_client import utils
-from logging import getLogger, config
-import dotenv
+from finance_client.mt5 import MT5Client
+
 dotenv.load_dotenv(".env")
 
 try:
-    with open(os.path.join(module_path, 'finance_client/settings.json'), 'r') as f:
+    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
         settings = json.load(f)
 except Exception as e:
     print(f"fail to load settings file: {e}")
@@ -76,7 +84,7 @@ class TestMT5Client(unittest.TestCase):
         next_time = None
         while count < 6:
             data = client.get_ohlc(30)
-            if next_time != None:
+            if next_time is not None:
                 current_time = data['time'].iloc[0]
                 self.assertEqual(current_time, next_time)
             next_time = data['time'].iloc[1]
@@ -91,7 +99,7 @@ class TestMT5Client(unittest.TestCase):
         next_time = None
         while count < 3:
             data = client.get_ohlc(30)
-            if next_time != None:
+            if next_time is not None:
                 current_time = data['time'].iloc[0]
                 self.assertEqual(current_time, next_time)
             next_time = data['time'].iloc[1]
@@ -106,7 +114,7 @@ class TestMT5Client(unittest.TestCase):
         next_time = None
         while count < 12*7:
             data = client.get_ohlc(30)
-            if next_time != None:
+            if next_time is not None:
                 current_time = data['time'].iloc[0]
                 self.assertEqual(current_time, next_time)
             next_time = data['time'].iloc[1]
@@ -132,11 +140,20 @@ class TestMT5Client(unittest.TestCase):
                 break
 """
 
+
 class TestMT5Client(unittest.TestCase):
-    
-    symbol = ['USDJPY', 'CHFJPY']
-    client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"], symbols=symbol, auto_index=False, simulation=simulation, frame=Frame.MIN5, logger=logger)
-    
+    symbol = ["USDJPY", "CHFJPY"]
+    client = MT5Client(
+        id=id,
+        password=os.environ["mt5_password"],
+        server=os.environ["mt5_server"],
+        symbols=symbol,
+        auto_index=False,
+        simulation=simulation,
+        frame=Frame.MIN5,
+        logger=logger,
+    )
+
     def test_get_current_ask(self):
         ask_value = self.client.get_current_ask()
         self.assertEqual(type(ask_value[self.symbol[0]]), numpy.float64)
@@ -144,7 +161,7 @@ class TestMT5Client(unittest.TestCase):
     def test_get_current_bid(self):
         bid_value = self.client.get_current_bid()
         self.assertEqual(type(bid_value[self.symbol[0]]), numpy.float64)
-        
+
     def test_get_rates(self):
         data = self.client.get_ohlc(100)
         columns = self.client.get_ohlc_columns()
@@ -155,8 +172,8 @@ class TestMT5Client(unittest.TestCase):
         time_sr = data[self.symbol[0]][time_column]
         first = time_sr.iloc[0]
         last = time_sr.iloc[-1]
-        self.assertGreater(last, first)#last > first
-    
+        self.assertGreater(last, first)  # last > first
+
     def test_get_rate_with_indicaters(self):
         columns = self.client.get_ohlc_columns()
         close_column = columns["Close"]
@@ -165,58 +182,86 @@ class TestMT5Client(unittest.TestCase):
         data = self.client.get_ohlc(100, idc_processes=[macd_p])
         self.assertEqual(macd_column in data[self.symbol[0]].columns, True)
         self.assertEqual(len(data[self.symbol[0]][macd_column]), 100)
-    
+
     def test_get_all_rates(self):
         rates = self.client.get_ohlc()
         self.assertNotEqual(type(rates), type(None))
 
-    
-    #takes few minutes
-    
+    # takes few minutes
+
     def test_auto_index_5min(self):
         "check when frame time past during run"
-        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"], symbols=self.symbol, auto_index=True, back_test=True, frame=Frame.MIN5, logger=logger, seed=1111)
+        client = MT5Client(
+            id=id,
+            password=os.environ["mt5_password"],
+            server=os.environ["mt5_server"],
+            symbols=self.symbol,
+            auto_index=True,
+            back_test=True,
+            frame=Frame.MIN5,
+            logger=logger,
+            seed=1111,
+        )
         count = 0
         next_time = None
         while count < 6:
             data = client.get_ohlc(30)
-            if next_time != None:
-                current_time = data[self.symbol[0]]['time'].iloc[0]
+            if next_time is not None:
+                current_time = data[self.symbol[0]]["time"].iloc[0]
                 self.assertEqual(current_time, next_time)
-            next_time = data[self.symbol[0]]['time'].iloc[1]
+            next_time = data[self.symbol[0]]["time"].iloc[1]
             sleep(60)
             count += 1
-        
+
     def test_auto_index_1min(self):
         "check when wait time is longer than frame"
-        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"], symbols=self.symbol, auto_index=True, back_test=True, frame=Frame.MIN1, logger=logger)
-        
+        client = MT5Client(
+            id=id,
+            password=os.environ["mt5_password"],
+            server=os.environ["mt5_server"],
+            symbols=self.symbol,
+            auto_index=True,
+            back_test=True,
+            frame=Frame.MIN1,
+            logger=logger,
+        )
+
         count = 0
         next_time = None
         while count < 3:
             data = client.get_ohlc(30)
-            if next_time != None:
-                current_time = data[self.symbol[0]]['time'].iloc[0]
+            if next_time is not None:
+                current_time = data[self.symbol[0]]["time"].iloc[0]
                 self.assertEqual(current_time, next_time)
-            next_time = data[self.symbol[0]]['time'].iloc[1]
+            next_time = data[self.symbol[0]]["time"].iloc[1]
             sleep(120)
             count += 1
-    
+
     def test_auto_index_H2(self):
         "check when week change"
-        client = MT5Client(id=id, password=os.environ["mt5_password"], server=os.environ["mt5_server"], symbols=self.symbol, auto_index=True, back_test=True, frame=Frame.H2, logger=logger, seed=1111)
-        
+        client = MT5Client(
+            id=id,
+            password=os.environ["mt5_password"],
+            server=os.environ["mt5_server"],
+            symbols=self.symbol,
+            auto_index=True,
+            back_test=True,
+            frame=Frame.H2,
+            logger=logger,
+            seed=1111,
+        )
+
         count = 0
         next_time = None
-        while count < 12*7:
+        while count < 12 * 7:
             data = client.get_ohlc(30)
-            if next_time != None:
-                current_time = data[self.symbol[0]]['time'].iloc[0]
+            if next_time is not None:
+                current_time = data[self.symbol[0]]["time"].iloc[0]
                 self.assertEqual(current_time, next_time)
-            next_time = data[self.symbol[0]]['time'].iloc[1]
+            next_time = data[self.symbol[0]]["time"].iloc[1]
             sleep(1)
             count += 1
-    
+
     def test_get_data_by_queue(self):
         count = 0
         columns = self.client.get_ohlc_columns()
@@ -228,12 +273,13 @@ class TestMT5Client(unittest.TestCase):
             data = q.get()
             end = datetime.datetime.now()
             self.assertEqual(len(data[self.symbol[0]][close_column]), 10)
-            delta = (end - start)
+            delta = end - start
             print(delta.total_seconds())
             count += 1
             if count > 2:
                 test = False
                 break
-            
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     unittest.main()

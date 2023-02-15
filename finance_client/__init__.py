@@ -1,20 +1,19 @@
-from finance_client.coincheck.client import CoinCheckClient
-import finance_client.frames as Frame
-from finance_client.client_base import Client
-from finance_client.csv.client import CSVClient
-from finance_client.mt5.client import MT5Client
-from finance_client.vantage.client import VantageClient
-
+from . import frames as Frame
 from . import utils
-from .utils.indicaters import countory_code
-from .utils.indicaters import indicater_code
+from .client_base import Client
+from .coincheck.client import CoinCheckClient
+from .csv.client import CSVClient
+from .mt5.client import MT5Client
+from .utils.indicaters import countory_code, indicater_code
+from .vantage.client import VantageClient
 
 available_clients = {
-    CSVClient.kinds : CSVClient,
+    CSVClient.kinds: CSVClient,
     MT5Client.kinds: MT5Client,
     VantageClient.kinds: VantageClient,
-    CoinCheckClient.kinds: CoinCheckClient
+    CoinCheckClient.kinds: CoinCheckClient,
 }
+
 
 def client_to_params(client):
     params = {}
@@ -23,17 +22,17 @@ def client_to_params(client):
     params.update(client_params)
     return params
 
-def load_client(params:dict, credentials: tuple = None):
+
+def load_client(params: dict, credentials: tuple = None):
     kinds = params["kinds"]
     if kinds in available_clients:
         dict_args = params["args"]
-        Client = available_clients[kinds]
+        _Client = available_clients[kinds]
         if kinds == MT5Client.kinds or kinds == VantageClient.kinds:
             if credentials is None:
                 raise Exception(f"{kinds} need to specify a credential(s)")
-            data_client = Client(*credentials, **dict_args)
+            data_client = _Client(*credentials, **dict_args)
         else:
-            data_client = Client(**dict_args)
+            data_client = _Client(**dict_args)
         return data_client
     return None
-    

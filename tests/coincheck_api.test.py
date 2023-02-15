@@ -1,5 +1,6 @@
 import unittest, os, json, sys, datetime
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 from finance_client.coincheck.apis.ws import TradeHistory, Orders
@@ -8,11 +9,11 @@ import time
 
 apis.ServiceBase()
 
+
 class TestCCAPI(unittest.TestCase):
-    
     def log(self, data):
         print(f"unit_test: {data}")
-        
+
     """
     def test_subscribe(self):
         ws_th = TradeHistory(debug=True)
@@ -26,7 +27,7 @@ class TestCCAPI(unittest.TestCase):
         time.sleep(60)
         ws_th.close()
     """
-    
+
     """
     def test_get_ticker(self):
         ticker = apis.Ticker()
@@ -61,6 +62,7 @@ class TestCCAPI(unittest.TestCase):
         response = apis.get_pending_orders()
         self.assertTrue(response["success"])
     """
-        
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     unittest.main()
