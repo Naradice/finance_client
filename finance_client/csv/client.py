@@ -365,8 +365,6 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 self._step_index = start_index
             else:
                 _index_update_required = True
-        elif start_random_index:
-            self._step_index = random.randint(1, len(self))
         else:
             self._step_index = 1
 
@@ -387,6 +385,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             self.symbols = list(__symbols)
             if _index_update_required:
                 self._step_index = len(self) + start_index  # assume negative value is specified
+            elif start_random_index:
+                self._step_index = random.randint(1, len(self))
         if self._step_index > len(self):
             self.logger.warning(f"step index {self._step_index} is greater than data length {len(self)}")
 
@@ -1119,7 +1119,9 @@ class CSVChunkClient(CSVClientBase):
                 self._step_index += 1
         return rates
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol: bool = False):
+    def _get_ohlc_from_client(
+        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol: bool = False
+    ):
         target_symbols, missing_files = self._get_target_symbols(symbols)
         if len(missing_files) > 0:
             try:
