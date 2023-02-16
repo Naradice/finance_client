@@ -1,14 +1,18 @@
+import datetime
+import os
+import sys
+import unittest
 from time import sleep
-import unittest, os, json, sys, datetime
+
 import dotenv
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
-from finance_client.coincheck.client import CoinCheckClient
-from finance_client.coincheck.apis.ws import TradeHistory
-import finance_client.vantage.target as target
+
 import finance_client.vantage.client as vclient
+import finance_client.vantage.target as target
+from finance_client.coincheck.client import CoinCheckClient
 
 dotenv.load_dotenv(".env")
 
@@ -40,19 +44,19 @@ class TestCCClient(unittest.TestCase):
         sleep(60 * 3)
         new_df = client.get_rates(100)
 
-    # def test_orders(self):
-    #     client = CoinCheckClient(os.environ["cc_ACCESS_ID"], os.environ["cc_ACCESS_SECRET"], frame=1)
-    #     id = client.market_buy('BTCJPY', 2952000, 0.005, None,None,None)
-    #     sleep(120)
-    #     client._sell_for_settlment('BTCJPY', 2960000, 0.005, None, id)
+    def test_orders(self):
+        client = CoinCheckClient(os.environ["cc_ACCESS_ID"], os.environ["cc_ACCESS_SECRET"], frame=1)
+        id = client.market_buy("BTCJPY", 2952000, 0.005, None, None, None)
+        sleep(120)
+        client._sell_for_settlment("BTCJPY", 2960000, 0.005, None, id)
 
-    # def test_get_rates(self):
-    #     length = 10
-    #     rates = self.client.get_rates(length)
-    #     #self.assertEqual(len(rates.Close), length)
+    def test_get_rates(self):
+        length = 10
+        rates = self.client.get_rates(length)
+        # self.assertEqual(len(rates.Close), length)
 
-    # def test_get_next_tick(self):
-    #     print(self.client.get_next_tick())
+    def test_get_next_tick(self):
+        print(self.client.get_next_tick())
 
 
 if __name__ == "__main__":

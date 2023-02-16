@@ -1,11 +1,16 @@
-import unittest, os, json, sys, datetime
+import datetime
+import json
+import os
+import sys
+import unittest
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
+from logging import config, getLogger
+
 import finance_client.frames as Frame
-from logging import getLogger, config
 
 try:
     with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
@@ -15,7 +20,7 @@ except Exception as e:
     raise e
 logger_config = settings["log"]
 log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_unittest_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.logs'
+log_path = f'./{log_file_base_name}_unittest_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
 logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")

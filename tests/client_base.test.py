@@ -20,14 +20,25 @@ class TestClient(Client):
         self,
         budget=1000000,
         indicater_processes: list = [],
-        do_rendere=False,
-        post_processes: list = [],
+        do_render=False,
+        pre_processes: list = [],
         frame: int = Frame.MIN5,
         provider="Default",
         logger_name=None,
         logger=None,
     ):
-        super().__init__(budget, indicater_processes, post_processes, frame, provider, do_rendere, logger_name, logger)
+        super().__init__(
+            budget,
+            provider,
+            [],
+            ["Open", "High", "Low", "Close"],
+            indicater_processes,
+            pre_process=pre_processes,
+            frame=frame,
+            do_render=do_render,
+            logger_name=logger_name,
+            logger=logger,
+        )
         self.data = pd.DataFrame.from_dict(
             {
                 "Open": [*[100 + open - 1 for open in range(0, 1000)], *[100 for open in range(0, 100)]],
@@ -101,12 +112,12 @@ class TestClient(Client):
 
 class TestCSVClient(unittest.TestCase):
     def test_get_rates_wo_plot(self):
-        client = TestClient(do_rendere=False)
+        client = TestClient(do_render=False)
         rates = client.get_ohlc(100)
         self.assertEqual(len(rates["Open"]), 100)
 
     def test_get_rates_with_plot(self):
-        client = TestClient(do_rendere=True)
+        client = TestClient(do_render=True)
         for i in range(0, 10):
             client.get_ohlc(100)
             time.sleep(1)

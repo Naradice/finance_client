@@ -1,14 +1,18 @@
+import datetime
+import json
+import os
+import sys
+import unittest
 from time import sleep
-import unittest, os, json, sys, datetime
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
-from finance_client.yfinance.client import YahooClient
-
 import dotenv
 
-dotenv.load_dotenv("./.env")
+from finance_client.yfinance.client import YahooClient
+
+dotenv.load_dotenv("../.env")
 
 
 class TestYFClient(unittest.TestCase):
@@ -26,7 +30,8 @@ class TestYFClient(unittest.TestCase):
         self.client.close_all_positions()
 
     def test_get_rates_with_indicater(self):
-        from finance_client.utils.idcprocess import MACDProcess, RangeTrendProcess, BBANDProcess
+        from finance_client.utils.idcprocess import (BBANDProcess, MACDProcess,
+                                                     RangeTrendProcess)
 
         macd_p = MACDProcess(short_window=12, long_window=26, signal_window=9, target_column="Close")
         macd_column = macd_p.columns["MACD"]

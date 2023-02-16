@@ -1,16 +1,22 @@
-import unittest, os, json, sys, datetime
+import datetime
+import json
+import os
+import sys
+import unittest
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client.sbi.client import SBIClient
-import finance_client.frames as Frame
-from finance_client import utils
-from logging import getLogger, config
+from logging import config, getLogger
+
 import dotenv
 
-dotenv.load_dotenv(".env")
+import finance_client.frames as Frame
+from finance_client import utils
+from finance_client.sbi.client import SBIClient
+
+dotenv.load_dotenv("../.env")
 
 try:
     with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:

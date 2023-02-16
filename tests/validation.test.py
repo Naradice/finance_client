@@ -1,14 +1,14 @@
 import inspect
 import os
-import pandas as pd
 import sys
 import unittest
+
+import pandas as pd
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 
 from finance_client.utils import validation
-
 
 csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
 df = pd.read_csv(csv_file, parse_dates=True, index_col=0)

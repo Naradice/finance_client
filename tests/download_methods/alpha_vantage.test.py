@@ -7,7 +7,7 @@ from logging import config, getLogger
 
 import dotenv
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
@@ -39,7 +39,11 @@ client = VantageClient(os.environ["vantage_api_key"], frame=Frame.D1, symbols=["
 
 # bc client
 bc_client = VantageClient(
-    api_key=os.environ["vantage_api_key"], frame=Frame.D1, finance_target=Target.CRYPTO_CURRENCY, symbols=["BTCJPY"], start_index=100
+    api_key=os.environ["vantage_api_key"],
+    frame=Frame.D1,
+    finance_target=Target.CRYPTO_CURRENCY,
+    symbols=["BTCJPY"],
+    start_index=100,
 )
 
 
@@ -97,7 +101,9 @@ class TestVantageClient(unittest.TestCase):
         print(df)
 
     def test_fx_get_multi_symbols_rates(self):
-        client = VantageClient(os.environ["vantage_api_key"], frame=Frame.D1, symbols=["USDJPY", "CHFJPY"], start_index=100, auto_step_index=True)
+        client = VantageClient(
+            os.environ["vantage_api_key"], frame=Frame.D1, symbols=["USDJPY", "CHFJPY"], start_index=100, auto_step_index=True
+        )
         df = client.get_ohlc(10)
         self.assertEqual(len(df["USDJPY"]), 10)
         self.assertEqual(len(df["CHFJPY"]), 10)

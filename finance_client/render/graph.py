@@ -207,7 +207,9 @@ class Rendere:
         else:
             print("index not in the data")
 
-    def register_ohlc(self, symbols: list, ohlc: pd.DataFrame, index=-1, title="OHLC Candle", ohlc_columns=("Open", "High", "Low", "Close")):
+    def register_ohlc(
+        self, symbols: list, ohlc: pd.DataFrame, index=-1, title="OHLC Candle", ohlc_columns=("Open", "High", "Low", "Close")
+    ):
         """
         register ohlc to plot later
         Args:
@@ -215,8 +217,7 @@ class Rendere:
             index (int, optional): index of subplot to plot the data. use greater than 1 to specify subplot index. use -1 to plot on last. Defaults to -1.
             ohlc_columns (tuple|list, optional): ohlc colmun names. Defaults to ('Open', 'High', 'Low', 'Close')
         """
-        ohlc_columns = ohlc_columns
-        if type(ohlc) == pd.DataFrame:
+        if isinstance(ohlc, pd.DataFrame):
             consistent = set(ohlc.columns) & set(ohlc_columns)
             if len(consistent) < 4:
                 print(f"{ohlc_columns} is not found in the data. try to extruct them from the data.")
@@ -238,9 +239,15 @@ class Rendere:
         return idx
 
     def register_ohlc_with_indicaters(
-        self, symbols: list, data: pd.DataFrame, idc_processes: list, index=-1, title="OHLC Candle", ohlc_columns=("Open", "High", "Low", "Close")
+        self,
+        symbols: list,
+        data: pd.DataFrame,
+        idc_processes: list,
+        index=-1,
+        title="OHLC Candle",
+        ohlc_columns=("Open", "High", "Low", "Close"),
     ):
-        idx = self.register_ohlc(data, symbols, index=index, title=title, ohlc_columns=ohlc_columns)
+        idx = self.register_ohlc(symbols, data, index=index, title=title, ohlc_columns=ohlc_columns)
         idc_plot_processes = []
         for idc in idc_processes:
             if idc.kinds in self.__indicater_process_info:
@@ -340,7 +347,7 @@ class Rendere:
             index += 1
 
         index = 0
-        if "trade_history" in self.__data[index]:
+        if index in self.__data and "trade_history" in self.__data[index]:
             histories = self.__data[index]["trade_history"]
             if len(histories) == len(ohlc):
                 for history in histories:

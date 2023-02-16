@@ -1,10 +1,14 @@
-import unittest, os, json, sys, datetime
-from logging import getLogger, config
+import datetime
+import json
+import os
+import sys
+import unittest
+from logging import config, getLogger
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.append(module_path)
 
-print(module_path)
+import dotenv
 
 from finance_client.utils import addprocess
 
@@ -14,6 +18,8 @@ try:
 except Exception as e:
     print(f"fail to load settings file: {e}")
     raise e
+
+dotenv.load_dotenv("../.env")
 
 logger_config = settings["log"]
 log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]

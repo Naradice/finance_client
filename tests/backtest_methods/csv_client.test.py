@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
@@ -30,7 +30,7 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config.copy())
 logger = getLogger("finance_client.test")
 
-file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../finance_client/data_source/yfinance"))
+file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../finance_client/data_source/yfinance"))
 symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
 datetime_column = "Time"
 ohlc_columns = ["Open", "High", "Low", "Close"]

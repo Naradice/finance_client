@@ -35,7 +35,7 @@ def mini_max_from_array(array, _min=None, _max=None, scale=(0, 1)):
         _min = min(array)
     if _max is None:
         _max = max(array)
-    return [mini_max_from_value(x, _min, _max, scale) for x in array], _min, _max
+    return [mini_max_from_value(x, _min, _max, scale)[0] for x in array], _min, _max
 
 
 def revert_mini_max_from_series(series: pd.Series, _min, _max, scale=(0, 1)):

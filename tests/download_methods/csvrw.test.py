@@ -1,17 +1,22 @@
-import unittest, os, json, sys, datetime
+import datetime
+import json
+import os
+import sys
+import unittest
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.append(module_path)
 
-from finance_client.render.graph import Rendere
-from finance_client.csv.client import CSVClient
-from finance_client import utils
 import time
-import pandas as pd
-import dotenv
 
+import dotenv
+import pandas as pd
 import yfinance as yf
+
 import finance_client.utils.csvrw as csvrw
+from finance_client import utils
+from finance_client.csv.client import CSVClient
+from finance_client.render.graph import Rendere
 
 
 class TestYFClient(unittest.TestCase):
@@ -19,7 +24,9 @@ class TestYFClient(unittest.TestCase):
 
     def test_write_read(self):
         dotenv.load_dotenv(".env")
-        rates = yf.download(self.symbols, interval="60m", start=datetime.datetime.now() - datetime.timedelta(days=10), group_by="ticker")
+        rates = yf.download(
+            self.symbols, interval="60m", start=datetime.datetime.now() - datetime.timedelta(days=10), group_by="ticker"
+        )
         csvrw.write_multi_symbol_df_to_csv(rates, "yfinance", "yfinance_60", self.symbols)
         time.sleep(3)
         dfs = csvrw.read_csvs("yfinance", "yfinance_60", self.symbols, ["Datetime"])

@@ -64,11 +64,24 @@ class MACDProcess(ProcessBase):
     KEY_SIGNAL = "Signal"
 
     def __init__(
-        self, key="macd", target_column="Close", short_window=12, long_window=26, signal_window=9, option=None, is_input=True, is_output=True
+        self,
+        key="macd",
+        target_column="Close",
+        short_window=12,
+        long_window=26,
+        signal_window=9,
+        option=None,
+        is_input=True,
+        is_output=True,
     ):
         super().__init__(key)
         self.last_data = None
-        self.option = {"column": target_column, "short_window": short_window, "long_window": long_window, "signal_window": signal_window}
+        self.option = {
+            "column": target_column,
+            "short_window": short_window,
+            "long_window": long_window,
+            "signal_window": signal_window,
+        }
 
         if option is not None:
             self.option.update(option)
@@ -306,7 +319,15 @@ class BBANDProcess(ProcessBase):
             )
         else:
             bb_df = technical.BolingerFromOHLC(
-                data, target_column, window=window, alpha=alpha, mean_name=c_ema, upper_name=c_ub, lower_name=c_lb, width_name=c_width, std_name=None
+                data,
+                target_column,
+                window=window,
+                alpha=alpha,
+                mean_name=c_ema,
+                upper_name=c_ub,
+                lower_name=c_lb,
+                width_name=c_width,
+                std_name=None,
             )
 
         self.last_data = bb_df.iloc[-self.get_minimum_required_length() :]
@@ -350,7 +371,9 @@ class ATRProcess(ProcessBase):
     last_data = None
     KEY_ATR = "ATR"
 
-    def __init__(self, key="atr", window=14, ohlc_column_name=("Open", "High", "Low", "Close"), is_input=True, is_output=True, option=None):
+    def __init__(
+        self, key="atr", window=14, ohlc_column_name=("Open", "High", "Low", "Close"), is_input=True, is_output=True, option=None
+    ):
         super().__init__(key)
         self.available_columns = [self.KEY_ATR]
         self.option = {"ohlc_column": ohlc_column_name, "window": window}
@@ -418,7 +441,9 @@ class RSIProcess(ProcessBase):
     KEY_GAIN = "GAIN"
     KEY_LOSS = "LOSS"
 
-    def __init__(self, key="rsi", window=14, ohlc_column_name=("Open", "High", "Low", "Close"), is_input=True, is_output=True, option=None):
+    def __init__(
+        self, key="rsi", window=14, ohlc_column_name=("Open", "High", "Low", "Close"), is_input=True, is_output=True, option=None
+    ):
         super().__init__(key)
         self.available_columns = ["RSI", "AVG_GAIN", "AVG_LOSS"]
         self.option = {"ohlc_column": ohlc_column_name, "window": window}
@@ -461,7 +486,9 @@ class RSIProcess(ProcessBase):
                 rsi_name=c_rsi,
             )
         else:
-            rsi_df = technical.RSIFromOHLC(data, target_column, window=window, mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi)
+            rsi_df = technical.RSIFromOHLC(
+                data, target_column, window=window, mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi
+            )
 
         last_ohlc = data.iloc[-self.get_minimum_required_length() :]
         last_rsi = rsi_df.iloc[-self.get_minimum_required_length() :]
@@ -498,7 +525,15 @@ class RenkoProcess(ProcessBase):
     KEY_VALUE = "Value"
     KEY_BRICK_NUM = "NUM"
 
-    def __init__(self, key: str = "renko", ohlc_column=("Open", "High", "Low", "Close"), window=10, is_input=True, is_output=True, option=None):
+    def __init__(
+        self,
+        key: str = "renko",
+        ohlc_column=("Open", "High", "Low", "Close"),
+        window=10,
+        is_input=True,
+        is_output=True,
+        option=None,
+    ):
         super().__init__(key)
         self.option = {"ohlc_column": ohlc_column, "window": window}
         if option is not None:
@@ -611,7 +646,15 @@ class CCIProcess(ProcessBase):
     kinds = "CCI"
     KEY_CCI = "CCI"
 
-    def __init__(self, key: str = "cci", window=14, ohlc_column=("Open", "High", "Low", "Close"), is_input=True, is_output=False, option=None):
+    def __init__(
+        self,
+        key: str = "cci",
+        window=14,
+        ohlc_column=("Open", "High", "Low", "Close"),
+        is_input=True,
+        is_output=False,
+        option=None,
+    ):
         super().__init__(key)
         self.options = {"window": window, "ohlc_column": ohlc_column}
 
@@ -649,7 +692,7 @@ class CCIProcess(ProcessBase):
         return cci_df
 
     def update(self, tick: pd.Series, symbols: list = []):
-        if self.data is None:
+        if self.data is not None:
             out_column = self.columns[self.KEY_CCI]
             self.data = self.concat(self.data, tick)
             cci = self.run(self.data)
@@ -657,6 +700,7 @@ class CCIProcess(ProcessBase):
         else:
             self.data = tick
             # cci = numpy.nan
+            print(f"CCI failed to update as data length is less than window size: {len(self.data) < {self.get_minimum_required_length()}}")
             return self.data
 
     def get_minimum_required_length(self):
@@ -673,7 +717,9 @@ class RangeTrendProcess(ProcessBase):
     KEY_TREND = "trend"
     KEY_RANGE = "range"
 
-    def __init__(self, key: str = "rtp", mode="bband", required_columns=[], slope_window=4, is_input=True, is_output=True, option=None):
+    def __init__(
+        self, key: str = "rtp", mode="bband", required_columns=[], slope_window=4, is_input=True, is_output=True, option=None
+    ):
         """Process to caliculate likelyfood of market state
         {key}_trend: from -1 to 1. 1 then bull (long position) state is strong, -1 then cow (short position) is strong
         {key}_range: from 0 to 1. possibility of market is in range trading
@@ -769,7 +815,11 @@ class RangeTrendProcess(ProcessBase):
         mean_column = required_columns[1]
         slope = (data[mean_column] - data[mean_column].shift(periods=self.slope_window)) / self.slope_window
 
-        self.options["bband"] = {"slope_std": slope.std() * 2, "slope_mean": slope.mean(), "pct_thread": range_possibility_df.std()}
+        self.options["bband"] = {
+            "slope_std": slope.std() * 2,
+            "slope_mean": slope.mean(),
+            "pct_thread": range_possibility_df.std(),
+        }
         self.initialized = True
         # common
         self.initialization_required = False
@@ -858,7 +908,9 @@ class RangeTrendProcess(ProcessBase):
         slope_dfs = pd.concat(slope_df_list, axis=1)
         possibility_dfs = pd.concat(possibility_df_list, axis=1)
         cls = [self.columns[self.KEY_TREND], self.columns[self.KEY_RANGE]]
-        elements, columns = technical.create_multi_out_lists(symbols, [slope_dfs, possibility_dfs], cls, grouped_by_symbol=grouped_by_symbol)
+        elements, columns = technical.create_multi_out_lists(
+            symbols, [slope_dfs, possibility_dfs], cls, grouped_by_symbol=grouped_by_symbol
+        )
         out_df = pd.concat(elements, axis=1)
         if self.is_multi_mode:
             out_df.columns = columns
