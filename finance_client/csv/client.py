@@ -646,36 +646,41 @@ class CSVClient(CSVClientBase):
             except Exception:
                 self.logger.exception("Filed to concat existing data with additional data of specified symbols")
         if len(target_symbols) == 0:
-            self.logger.warning(f"Specified symbols can be handled as csv file or its symbol name: {symbols}")
+            self.logger.warning(f"Specified symbols can't be handled as csv file or its symbol name: {symbols}")
             return pd.DataFrame()
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
-        target_index = self._step_index
-        if target_index > len(self):
-            if self._update_rates(symbols) is False:
-                if self._auto_reset:
-                    # todo initialize based on parameters
-                    self._step_index = random.randint(0, len(self.data))
-                    target_index = self._step_index
-                else:
+        if indices is None:
+            target_index = self._step_index
+            if target_index > len(self):
+                if self._update_rates(symbols) is False:
+                    if self._auto_reset:
+                        # todo initialize based on parameters
+                        self._step_index = random.randint(0, len(self.data))
+                        target_index = self._step_index
+                    else:
+                        self.logger.warning(
+                            f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index"
+                        )
+                        self._step_index = self._step_index - 1
+                        target_index = self._step_index
+            target_indices = [target_index]
+        else:
+            target_indices = indices
+        for target_index in target_indices:
+            if length is not None:
+                if target_index < length - 1:
                     self.logger.warning(
-                        f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index"
+                        f"index {target_index} is less than length {length}. return length from index 0. Please assgin start_index."
                     )
-                    self._step_index = self._step_index - 1
-                    target_index = self._step_index
-        if length is not None:
-            if target_index < length - 1:
-                self.logger.warning(
-                    f"current step index {self._step_index} is less than length {length}. return length from index 0. Please assgin start_index."
-                )
-                target_index = length
-        rates = self.__get_rates(target_index, length, target_symbols, frame)
-        if grouped_by_symbol is False and type(rates.columns) is pd.MultiIndex:
-            rates.columns = rates.columns.swaplevel(0, 1)
-            rates.sort_index(level=0, axis=1, inplace=True)
-        if self.auto_step_index:
-            self._step_index += 1
-        return rates
+                    target_index = length
+            rates = self.__get_rates(target_index, length, target_symbols, frame)
+            if grouped_by_symbol is False and type(rates.columns) is pd.MultiIndex:
+                rates.columns = rates.columns.swaplevel(0, 1)
+                rates.sort_index(level=0, axis=1, inplace=True)
+            if self.auto_step_index:
+                self._step_index += 1
+            return rates
 
     def get_future_rates(self, length=1, back_length=0, symbols: list = []):
         if length > 1:

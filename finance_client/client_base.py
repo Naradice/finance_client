@@ -93,7 +93,9 @@ class Client(metaclass=ABCMeta):
     def initialize_budget(self, budget):
         self.market(budget)
 
-    def open_trade(self, is_buy, amount: float, order_type: str, symbol: str, price: float = None, tp=None, sl=None, option_info=None):
+    def open_trade(
+        self, is_buy, amount: float, order_type: str, symbol: str, price: float = None, tp=None, sl=None, option_info=None
+    ):
         """by calling this in your client, order function is called and position is stored
 
         Args:
@@ -139,7 +141,9 @@ class Client(metaclass=ABCMeta):
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
 
-    def close_position(self, price: float = None, position: market.Position = None, id=None, amount=None, symbol=None, order_type=None):
+    def close_position(
+        self, price: float = None, position: market.Position = None, id=None, amount=None, symbol=None, order_type=None
+    ):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
         _sell_for_settlement or _buy_for_settlement is calleds
@@ -172,7 +176,15 @@ class Client(metaclass=ABCMeta):
             if amount is None:
                 amount = 1
             position = market.Position(
-                order_type=order_type, symbol=symbol, price=price, amount=amount, tp=None, sl=None, option=None, result=None, id=None
+                order_type=order_type,
+                symbol=symbol,
+                price=price,
+                amount=amount,
+                tp=None,
+                sl=None,
+                option=None,
+                result=None,
+                id=None,
             )
 
         position_plot = 0
@@ -246,7 +258,9 @@ class Client(metaclass=ABCMeta):
             required_length_list.append(process.get_minimum_required_length())
         return max(required_length_list)
 
-    def run_processes(self, data: pd.DataFrame, symbols: list = [], idc_processes=[], pre_processes=[], grouped_by_symbol=False) -> pd.DataFrame:
+    def run_processes(
+        self, data: pd.DataFrame, symbols: list = [], idc_processes=[], pre_processes=[], grouped_by_symbol=False
+    ) -> pd.DataFrame:
         """
         Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
         """
@@ -470,7 +484,9 @@ class Client(metaclass=ABCMeta):
         data_freq = Frame.to_panda_freq(frame)
 
         if length is None:
-            ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, indices=indices, grouped_by_symbol=grouped_by_symbol)
+            ohlc_df = self._get_ohlc_from_client(
+                length=length, symbols=symbols, frame=frame, indices=indices, grouped_by_symbol=grouped_by_symbol
+            )
             required_length = 0
             if do_run_process:
                 required_length += self._get_required_length(idc_processes + pre_processes)
@@ -666,20 +682,6 @@ class Client(metaclass=ABCMeta):
             self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
         return position
 
-    def _is_grouped_by_symbol(self, columns: pd.MultiIndex):
-        if type(columns) == pd.MultiIndex:
-            open_column = "open"
-            for column in columns.droplevel(0):
-                if open_column == str(column).lower():
-                    return True
-            for column in columns.droplevel(1):
-                if open_column == str(column).lower():
-                    return False
-            print("open column is not found on column")
-            return None
-        else:
-            raise TypeError(f"{type(columns)} is not supported")
-
     def get_ohlc_columns(self, symbol: str = None) -> dict:
         """returns column names of ohlc data.
 
@@ -698,7 +700,7 @@ class Client(metaclass=ABCMeta):
             columns = data.columns
             if type(columns) == pd.MultiIndex:
                 if symbol is None:
-                    if self._is_grouped_by_symbol(columns):
+                    if utils.ohlc.is_grouped_by_symbol(columns):
                         columns = set(columns.droplevel(0))
                     else:
                         columns = set(columns.droplevel(1))
