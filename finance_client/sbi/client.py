@@ -67,10 +67,10 @@ class SBIClient(Client):
         return {}
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol=True
+        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
     ):
         if self.client:
-            return self.client._get_ohlc_from_client(length, symbols, frame, indices, grouped_by_symbol)
+            return self.client._get_ohlc_from_client(length, symbols, frame, index, grouped_by_symbol)
         else:
             return None
 
@@ -148,3 +148,9 @@ class SBIClient(Client):
     def min(self):
         print("Need to implement min")
         return -1
+
+    def __len__(self):
+        if self.client is None:
+            return 0
+        else:
+            return len(self.client)

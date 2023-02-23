@@ -26,7 +26,8 @@ class CoinCheckClient(Client):
                 self.__update_next_frame()
             # initialization at start script
             self.frame_ohlcv = pd.DataFrame(
-                {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume}, index=[self.current_frame]
+                {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume},
+                index=[self.current_frame],
             )
             self.frame_ohlcv.index.name = self.time_column_name
 
@@ -38,7 +39,8 @@ class CoinCheckClient(Client):
             self.__update_next_frame()
             # initialization on frame
             self.frame_ohlcv = pd.DataFrame(
-                {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume}, index=[self.current_frame]
+                {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume},
+                index=[self.current_frame],
             )
             self.frame_ohlcv.index.name = self.time_column_name
         else:
@@ -102,13 +104,18 @@ class CoinCheckClient(Client):
         current_time = datetime.datetime.now(tz=datetime.timezone.utc)
         if self.frame < Frame.H1:
             additional_mins = current_time.minute % self.frame
-            delta = datetime.timedelta(minutes=additional_mins, seconds=current_time.second, microseconds=current_time.microsecond)
+            delta = datetime.timedelta(
+                minutes=additional_mins, seconds=current_time.second, microseconds=current_time.microsecond
+            )
             self.current_frame = current_time - delta
             self.frame_delta = datetime.timedelta(minutes=self.frame)
         elif self.frame < Frame.D1:
             additional_hours = current_time.hour % (self.frame / 60)
             delta = datetime.timedelta(
-                hours=additional_hours, minutes=current_time.minute, seconds=current_time.second, microseconds=current_time.microsecond
+                hours=additional_hours,
+                minutes=current_time.minute,
+                seconds=current_time.second,
+                microseconds=current_time.microsecond,
             )
             self.current_frame = current_time - delta
             self.frame_delta = datetime.timedelta(hours=self.frame / 60)
@@ -124,7 +131,9 @@ class CoinCheckClient(Client):
             self.current_frame = current_time - delta
             self.frame_delta = datetime.timedelta(days=self.frame / (60 * 24))
         else:  # Frame.MO1
-            self.current_frame = datetime.datetime(year=current_time.year, month=current_time.month, day=1, tzinfo=datetime.timezone.utc)
+            self.current_frame = datetime.datetime(
+                year=current_time.year, month=current_time.month, day=1, tzinfo=datetime.timezone.utc
+            )
             self.frame_delta = None
         self.__return_intermidiate_data = return_intermidiate_data
         self.next_frame = self.current_frame
@@ -147,7 +156,12 @@ class CoinCheckClient(Client):
             self.data = initialized_with.get_ohlc()
             # update columns name with cc policy
             ohlc_dict = initialized_with.get_ohlc_columns()
-            new_column_dict = {ohlc_dict["Open"]: "open", ohlc_dict["High"]: "high", ohlc_dict["Low"]: "low", ohlc_dict["Close"]: "close"}
+            new_column_dict = {
+                ohlc_dict["Open"]: "open",
+                ohlc_dict["High"]: "high",
+                ohlc_dict["Low"]: "low",
+                ohlc_dict["Close"]: "close",
+            }
             if "Volume" in ohlc_dict:
                 new_column_dict.update({ohlc_dict["Volume"]: "volume"})
             self.data.rename(columns=new_column_dict)
@@ -180,7 +194,9 @@ class CoinCheckClient(Client):
             if last_frame_time is not None:
                 # If last_frame_time equal to currenet_frame, set it as frame_ohlc. Then remove last ohlc
                 if last_frame_time == self.current_frame:
-                    self.logger.info("initialize client returned current time frame data. try to merge it with tick data obtained from coincheck.")
+                    self.logger.info(
+                        "initialize client returned current time frame data. try to merge it with tick data obtained from coincheck."
+                    )
                     self.frame_ohlcv = self.data.iloc[-1:]  # store last tick df
                     self.data = self.data.drop([self.data.index[-1]])
                 # If last_frame_time is greater than current_time, assuming server time and client time are mismatching. so convert(reduce) server datetime
@@ -213,7 +229,9 @@ class CoinCheckClient(Client):
                         )  # Not sure last tick is actually on time. So put it on 1 frame before
                         self.data.index = self.data.index + fitting_time
                     else:
-                        self.logger.info(f"initialize client retuened {last_frame_time} for latest frame data. It is working as expected.")
+                        self.logger.info(
+                            f"initialize client retuened {last_frame_time} for latest frame data. It is working as expected."
+                        )
                 if self.frame_ohlcv is not None and "volume" not in self.frame_ohlcv.columns:
                     self.frame_ohlcv["volume"] = 0
 
@@ -225,17 +243,25 @@ class CoinCheckClient(Client):
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol=True):
+    def _get_ohlc_from_client(
+        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
+    ):
         if length is None:
-            if self.__return_intermidiate_data:
-                return pd.concat([self.data, self.frame_ohlcv])
+            if index is None:
+                if self.__return_intermidiate_data:
+                    return pd.concat([self.data, self.frame_ohlcv])
+                else:
+                    return self.data.copy()
             else:
-                return self.data.copy()
+                return self.data.iloc[:index]
         elif length > 0:
-            if self.__return_intermidiate_data:
-                return pd.concat([self.data, self.frame_ohlcv]).iloc[-length:]
+            if index is None:
+                if self.__return_intermidiate_data:
+                    return pd.concat([self.data, self.frame_ohlcv]).iloc[-length:]
+                else:
+                    return self.data.iloc[-length:]
             else:
-                return self.data.iloc[-length:]
+                return self.data.iloc[-length:index]
         else:
             self.logger.error("intervl should be greater than 0.")
 

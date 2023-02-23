@@ -253,7 +253,7 @@ class YahooClient(CSVClient):
                     isUpdated = True
         return isUpdated
 
-    def _get_ohlc_from_client(self, length, symbols: list, frame: int, indices, grouped_by_symbol: bool):
+    def _get_ohlc_from_client(self, length, symbols: list, frame: int, index, grouped_by_symbol: bool):
         # frame rolling is handled in csv client
         interval = self.frame_to_str(self.frame)
         for symbol in symbols:
@@ -263,7 +263,7 @@ class YahooClient(CSVClient):
                     ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
                 )
                 self.__updated_time[symbol] = datetime.datetime.now()
-        return super()._get_ohlc_from_client(length, symbols, frame, indices, grouped_by_symbol)
+        return super()._get_ohlc_from_client(length, symbols, frame, index, grouped_by_symbol)
 
     def cancel_order(self, order):
         pass

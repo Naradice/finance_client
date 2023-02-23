@@ -20,12 +20,17 @@ def __handle_existing_data(key, provider, freq):
         check_update_required = lambda current_date, last_date: (current_date - last_date) >= datetime.timedelta(days=1)
     elif freq == "W1":
         check_update_required = (
-            lambda current_date, last_date: (current_date - last_date) >= datetime.timedelta(days=7) or current_date.weekday < last_date.weekday
+            lambda current_date, last_date: (current_date - last_date) >= datetime.timedelta(days=7)
+            or current_date.weekday < last_date.weekday
         )
     elif freq == "M1":
-        check_update_required = lambda current_date, last_date: (current_date >= last_date) and current_date.month != last_date.month
+        check_update_required = (
+            lambda current_date, last_date: (current_date >= last_date) and current_date.month != last_date.month
+        )
     elif freq == "Y1":
-        check_update_required = lambda current_date, last_date: (current_date >= last_date) and current_date.year != last_date.year
+        check_update_required = (
+            lambda current_date, last_date: (current_date >= last_date) and current_date.year != last_date.year
+        )
     else:
         check_update_required = lambda current_date, last_date: current_date >= last_date
 
@@ -80,7 +85,7 @@ def SP500(start=None, end=None, provider="fred", *additional_params):
 
             new_data = get_SP500(start, end)
             # concat exsisting data and new data
-            if existing_data.index[-1] < new_data.index[-1]:
+            if len(existing_data) > 0 and existing_data.index[-1] < new_data.index[-1]:
                 data = pd.concat([existing_data, new_data], axis=0)
                 del existing_data
                 del new_data

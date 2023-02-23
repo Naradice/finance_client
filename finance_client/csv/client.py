@@ -428,7 +428,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
     @abstractmethod
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol: bool = False
+        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False
     ):
         pass
 
@@ -632,7 +632,7 @@ class CSVClient(CSVClientBase):
             raise Exception("interval should be greater than 0.")
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol: bool = False
+        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False
     ):
         missing_data = pd.DataFrame()
         target_symbols = []
@@ -650,37 +650,33 @@ class CSVClient(CSVClientBase):
             return pd.DataFrame()
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
-        if indices is None:
-            target_index = self._step_index
-            if target_index > len(self):
+        if index is None:
+            index = self._step_index
+            if index > len(self):
                 if self._update_rates(symbols) is False:
                     if self._auto_reset:
                         # todo initialize based on parameters
                         self._step_index = random.randint(0, len(self.data))
-                        target_index = self._step_index
+                        index = self._step_index
                     else:
                         self.logger.warning(
                             f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index"
                         )
                         self._step_index = self._step_index - 1
-                        target_index = self._step_index
-            target_indices = [target_index]
-        else:
-            target_indices = indices
-        for target_index in target_indices:
-            if length is not None:
-                if target_index < length - 1:
-                    self.logger.warning(
-                        f"index {target_index} is less than length {length}. return length from index 0. Please assgin start_index."
-                    )
-                    target_index = length
-            rates = self.__get_rates(target_index, length, target_symbols, frame)
-            if grouped_by_symbol is False and type(rates.columns) is pd.MultiIndex:
-                rates.columns = rates.columns.swaplevel(0, 1)
-                rates.sort_index(level=0, axis=1, inplace=True)
-            if self.auto_step_index:
-                self._step_index += 1
-            return rates
+                        index = self._step_index
+        if length is not None:
+            if index < length - 1:
+                self.logger.warning(
+                    f"index {index} is less than length {length}. return length from index 0. Please assgin start_index."
+                )
+                index = length
+        rates = self.__get_rates(index, length, target_symbols, frame)
+        if grouped_by_symbol is False and type(rates.columns) is pd.MultiIndex:
+            rates.columns = rates.columns.swaplevel(0, 1)
+            rates.sort_index(level=0, axis=1, inplace=True)
+        if self.auto_step_index:
+            self._step_index += 1
+        return rates
 
     def get_future_rates(self, length=1, back_length=0, symbols: list = []):
         if length > 1:
@@ -1125,7 +1121,7 @@ class CSVChunkClient(CSVClientBase):
         return rates
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol: bool = False
+        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False
     ):
         target_symbols, missing_files = self._get_target_symbols(symbols)
         if len(missing_files) > 0:

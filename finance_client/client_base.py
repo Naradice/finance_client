@@ -5,6 +5,7 @@ import queue
 import threading
 import time
 from abc import ABCMeta, abstractmethod
+from collections.abc import Iterable
 from logging import config, getLogger
 
 import numpy as np
@@ -26,6 +27,7 @@ class Client(metaclass=ABCMeta):
         pre_process=None,
         economic_keys=None,
         frame=None,
+        observation_length=None,
         do_render=True,
         logger_name=None,
         logger=None,
@@ -36,6 +38,7 @@ class Client(metaclass=ABCMeta):
         self.do_render = do_render
         self.__pending_order_results = {}
         self.frame = frame
+        self.observation_length = observation_length
         if type(symbols) == str:
             self.symbols = [symbols]
         else:
@@ -330,7 +333,7 @@ class Client(metaclass=ABCMeta):
         self.__data_queue = None
 
     def __put_data_to_queue(self, data_length: int, symbols: list, frame: int, idc_processes=[], pre_processes=[]):
-        data = self.get_ohlc(data_length, symbols, frame, idc_processes, pre_processes)
+        data = self.get_ohlc(data_length, symbols, frame, idc_processes=idc_processes, pre_processes=pre_processes)
         self.__data_queue.put(data)
 
     def get_client_params(self):
@@ -427,12 +430,132 @@ class Client(metaclass=ABCMeta):
             self.__rendere.update_ohlc(data_df, self.__ohlc_index)
         self.__rendere.plot()
 
+    def __get_training_data(
+        self,
+        length,
+        symbols,
+        frame,
+        indices,
+        idc_processes,
+        pre_processes,
+        economic_keys,
+        grouped_by_symbol,
+        do_run_process,
+        do_add_eco_idc,
+        data_freq,
+    ):
+        if length is None:
+            length = 1
+        chunk_data = []
+        for index in indices:
+            required_length = 0
+            if do_run_process:
+                required_length += self._get_required_length(idc_processes + pre_processes)
+            if length < required_length:
+                target_length = required_length
+            else:
+                target_length = length
+            ohlc_df = self._get_ohlc_from_client(
+                length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
+            )
+
+            if do_run_process:
+                data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
+            else:
+                data = ohlc_df
+
+            if do_add_eco_idc:
+                first_index = ohlc_df.index[0]
+                end_index = ohlc_df.index[-1]
+                indicaters_df = self.get_economic_idc(economic_keys, first_index, end_index)
+                indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+                if frame < Frame.D1:
+                    if indicaters_df.index.tzinfo is None:
+                        indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
+                indicaters_df = indicaters_df.fillna(method="ffill")
+                data = pd.concat([data, indicaters_df], axis=1)
+                data.dropna(thresh=4, inplace=True)
+
+            chunk_data.append(data.iloc[-length:])
+        chunk_data = np.array(chunk_data)
+        return chunk_data
+
+    def __get_trading_data(
+        self,
+        length,
+        symbols,
+        frame,
+        index,
+        idc_processes,
+        pre_processes,
+        economic_keys,
+        grouped_by_symbol,
+        do_run_process,
+        do_add_eco_idc,
+        data_freq,
+    ):
+        if length is None:
+            ohlc_df = self._get_ohlc_from_client(
+                length=length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
+            )
+            required_length = 0
+            if do_run_process:
+                required_length += self._get_required_length(idc_processes + pre_processes)
+        else:
+            required_length = 0
+            if do_run_process:
+                required_length += self._get_required_length(idc_processes + pre_processes)
+            if length < required_length:
+                target_length = required_length
+            else:
+                target_length = length
+            ohlc_df = self._get_ohlc_from_client(
+                length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
+            )
+
+        if isinstance(ohlc_df.index, pd.DatetimeIndex):
+            # drop duplicates
+            ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+            ohlc_df.dropna(thresh=4, inplace=True)
+
+        t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
+        t.start()
+
+        if do_run_process:
+            if isinstance(ohlc_df, pd.DataFrame) and len(ohlc_df) >= required_length:
+                data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
+                if self.do_render:
+                    self.__plot_data_width_indicaters(symbols, data)
+            else:
+                self.logger.error("data length is insufficient to caliculate indicaters.")
+        else:
+            data = ohlc_df
+            if self.do_render:
+                self.__plot_data(symbols, data)
+
+        if do_add_eco_idc:
+            first_index = ohlc_df.index[0]
+            end_index = ohlc_df.index[-1]
+            indicaters_df = self.get_economic_idc(economic_keys, first_index, end_index)
+            indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+            if frame < Frame.D1:
+                if indicaters_df.index.tzinfo is None:
+                    indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
+            indicaters_df = indicaters_df.fillna(method="ffill")
+            data = pd.concat([data, indicaters_df], axis=1)
+            data.dropna(thresh=4, inplace=True)
+
+        if length is None:
+            return data
+        else:
+            return data.iloc[-length:]
+
     def get_ohlc(
         self,
         length: int = None,
         symbols: list = None,
         frame: int = None,
-        indices=None,
+        index=None,
         idc_processes=None,
         pre_processes=None,
         economic_keys=None,
@@ -444,7 +567,7 @@ class Client(metaclass=ABCMeta):
             length (int | None): specify data length > 1. If None is specified, return all date.
             symbols (list[str]): list of symbols. Defaults to [].
             frame (int | None): specify frame to get time series data. If None, default value is used instead.
-            indices (list[int]): specify index copy from. If list has multiple indices, return numpy array as (indices_size, column_size, data_length).
+            index (int or list[int]): specify index copy from. If list has multiple indices, return numpy array as (indices_size, column_size, data_length).
               step_index is not change if index is specified even auto_indx is True as typically this option is used for machine learning.
               Defaults None and this case step_index is used.
             idc_processes (Process, optional) : list of indicater process. Dafaults to []
@@ -454,6 +577,8 @@ class Client(metaclass=ABCMeta):
             pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
             Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
+        if length is None and self.observation_length is not None:
+            length = self.observation_length
 
         if symbols is None:
             symbols = []
@@ -483,61 +608,36 @@ class Client(metaclass=ABCMeta):
 
         data_freq = Frame.to_panda_freq(frame)
 
-        if length is None:
-            ohlc_df = self._get_ohlc_from_client(
-                length=length, symbols=symbols, frame=frame, indices=indices, grouped_by_symbol=grouped_by_symbol
+        if index is None or type(index) is int:
+            # return DataFrame for trading
+            return self.__get_trading_data(
+                length,
+                symbols,
+                frame,
+                index,
+                idc_processes,
+                pre_processes,
+                economic_keys,
+                grouped_by_symbol,
+                do_run_process,
+                do_add_eco_idc,
+                data_freq=data_freq,
             )
-            required_length = 0
-            if do_run_process:
-                required_length += self._get_required_length(idc_processes + pre_processes)
         else:
-            required_length = 0
-            if do_run_process:
-                required_length += self._get_required_length(idc_processes + pre_processes)
-            if length < required_length:
-                target_length = required_length
-            else:
-                target_length = length
-            ohlc_df = self._get_ohlc_from_client(
-                length=target_length, symbols=symbols, frame=frame, indices=indices, grouped_by_symbol=grouped_by_symbol
+            # training
+            return self.__get_training_data(
+                length,
+                symbols,
+                frame,
+                index,
+                idc_processes,
+                pre_processes,
+                economic_keys,
+                grouped_by_symbol,
+                do_run_process,
+                do_add_eco_idc,
+                data_freq=data_freq,
             )
-
-        if type(ohlc_df.index) is pd.DatetimeIndex:
-            ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
-            ohlc_df.dropna(thresh=4, inplace=True)
-
-        t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
-        t.start()
-
-        if do_run_process:
-            if isinstance(ohlc_df, pd.DataFrame) and len(ohlc_df) >= required_length:
-                data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, grouped_by_symbol)
-                if self.do_render:
-                    self.__plot_data_width_indicaters(symbols, data)
-            else:
-                self.logger.error("data length is insufficient to caliculate indicaters.")
-        else:
-            data = ohlc_df
-
-        if do_add_eco_idc:
-            first_index = ohlc_df.index[0]
-            end_index = ohlc_df.index[-1]
-            indicaters_df = self.get_economic_idc(economic_keys, first_index, end_index)
-            indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
-            if frame < Frame.D1:
-                if indicaters_df.index.tzinfo is None:
-                    indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
-            indicaters_df = indicaters_df.fillna(method="ffill")
-            data = pd.concat([data, indicaters_df], axis=1)
-            data.dropna(thresh=4, inplace=True)
-
-        if self.do_render:
-            self.__plot_data(symbols, data)
-
-        if length is None:
-            return data
-        else:
-            return data.iloc[-length:]
 
     # Need to implement in the actual client
 
@@ -546,7 +646,7 @@ class Client(metaclass=ABCMeta):
         return {}
 
     @abstractmethod
-    def _get_ohlc_from_client(self, length, symbols: list, frame: int, indices: list, grouped_by_symbol: bool):
+    def _get_ohlc_from_client(self, length, symbols: list, frame: int, index: list, grouped_by_symbol: bool):
         return {}
 
     @abstractmethod
@@ -570,8 +670,13 @@ class Client(metaclass=ABCMeta):
         print("Need to implement get_next_tick")
 
     @abstractmethod
-    def __getitem__(self, ndx):
-        return None
+    def __len__(self):
+        print("Need to implement __len__")
+
+    def __getitem__(self, idx):
+        return self.get_ohlc(
+            self.observation_length, self.symbols, self.frame, idx, self.idc_process, self.pre_process, self.eco_keys
+        )
 
     # define market client
     def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):

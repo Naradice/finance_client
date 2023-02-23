@@ -236,7 +236,7 @@ class MT5Client(Client):
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
-                symbol_tick = self.__download(symbol, 1, self.sim_index - 1)
+                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
                 symbol_tick.index = [symbol]
                 df = pd.concat(df, symbol_tick)
             open_column = self.get_ohlc_columns()["Open"]
@@ -267,7 +267,7 @@ class MT5Client(Client):
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
-                symbol_tick = self.__download(symbol, 1, self.sim_index - 1)
+                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
                 symbol_tick.index = [symbol]
                 df = pd.concat(df, symbol_tick)
             open_column = self.get_ohlc_columns()["Open"]
@@ -290,7 +290,7 @@ class MT5Client(Client):
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
-                symbol_tick = self.__download(symbol, 1, self.sim_index - 1)
+                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
                 symbol_tick.index = [symbol]
                 df = pd.concat(df, symbol_tick)
             spread_srs = df["spread"].iloc[0]
@@ -473,11 +473,17 @@ class MT5Client(Client):
         )
         return rate_df
 
-    def __download(self, length, symbol, frame):
-        start_index = 0
+    def __download(self, length, symbol, frame, index=None):
+        if index is None:
+            if self.back_test:
+                # simu index will be reduced by get_ohlc_from_client
+                start_index = self.sim_index
+            else:
+                start_index = 0
+        else:
+            start_index = index
         _length = None
-        if self.back_test:
-            start_index = self.sim_index  # simu index will be reduced by get_ohlc_from_client.
+
         if self.auto_index and length == 1:
             _length = length
             length += 1
@@ -533,7 +539,7 @@ class MT5Client(Client):
         else:
             return df_rates
 
-    def __get_ohlc(self, length, symbols, frame, grouped_by_symbol=True):
+    def __get_ohlc(self, length, symbols, frame, index=None, grouped_by_symbol=True):
         if frame is None:
             frame = self.mt5_frame
         if frame != self.mt5_frame:
@@ -545,7 +551,7 @@ class MT5Client(Client):
             kwargs = {"frame": frame}
         elif length > 0:
             download_func = self.__download
-            kwargs = {"length": length, "frame": frame}
+            kwargs = {"length": length, "frame": frame, "index": index}
         DFS = {}
         df = pd.DataFrame()
         for symbol in symbols:
@@ -560,9 +566,9 @@ class MT5Client(Client):
         return df
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, indices=None, grouped_by_symbol=True
+        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
     ):
-        df_rates = self.__get_ohlc(length, symbols, frame, grouped_by_symbol)
+        df_rates = self.__get_ohlc(length, symbols, frame, index, grouped_by_symbol)
         if self.auto_index:
             self.sim_index = self.sim_index - 1
         return df_rates
@@ -573,3 +579,10 @@ class MT5Client(Client):
             request = {"action": mt5.TRADE_ACTION_REMOVE, "order": position}
             result = mt5.order_send(request)
             return result
+
+    def __len__(self):
+        if self.frame in self.LAST_IDX:
+            return self.LAST_IDX[self.frame]
+        else:
+            MAX_LENGTH = 12 * 24 * 345
+            return MAX_LENGTH
