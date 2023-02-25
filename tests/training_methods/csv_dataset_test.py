@@ -73,12 +73,19 @@ class TestCSVClient(unittest.TestCase):
         self.single_client = CSVClient(
             files=csv_file, observation_length=self.length, logger=logger, date_column=datetime_column, start_index=self.length
         )
-        
+
         rsi_process = utils.RSIProcess(ohlc_column_name=ohlc_columns)
+        self.rsi_key = rsi_process.KEY_RSI
         self.single_tec_client = CSVClient(
-            files=csv_file, observation_length=self.length, logger=logger, date_column=datetime_column, start_index=self.length,
-            idc_process=[rsi_process]
+            files=csv_file,
+            observation_length=self.length,
+            logger=logger,
+            date_column=datetime_column,
+            start_index=self.length,
+            idc_process=[rsi_process],
         )
+        
+        utils.DiffPreProcess()
 
     def test_single_dataset(self):
         single_dataset = TestDataset(self.single_client, self.length)
@@ -103,7 +110,14 @@ class TestCSVClient(unittest.TestCase):
             self.assertEqual(src.shape, (batch_size, self.length, 1))
 
     def test_signal_dataset_with_tec_indicater(self):
-        pass
+        single_dataset = TestDataset(self.single_tec_client, self.length)
+        batch_size = 16
+        target_column = self.rsi_key
+        for index in range(0, len(single_dataset), batch_size):
+            if index + batch_size > len(single_dataset):
+                break
+            src, tgt = single_dataset[index : index + batch_size, target_column]
+            self.assertEqual(src.shape, (batch_size, self.length, 1))
 
 
 if __name__ == "__main__":

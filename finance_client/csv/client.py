@@ -565,6 +565,7 @@ class CSVClient(CSVClientBase):
                 # Rolled result has NaN regardless market is open or not.
                 self.data = self.roll_ohlc_data(self.data, out_frame, grouped_by_symbol=True)
                 self.frame = out_frame
+        self.data = self.run_processes(self.data, self.symbols, self.idc_process, self.pre_process, True)
 
     def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
         DFS = {}

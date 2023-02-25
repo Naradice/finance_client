@@ -478,6 +478,7 @@ class RSIProcess(ProcessBase):
                 grouped_by_symbol=grouped_by_symbol,
                 mean_gain_name=self.KEY_GAIN,
                 mean_loss_name=self.KEY_LOSS,
+                rsi_name=self.KEY_RSI
             )
         else:
             rsi_df = technical.RSIFromOHLC(

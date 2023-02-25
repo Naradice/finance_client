@@ -89,6 +89,7 @@ class Client(metaclass=ABCMeta):
             self.pre_process = []
         else:
             self.pre_process = pre_process
+        # Note: Economic indicater implementation is in progress
         if economic_keys is None:
             self.eco_keys = []
         else:
@@ -691,10 +692,16 @@ class Client(metaclass=ABCMeta):
     @property
     def indices(self):
         if self._indices is None:
+            required_length = [0]
+            for process in self.idc_process:
+                required_length.append(process.get_minimum_required_length())
+            for process in self.pre_process:
+                required_length.append(process.get_minimum_required_length())
+            minimum_length = max(required_length)
             if self.observation_length:
-                self._indices = [index for index in range(self.observation_length, len(self))]
+                self._indices = [index for index in range(self.observation_length + minimum_length, len(self))]
             else:
-                self._indices = [index for index in range(len(self))]
+                self._indices = [index for index in range(minimum_length, len(self))]
         return self._indices
 
     def __getitem__(self, batch_idx):
