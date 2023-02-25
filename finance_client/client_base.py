@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import queue
+import random
 import threading
 import time
 from abc import ABCMeta, abstractmethod
@@ -92,6 +93,8 @@ class Client(metaclass=ABCMeta):
             self.eco_keys = []
         else:
             self.eco_keys = economic_keys
+
+        self._indices = None
 
     def initialize_budget(self, budget):
         self.market(budget)
@@ -476,7 +479,7 @@ class Client(metaclass=ABCMeta):
                 data = pd.concat([data, indicaters_df], axis=1)
                 data.dropna(thresh=4, inplace=True)
 
-            chunk_data.append(data.iloc[-length:])
+            chunk_data.append(data.iloc[-length:].values)
         chunk_data = np.array(chunk_data)
         return chunk_data
 
@@ -673,9 +676,16 @@ class Client(metaclass=ABCMeta):
     def __len__(self):
         print("Need to implement __len__")
 
+    @property
+    def indices(self):
+        if self._indices is None:
+            self._indices = [index for index in range(self.observation_length, len(self))]
+        return self._indices
+
     def __getitem__(self, idx):
+        indices = self.indices[idx]
         return self.get_ohlc(
-            self.observation_length, self.symbols, self.frame, idx, self.idc_process, self.pre_process, self.eco_keys
+            self.observation_length, self.symbols, self.frame, indices, self.idc_process, self.pre_process, self.eco_keys
         )
 
     # define market client
@@ -696,9 +706,6 @@ class Client(metaclass=ABCMeta):
         print("Need to implement reset")
 
     def close_client(self):
-        pass
-
-    def get_min_max(column, data_length=0):
         pass
 
     @property
@@ -1005,3 +1012,10 @@ class Client(metaclass=ABCMeta):
 
     def get_current_date(self):
         pass
+
+    def seed(self, seed=None):
+        if seed is None:
+            seed = 1017
+        random.seed(seed)
+        np.random.seed(seed)
+        self.seed_value = seed

@@ -59,7 +59,7 @@ class TestClient(Client):
             df = self.data.iloc[self.step_index - length + 1 : self.step_index + 1]
             self.step_index += 1
         else:
-            df = self.data.iloc[index - length: index]
+            df = self.data.iloc[index - length : index]
         return df
 
     def get_future_rates(self, interval) -> pd.DataFrame:
@@ -96,9 +96,6 @@ class TestClient(Client):
     def reset(self, mode=None):
         print("Need to implement reset")
 
-    def get_min_max(column, data_length=0):
-        pass
-
     @property
     def max(self):
         print("Need to implement max")
@@ -108,9 +105,6 @@ class TestClient(Client):
     def min(self):
         print("Need to implement min")
         return -1
-
-    def __getitem__(self, ndx):
-        return None
 
 
 class TestCSVClient(unittest.TestCase):

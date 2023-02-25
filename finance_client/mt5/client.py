@@ -70,6 +70,7 @@ class MT5Client(Client):
         auto_index=True,
         simulation=True,
         frame=5,
+        observation_length=None,
         symbols=["USDJPY"],
         back_test=False,
         do_render=False,
@@ -78,7 +79,14 @@ class MT5Client(Client):
         seed=1017,
     ):
         super().__init__(
-            budget=budget, frame=frame, symbols=symbols, provider=server, do_render=do_render, logger_name=__name__, logger=logger
+            budget=budget,
+            frame=frame,
+            symbols=symbols,
+            observation_length=observation_length,
+            provider=server,
+            do_render=do_render,
+            logger_name=__name__,
+            logger=logger,
         )
         self.back_test = back_test
         self.debug = False

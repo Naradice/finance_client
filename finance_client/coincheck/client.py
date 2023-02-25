@@ -79,6 +79,7 @@ class CoinCheckClient(Client):
         simulation=False,
         budget=1000000,
         frame: int = 30,
+        observation_length=None,
         do_render=False,
         logger=None,
     ):
@@ -95,7 +96,16 @@ class CoinCheckClient(Client):
             do_render (bool, optional): If true, plot ohlc data by matplotlib. Defaults to False.
             logger (_type_, optional): you can pass your logger. Defaults to None and use default logger.
         """
-        super().__init__(budget, "CoinCheck", [], frame=frame, do_render=do_render, logger_name="ccheck", logger=logger)
+        super().__init__(
+            budget,
+            "CoinCheck",
+            [],
+            frame=frame,
+            observation_length=observation_length,
+            do_render=do_render,
+            logger_name="ccheck",
+            logger=logger,
+        )
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
 
         self.ticker = apis.Ticker()
@@ -334,9 +344,6 @@ class CoinCheckClient(Client):
     def reset(self, mode=None):
         pass
 
-    def get_min_max(column, data_length=0):
-        pass
-
     @property
     def max(self):
         print("Need to implement max")
@@ -346,8 +353,5 @@ class CoinCheckClient(Client):
     def min(self):
         print("Need to implement min")
         return -1
-
-    def __getitem__(self, ndx):
-        return None
 
     ###

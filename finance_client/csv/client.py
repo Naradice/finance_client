@@ -273,6 +273,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         symbols=[],
         frame: int = None,
         out_frame: int = None,
+        observation_length=None,
         idc_process=None,
         pre_process=None,
         economic_keys=None,
@@ -301,6 +302,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             pre_process=pre_process,
             economic_keys=economic_keys,
             frame=frame,
+            observation_length=observation_length,
             provider=provider,
             logger_name=__name__,
             logger=logger,
@@ -400,9 +402,6 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
         return self._args
 
-    def __getitem__(self, ndx):
-        return self.data.iloc[ndx]
-
     def __len__(self):
         if self.data is not None:
             return len(self.data)
@@ -452,6 +451,17 @@ class CSVClientBase(Client, metaclass=ABCMeta):
     def reset(self, mode: str = None, retry=0):
         pass
 
+    def __getitem__(self, batch_idx):
+        chunk_data = numpy.array([])
+        item = numpy.array([])
+        chunk_size = 0
+        for index in self.indices[batch_idx]:
+            item = self.data.iloc[index - self.observation_length : index].values
+            chunk_size += 1
+            chunk_data = numpy.append(chunk_data, item)
+        chunk_data = chunk_data.reshape(chunk_size, *item.shape)
+        return chunk_data
+
 
 class CSVClient(CSVClientBase):
     def __init__(
@@ -463,6 +473,7 @@ class CSVClient(CSVClientBase):
         symbols=[],
         frame: int = None,
         out_frame: int = None,
+        observation_length=None,
         idc_process=None,
         pre_process=None,
         economic_keys=None,
@@ -489,6 +500,7 @@ class CSVClient(CSVClientBase):
             symbols (list, optional): symbols name of data. Used to specify columns names.
             frame (int, optional): input frame. Specify time series span by minutes. Defaults None and determined by data.
             out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
+            observation_length (int, optional): specify data length for __getitem__.
             idc_process (list<Process>): list of technical indicater processes
             pre_process (list<PreProcess>): list of pre-process
             economic_keys (list<str>): list of key of technical indicaters
@@ -510,6 +522,7 @@ class CSVClient(CSVClientBase):
             symbols,
             frame,
             out_frame,
+            observation_length,
             idc_process,
             pre_process,
             economic_keys,
@@ -599,7 +612,7 @@ class CSVClient(CSVClientBase):
     def __get_rates(self, index, length: int = None, symbols: list = [], frame: int = None):
         if length is None:
             self._update_rates(symbols)
-            rates = self.data.copy()
+            rates = self.data
             if frame is not None and self.frame < frame:
                 rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
             if len(symbols) != 0:
@@ -608,7 +621,7 @@ class CSVClient(CSVClientBase):
                     rates = rates[symbols]
                 except Exception as e:
                     self.logger.error(f"{symbols} is not in data. Return entire symbols: {e}")
-            return rates[:index].copy()
+            return rates[:index]
         elif length >= 1:
             rates = None
             out_length = length
@@ -619,14 +632,14 @@ class CSVClient(CSVClientBase):
                 if len(symbols) > 0:
                     rates = self.data[symbols]
                 else:
-                    rates = self.data.copy()
-                rates = rates.iloc[index - length : index].copy()
+                    rates = self.data
+                rates = rates.iloc[index - length : index]
             except Exception as e:
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
 
             if frame is not None and self.frame < frame:
                 rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
-            rates = rates.iloc[:out_length].copy()
+            rates = rates.iloc[:out_length]
             return rates
         else:
             raise Exception("interval should be greater than 0.")
@@ -828,28 +841,6 @@ class CSVClient(CSVClientBase):
     def min(self):
         self.data.max()
 
-    def get_train_data(
-        self, index, length, columns=[], symbols=[], idc_processes=[], pre_processes=[], frame=None
-    ) -> pd.DataFrame:
-        if len(symbols) > 0:
-            target_symbols = symbols
-        else:
-            target_symbols = self.symbols
-
-        required_length = length + self._get_required_length(idc_processes + pre_processes)
-        ohlc_df = self.__get_rates(index, required_length, symbols, frame)
-        for process in pre_processes:
-            if process.initialization_required:
-                process.initialize(self.data)
-        data = self.run_processes(ohlc_df, symbols, idc_processes, pre_processes, True)
-
-        if len(columns) > 0:
-            target_columns = columns
-        else:
-            target_columns = data[target_symbols[0]].columns
-
-        return pd.concat([data[symbol][target_columns].iloc[-length:].T for symbol in target_symbols])
-
 
 class CSVChunkClient(CSVClientBase):
     def __init__(
@@ -862,6 +853,7 @@ class CSVChunkClient(CSVClientBase):
         symbols=[],
         frame: int = None,
         out_frame: int = None,
+        observation_length=None,
         start_index=0,
         start_date=None,
         start_random_index=False,
@@ -886,6 +878,7 @@ class CSVChunkClient(CSVClientBase):
             symbols (list, optional): symbols (list, optional): symbols name of data. Used to specify columns names.
             frame (int, optional): input frame. Specify time series span by minutes. Defaults None and determined by data.
             out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
+            observation_length (int, optional): specify data length for __getitem__.
             start_index (int, optional): specify minimum index. If not specified, start from 0. Defauls to None.
             start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
             start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
@@ -909,6 +902,7 @@ class CSVChunkClient(CSVClientBase):
             symbols,
             frame,
             out_frame,
+            observation_length,
             start_index,
             start_date,
             start_random_index,
@@ -1185,10 +1179,6 @@ class CSVChunkClient(CSVClientBase):
 
     def get_additional_params(self):
         return {"chunksize": self.chunksize, "files": self.files}
-
-    def __getitem__(self, ndx):
-        rates = pd.concat(self.data.values(), axis=1, keys=self.data.keys())
-        return rates.iloc[ndx]
 
     def __del__(self):
         if len(self.TRS) > 0:

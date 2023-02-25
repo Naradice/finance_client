@@ -123,9 +123,6 @@ class SBIClient(Client):
     def reset(self, mode=None):
         print("Need to implement reset")
 
-    def get_min_max(column, data_length=0):
-        pass
-
     def get_rating(self, symbols):
         ratings_dict = self.rpa_client.get_ratings(symbols)
         ratings_df = pd.DataFrame.from_dict(ratings_dict)
