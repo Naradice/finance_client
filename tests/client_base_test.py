@@ -106,6 +106,9 @@ class TestClient(Client):
         print("Need to implement min")
         return -1
 
+    def __len__(self):
+        return super().__len__()
+
 
 class TestCSVClient(unittest.TestCase):
     def test_get_rates_wo_plot(self):

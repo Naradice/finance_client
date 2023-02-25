@@ -547,7 +547,7 @@ class MT5Client(Client):
         else:
             return df_rates
 
-    def __get_ohlc(self, length, symbols, frame, index=None, grouped_by_symbol=True):
+    def __get_ohlc(self, length, symbols, frame, columns=None, index=None, grouped_by_symbol=True):
         if frame is None:
             frame = self.mt5_frame
         if frame != self.mt5_frame:
@@ -563,7 +563,10 @@ class MT5Client(Client):
         DFS = {}
         df = pd.DataFrame()
         for symbol in symbols:
-            DFS[symbol] = download_func(symbol=symbol, **kwargs)
+            temp_df = download_func(symbol=symbol, **kwargs)
+            if columns is not None:
+                temp_df = temp_df[columns]
+            DFS[symbol] = temp_df
         if len(DFS) > 0:
             df = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
         if len(symbols) > 1:
@@ -574,9 +577,9 @@ class MT5Client(Client):
         return df
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
+        self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True
     ):
-        df_rates = self.__get_ohlc(length, symbols, frame, index, grouped_by_symbol)
+        df_rates = self.__get_ohlc(length, symbols, frame, columns, index, grouped_by_symbol)
         if self.auto_index:
             self.sim_index = self.sim_index - 1
         return df_rates

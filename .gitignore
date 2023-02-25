@@ -16,12 +16,12 @@ finance_client.egg-info
 .env
 __pycache__/
 /dist
-*finance_client*.logs
 tests/env.test.json
 finance_client/data_source/*/es_config.json
 finance_client/data_source/gmo/config.json
 *.npz
 *.log
+*.logs
 *.dat
 sandbox/
 data_source

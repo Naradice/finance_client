@@ -67,10 +67,10 @@ class SBIClient(Client):
         return {}
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
+        self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True
     ):
         if self.client:
-            return self.client._get_ohlc_from_client(length, symbols, frame, index, grouped_by_symbol)
+            return self.client._get_ohlc_from_client(length, symbols, frame,  columns, index, grouped_by_symbol)
         else:
             return None
 

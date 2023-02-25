@@ -45,7 +45,7 @@ class ProcessBase:
 
     def concat(self, data: pd.DataFrame, new_data: pd.Series):
         if type(data) == pd.DataFrame and type(new_data) == pd.Series:
-            return pd.concat([data, pd.DataFrame.from_records([new_data])], ignore_index=True)
+            return pd.concat([data, pd.DataFrame.from_records([new_data])], ignore_index=True, sort=False)
         elif type(data) == pd.Series and type(new_data) == pd.DataFrame:
             return pd.concat([pd.DataFrame.from_records([data]), new_data], ignore_index=True)
         elif type(data) == pd.DataFrame and type(new_data) == pd.DataFrame:

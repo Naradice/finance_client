@@ -51,9 +51,9 @@ class TestCSVClient(unittest.TestCase):
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column, start_index=10)
         length = 10
         rates = client.get_ohlc(length)
-        self.assertEqual(len(rates.Close), length)
+        self.assertEqual(len(rates["Close"]), length)
         rates = client.get_ohlc()
-        self.assertGreater(len(rates.Close), length)
+        self.assertGreater(len(rates["Close"]), length)
 
     def test_get_next_tick(self):
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)

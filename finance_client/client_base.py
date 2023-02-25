@@ -67,7 +67,7 @@ class Client(metaclass=ABCMeta):
                     os.makedirs(log_folder)
                 logger_config["handlers"]["fileHandler"][
                     "filename"
-                ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
+                ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
                 config.dictConfig(logger_config)
                 if logger_name is None:
                     logger_name == __name__
@@ -438,6 +438,7 @@ class Client(metaclass=ABCMeta):
         length,
         symbols,
         frame,
+        columns,
         indices,
         idc_processes,
         pre_processes,
@@ -459,7 +460,12 @@ class Client(metaclass=ABCMeta):
             else:
                 target_length = length
             ohlc_df = self._get_ohlc_from_client(
-                length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
+                length=target_length,
+                symbols=symbols,
+                frame=frame,
+                columns=columns,
+                index=index,
+                grouped_by_symbol=grouped_by_symbol,
             )
 
             if do_run_process:
@@ -488,6 +494,7 @@ class Client(metaclass=ABCMeta):
         length,
         symbols,
         frame,
+        columns,
         index,
         idc_processes,
         pre_processes,
@@ -499,7 +506,7 @@ class Client(metaclass=ABCMeta):
     ):
         if length is None:
             ohlc_df = self._get_ohlc_from_client(
-                length=length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
+                length=length, symbols=symbols, frame=frame, columns=columns, index=index, grouped_by_symbol=grouped_by_symbol
             )
             required_length = 0
             if do_run_process:
@@ -540,11 +547,12 @@ class Client(metaclass=ABCMeta):
             first_index = ohlc_df.index[0]
             end_index = ohlc_df.index[-1]
             indicaters_df = self.get_economic_idc(economic_keys, first_index, end_index)
-            indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
-            if frame < Frame.D1:
-                if indicaters_df.index.tzinfo is None:
-                    indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
-            indicaters_df = indicaters_df.fillna(method="ffill")
+            if isinstance(indicaters_df.index, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+                indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
+                if frame < Frame.D1:
+                    if indicaters_df.index.tzinfo is None:
+                        indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
+                indicaters_df = indicaters_df.fillna(method="ffill")
             data = pd.concat([data, indicaters_df], axis=1)
             data.dropna(thresh=4, inplace=True)
 
@@ -558,6 +566,7 @@ class Client(metaclass=ABCMeta):
         length: int = None,
         symbols: list = None,
         frame: int = None,
+        columns: list = None,
         index=None,
         idc_processes=None,
         pre_processes=None,
@@ -571,6 +580,7 @@ class Client(metaclass=ABCMeta):
             symbols (list[str]): list of symbols. Defaults to [].
             frame (int | None): specify frame to get time series data. If None, default value is used instead.
             index (int or list[int]): specify index copy from. If list has multiple indices, return numpy array as (indices_size, column_size, data_length).
+            columns: specify columns. If not specified, return open, high, low, close.
               step_index is not change if index is specified even auto_indx is True as typically this option is used for machine learning.
               Defaults None and this case step_index is used.
             idc_processes (Process, optional) : list of indicater process. Dafaults to []
@@ -614,31 +624,33 @@ class Client(metaclass=ABCMeta):
         if index is None or type(index) is int:
             # return DataFrame for trading
             return self.__get_trading_data(
-                length,
-                symbols,
-                frame,
-                index,
-                idc_processes,
-                pre_processes,
-                economic_keys,
-                grouped_by_symbol,
-                do_run_process,
-                do_add_eco_idc,
+                length=length,
+                symbols=symbols,
+                frame=frame,
+                columns=columns,
+                index=index,
+                idc_processes=idc_processes,
+                pre_processes=pre_processes,
+                economic_keys=economic_keys,
+                grouped_by_symbol=grouped_by_symbol,
+                do_run_process=do_run_process,
+                do_add_eco_idc=do_add_eco_idc,
                 data_freq=data_freq,
             )
         else:
             # training
             return self.__get_training_data(
-                length,
-                symbols,
-                frame,
-                index,
-                idc_processes,
-                pre_processes,
-                economic_keys,
-                grouped_by_symbol,
-                do_run_process,
-                do_add_eco_idc,
+                length=length,
+                symbols=symbols,
+                frame=frame,
+                columns=columns,
+                indices=index,
+                idc_processes=idc_processes,
+                pre_processes=pre_processes,
+                economic_keys=economic_keys,
+                grouped_by_symbol=grouped_by_symbol,
+                do_run_process=do_run_process,
+                do_add_eco_idc=do_add_eco_idc,
                 data_freq=data_freq,
             )
 
@@ -649,7 +661,7 @@ class Client(metaclass=ABCMeta):
         return {}
 
     @abstractmethod
-    def _get_ohlc_from_client(self, length, symbols: list, frame: int, index: list, grouped_by_symbol: bool):
+    def _get_ohlc_from_client(self, length, symbols: list, frame: int, columns: list, index: list, grouped_by_symbol: bool):
         return {}
 
     @abstractmethod
@@ -679,13 +691,23 @@ class Client(metaclass=ABCMeta):
     @property
     def indices(self):
         if self._indices is None:
-            self._indices = [index for index in range(self.observation_length, len(self))]
+            if self.observation_length:
+                self._indices = [index for index in range(self.observation_length, len(self))]
+            else:
+                self._indices = [index for index in range(len(self))]
         return self._indices
 
-    def __getitem__(self, idx):
+    def __getitem__(self, batch_idx):
+        if type(batch_idx) is tuple:
+            idx = batch_idx[0]
+            columns = batch_idx[1]
+        else:
+            idx = batch_idx
+            columns = None
+
         indices = self.indices[idx]
         return self.get_ohlc(
-            self.observation_length, self.symbols, self.frame, indices, self.idc_process, self.pre_process, self.eco_keys
+            self.observation_length, self.symbols, self.frame, columns, indices, self.idc_process, self.pre_process, self.eco_keys
         )
 
     # define market client

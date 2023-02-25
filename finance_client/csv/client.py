@@ -124,6 +124,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             if start_date is not None and type(start_date) is datetime.datetime:
                 # start_date = start_date.astimezone(datetime.timezone.utc)
                 start_date = start_date.replace(tzinfo=datetime.timezone.utc)
+                # TODO: update tz handling.
                 remaining_length = len(data.index[data.index >= start_date])
                 if remaining_length > 0:
                     start_index = len(data.index) - remaining_length
@@ -427,7 +428,13 @@ class CSVClientBase(Client, metaclass=ABCMeta):
 
     @abstractmethod
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False
+        self,
+        length: int = None,
+        symbols: list = [],
+        frame: int = None,
+        columns: list = None,
+        index=None,
+        grouped_by_symbol: bool = False,
     ):
         pass
 
@@ -452,11 +459,25 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         pass
 
     def __getitem__(self, batch_idx):
+        if type(batch_idx) is tuple:
+            idx = batch_idx[0]
+            columns = batch_idx[1]
+            if columns is None:
+                df = self.data
+            else:
+                self.data.columns = self.data.columns.swaplevel(0, 1)
+                df = self.data[columns]
+                self.data.columns = self.data.columns.swaplevel(0, 1)
+        else:
+            df = self.data
+            idx = batch_idx
+
         chunk_data = numpy.array([])
         item = numpy.array([])
         chunk_size = 0
-        for index in self.indices[batch_idx]:
-            item = self.data.iloc[index - self.observation_length : index].values
+
+        for index in self.indices[idx]:
+            item = df.iloc[index - self.observation_length : index].values
             chunk_size += 1
             chunk_data = numpy.append(chunk_data, item)
         chunk_data = chunk_data.reshape(chunk_size, *item.shape)
@@ -609,19 +630,17 @@ class CSVClient(CSVClientBase):
             return __symbols, data
         return target_symbols, pd.DataFrame()
 
-    def __get_rates(self, index, length: int = None, symbols: list = [], frame: int = None):
+    def __get_rates(self, index, length, symbols, frame, columns):
         if length is None:
-            self._update_rates(symbols)
             rates = self.data
             if frame is not None and self.frame < frame:
                 rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
-            if len(symbols) != 0:
-                try:
-                    # data is grouped by symbol by csv read
-                    rates = rates[symbols]
-                except Exception as e:
-                    self.logger.error(f"{symbols} is not in data. Return entire symbols: {e}")
-            return rates[:index]
+            if len(symbols) > 0:
+                rates = rates[symbols]
+            if columns is None:
+                return rates.iloc[:index]
+            else:
+                return rates[columns].iloc[:index]
         elif length >= 1:
             rates = None
             out_length = length
@@ -640,12 +659,15 @@ class CSVClient(CSVClientBase):
             if frame is not None and self.frame < frame:
                 rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
             rates = rates.iloc[:out_length]
-            return rates
+            if columns is None:
+                return rates
+            else:
+                return rates[columns]
         else:
             raise Exception("interval should be greater than 0.")
 
     def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False
+        self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol: bool = False
     ):
         missing_data = pd.DataFrame()
         target_symbols = []
@@ -653,16 +675,25 @@ class CSVClient(CSVClientBase):
             target_symbols, missing_data = self.__read_missing_symbol_data(symbols)
         except Exception:
             self.logger.exception("Filed to read csv on get_ohlc_data of CSV client")
+
         if len(missing_data) > 0:
             try:
                 self.data = pd.concat([self.data, missing_data], axis=1)
             except Exception:
                 self.logger.exception("Filed to concat existing data with additional data of specified symbols")
+
+        target_columns = None
         if len(target_symbols) == 0:
             self.logger.warning(f"Specified symbols can't be handled as csv file or its symbol name: {symbols}")
             return pd.DataFrame()
         elif len(target_symbols) == 1:
             target_symbols = target_symbols[0]
+            if columns is not None:
+                target_columns = columns
+        else:
+            if columns is not None:
+                target_columns = pd.MultiIndex.from_product([target_symbols, columns])
+
         if index is None:
             index = self._step_index
             if index > len(self):
@@ -677,13 +708,16 @@ class CSVClient(CSVClientBase):
                         )
                         self._step_index = self._step_index - 1
                         index = self._step_index
+
         if length is not None:
             if index < length - 1:
                 self.logger.warning(
                     f"index {index} is less than length {length}. return length from index 0. Please assgin start_index."
                 )
                 index = length
-        rates = self.__get_rates(index, length, target_symbols, frame)
+        else:
+            self._update_rates(symbols)
+        rates = self.__get_rates(index, length, target_symbols, frame, target_columns)
         if grouped_by_symbol is False and type(rates.columns) is pd.MultiIndex:
             rates.columns = rates.columns.swaplevel(0, 1)
             rates.sort_index(level=0, axis=1, inplace=True)

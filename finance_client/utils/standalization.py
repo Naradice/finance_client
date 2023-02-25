@@ -82,8 +82,7 @@ def min_max_from_dataframe(df: pd.DataFrame, min: pd.Series = None, max: pd.Seri
     _max = max
     if max is None:
         _max = df.max()
-    _df = df[_min.index]
-    std = (_df - _min) / (_max - _min)
+    std = (df - _min) / (_max - _min)
     scaled = std * (scale[1] - scale[0]) + scale[0]
     return scaled, _min, _max
 

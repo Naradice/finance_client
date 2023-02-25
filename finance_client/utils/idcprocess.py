@@ -437,21 +437,20 @@ class RSIProcess(ProcessBase):
     kinds = "RSI"
     last_data = None
 
-    KEY_RSI = "RSI"
-    KEY_GAIN = "GAIN"
-    KEY_LOSS = "LOSS"
-
     def __init__(
         self, key="rsi", window=14, ohlc_column_name=("Open", "High", "Low", "Close"), is_input=True, is_output=True, option=None
     ):
         super().__init__(key)
-        self.available_columns = ["RSI", "AVG_GAIN", "AVG_LOSS"]
         self.option = {"ohlc_column": ohlc_column_name, "window": window}
 
         if option is not None:
             self.option.update(option)
 
-        self.columns = {self.KEY_RSI: f"{key}_RSI", self.KEY_GAIN: f"{key}_AVG_GAIN", self.KEY_LOSS: f"{key}_AVG_LOSS"}
+        self.KEY_RSI = f"{key}_RSI"
+        self.KEY_GAIN = f"{key}_AVG_GAIN"
+        self.KEY_LOSS = f"{key}_AVG_LOSS"
+
+        self.columns = [self.KEY_GAIN, self.KEY_LOSS, self.KEY_RSI]
         self.is_input = is_input
         self.is_output = is_output
 
@@ -468,10 +467,6 @@ class RSIProcess(ProcessBase):
         target_column = option["ohlc_column"][0]
         window = option["window"]
 
-        c_rsi = self.columns[self.KEY_RSI]
-        c_gain = self.columns[self.KEY_GAIN]
-        c_loss = self.columns[self.KEY_LOSS]
-
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
@@ -481,13 +476,17 @@ class RSIProcess(ProcessBase):
                 target_column,
                 window=window,
                 grouped_by_symbol=grouped_by_symbol,
-                mean_gain_name=c_gain,
-                mean_loss_name=c_loss,
-                rsi_name=c_rsi,
+                mean_gain_name=self.KEY_GAIN,
+                mean_loss_name=self.KEY_LOSS,
             )
         else:
             rsi_df = technical.RSIFromOHLC(
-                data, target_column, window=window, mean_gain_name=c_gain, mean_loss_name=c_loss, rsi_name=c_rsi
+                data,
+                target_column,
+                window=window,
+                mean_gain_name=self.KEY_GAIN,
+                mean_loss_name=self.KEY_LOSS,
+                rsi_name=self.KEY_RSI,
             )
 
         last_ohlc = data.iloc[-self.get_minimum_required_length() :]
@@ -499,18 +498,15 @@ class RSIProcess(ProcessBase):
         option = self.option
         target_column = option["ohlc_column"][0]
         window = option["window"]
-        c_rsi = self.columns[self.KEY_RSI]
-        c_gain = self.columns[self.KEY_GAIN]
-        c_loss = self.columns[self.KEY_LOSS]
-        columns = (c_gain, c_loss, c_rsi, target_column)
+        columns = (*self.columns, target_column)
 
         pre_data = self.last_data.iloc[-1]
         new_gain_val, new_loss_val, new_rsi_value = technical.update_RSI(pre_data, tick, columns, window)
-        tick[c_gain] = new_gain_val
-        tick[c_loss] = new_loss_val
-        tick[c_rsi] = new_rsi_value
+        tick[self.KEY_GAIN] = new_gain_val
+        tick[self.KEY_LOSS] = new_loss_val
+        tick[self.KEY_RSI] = new_rsi_value
         self.last_data = self.concat(self.last_data.iloc[1:], tick)
-        return tick[[c_rsi]]
+        return tick
 
     def get_minimum_required_length(self):
         return self.option["window"]
@@ -700,7 +696,9 @@ class CCIProcess(ProcessBase):
         else:
             self.data = tick
             # cci = numpy.nan
-            print(f"CCI failed to update as data length is less than window size: {len(self.data) < {self.get_minimum_required_length()}}")
+            print(
+                f"CCI failed to update as data length is less than window size: {len(self.data) < {self.get_minimum_required_length()}}"
+            )
             return self.data
 
     def get_minimum_required_length(self):
@@ -808,7 +806,7 @@ class RangeTrendProcess(ProcessBase):
         data.columns = data.columns.swaplevel(0, 1)
         width_column = required_columns[0]
         width_diff = data[width_column].diff()
-        width_diff[width_diff == 0] = pd.NA
+        width_diff[width_diff == 0] = numpy.nan
         pct_change = width_diff.pct_change(periods=1)
         pct_normalized = pct_change / pct_change.std()
         range_possibility_df = 1 / (1 + pct_normalized.abs())
@@ -855,7 +853,7 @@ class RangeTrendProcess(ProcessBase):
         # caliculate a width is how differ from previous width
         period = 1
         width_diff = data[width_column].diff()
-        width_diff[width_diff == 0] = pd.NA
+        width_diff[width_diff == 0] = numpy.nan
         pct_change = width_diff.pct_change(periods=period)
         pct_normalized = pct_change / pct_change.std()
         range_possibility_dfs = 1 / (1 + pct_normalized.abs())
@@ -878,7 +876,7 @@ class RangeTrendProcess(ProcessBase):
             while len(indices) > 0 and period < max_period:
                 period += 1
                 width_dff = data_[width_column].shift(periods=period - 1).diff()
-                width_dff[width_dff == 0] = pd.NA
+                width_dff[width_dff == 0] = numpy.nan
                 pct_change = width_dff.pct_change(periods=period)
                 pct_normalized = pct_change / pct_change.std()
                 pct_change = 1 / (1 + pct_normalized.abs())
