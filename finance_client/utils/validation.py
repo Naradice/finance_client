@@ -109,6 +109,8 @@ def get_start_end_time(df: pd.DataFrame, datetime_column: str = None, dropna=Tru
 
     if type(df.index) == pd.DatetimeIndex:
         datetime_column = df.index.name
+        if datetime_column is None:
+            datetime_column = 0
         datetime_df = df.index.to_frame()
     elif datetime_column is not None:
         datetime_df = df[datetime_column]
