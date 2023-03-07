@@ -2,8 +2,8 @@ from collections.abc import Iterable
 
 import pandas as pd
 
-from finance_client.utils import convert, standalization
-from finance_client.utils.process import ProcessBase
+from . import convert, standalization
+from .process import ProcessBase
 
 
 def get_available_processes() -> dict:
@@ -64,21 +64,31 @@ def _get_columns(df, columns, symbols=None, grouped_by_symbol=True):
 
 class DiffPreProcess(ProcessBase):
     kinds = "Diff"
-    last_tick: pd.DataFrame = None
-    option = {"floor": 1}
 
-    def __init__(self, key="diff", floor: int = 1):
+    def __init__(
+        self,
+        target_columns=None,
+        floor: int = 1,
+        key="diff",
+    ):
         super().__init__(key)
-        self.option["floor"] = floor
+        self.columns = target_columns
+        self.floor = floor
+        self.last_tick = None
+
+    @property
+    def option(self):
+        return {"floor": self.floor, "target_columns": self.columns}
 
     @classmethod
     def load(self, key: str, params: dict):
-        floor = params["floor"]
-        return DiffPreProcess(key, floor)
+        return DiffPreProcess(key, **params)
 
     def run(self, data: pd.DataFrame) -> dict:
-        self.last_tick = data.iloc[-1]
-        return data.diff()
+        if self.columns is not None:
+            data = data[self.columns]
+        self.last_ticks = data.iloc[-self.floor :]
+        return data.diff(periods=self.floor)
 
     def update(self, tick: pd.Series):
         """assuming data is previous result of run()
@@ -88,15 +98,19 @@ class DiffPreProcess(ProcessBase):
             tick (pd.Series): new row data
             option (Any, optional): Currently no option (Floor may be added later). Defaults to None.
         """
-        new_data = tick - self.last_tick
-        self.last_tick = tick
+        new_data = tick - self.last_ticks.iloc[-self.floor]
+        self.last_ticks = pd.concat([self.last_ticks[-self.floor + 1 :], tick])
         return new_data
 
     def get_minimum_required_length(self):
-        return 1
+        return self.floor
 
     def revert(self, data_set: tuple):
-        columns = self.last_tick.columns
+        if self.columns is None:
+            columns = self.last_tick.columns
+        else:
+            columns = self.columns
+
         result = []
         if type(data_set) == pd.DataFrame:
             data_set = tuple(data_set[column] for column in columns)
@@ -115,10 +129,47 @@ class DiffPreProcess(ProcessBase):
             raise Exception("number of data is different")
 
 
+class LogPreProcess(ProcessBase):
+    kinds = "Log"
+
+    def __init__(self, key: str = "log"):
+        super().__init__(key)
+
+    def run(self):
+        pass
+
+    def revert(self):
+        pass
+
+    def get_minimum_required_length(self):
+        return 1
+
+
+class DiffIDPreProcess(ProcessBase):
+    kinds = "CandleID"
+
+    def __init__(self, key: str):
+        super().__init__(key)
+
+
+class IDPreProcess(ProcessBase):
+    kinds = "ID"
+
+    def __init__(self, key: str):
+        super().__init__(key)
+
+
+class CloseDiffPreProcess(ProcessBase):
+    kinds = "CDiff"
+
+    def __init__(self, key: str):
+        super().__init__(key)
+
+
 class MinMaxPreProcess(ProcessBase):
     kinds = "MiniMax"
 
-    def __init__(self, key: str = "minmax", scale=(-1, 1), init_params: dict = None, columns=None):
+    def __init__(self, columns=None, scale=(-1, 1), min_values=None, max_values=None, key: str = "minmax"):
         """Apply minimax for each column of data.
         Note that if params are not specified, mini max values are detected by data on running once only.
         So if data is partial data, mini max values will be not correct.
@@ -126,84 +177,91 @@ class MinMaxPreProcess(ProcessBase):
         Args:
             key (str, optional): identification of this process. Defaults to 'minmax'.
             scale (tuple, optional): minimax scale. Defaults to (-1, 1).
-            init_params (dict, optional): {"min": {column_name: min_value}, "max": {column_name: max_value}}. Defaults to None and caliculate by provided data when run this process.
+            min_value, max_value (dict, optional):  {{column_name: min/max value}}. Defaults to None and caliculate by provided data when run this process.
             columns (list, optional): specify column to ignore applying minimax or revert process. Defaults to []
         """
-        self.option = {"min": {}, "max": {}, "scale": scale}
+        super().__init__(key)
+        if isinstance(scale, Iterable):
+            if len(scale) == 2 and scale[0] < scale[1]:
+                self.scale = scale
+            else:
+                raise ValueError("scale should have 2 elements with scale[0] < scale[1]")
+        else:
+            self.scale = (-1, 1)
+
         if type(columns) is str:
             columns = [columns]
-        elif type(columns) is tuple and len(columns) == 2:
-            columns = [columns]
+        if isinstance(columns, Iterable):
+            columns = list(set(columns))
+        elif columns is not None:
+            raise TypeError("columns should be iterable")
         self.columns = columns
-        super().__init__(key)
+
         self.initialization_required = True
-        if type(init_params) == dict:
-            self.option.update(init_params)
-            self.initialization_required = False
+        if min_values is not None:
+            if max_values is not None:
+                self.min_values = min_values
+                self.max_values = max_values
+                self.initialization_required = False
+            else:
+                raise ValueError("Both min and max values required for init.")
+        elif max_values is not None:
+            raise ValueError("Both min and max values required for init.")
+        else:
+            self.min_values = {}
+            self.max_values = {}
 
     @classmethod
     def load(self, key: str, params: dict):
-        option = {}
-        scale = (-1, 1)
+        option = {"scale": (-1, 1)}
         for k, value in params.items():
             if type(value) == list:
                 option[k] = tuple(value)
             else:
                 option[k] = value
-        process = MinMaxPreProcess(key, scale, option)
+        process = MinMaxPreProcess(key, **option)
         return process
 
     def initialize(self, data: pd.DataFrame):
+        if self.columns is None:
+            self.columns = data.columns
         self.run(data)
         self.initialization_required = False
 
     def run(self, data: pd.DataFrame, symbols: list = None, grouped_by_symbol=False) -> dict:
-        if self.columns is None:
-            self.columns = data.columns
-        columns = self.columns
-        target_columns = _get_columns(data, columns, symbols, grouped_by_symbol)
+        target_columns = _get_columns(data, self.columns, symbols, grouped_by_symbol)
         columns = list(set(data.columns) & set(target_columns))
 
-        option = self.option
-        if "scale" in option:
-            scale = option["scale"]
-        else:
-            scale = (-1, 1)
-            self.option["scale"] = scale
-
-        if len(option["min"]) > 0:
-            _min = pd.Series(option["min"])
-            _max = pd.Series(option["max"])
+        if len(self.min_values) > 0:
+            _min = pd.Series(self.min_values)
+            _max = pd.Series(self.max_values)
         else:
             _min = data[columns].min()
-            option["min"].update(_min.to_dict())
+            self.min_values.update(_min.to_dict())
             _max = data[columns].max()
-            option["max"].update(_max.to_dict())
+            self.max_values.update(_max.to_dict())
 
-        _df, _, _ = standalization.mini_max(data[columns], _min, _max, scale)
+        _df, _, _ = standalization.mini_max(data[columns], _min, _max, self.scale)
 
         return _df
 
     def update(self, tick: pd.Series, do_update_minmax=True):
-        columns = self.columns
-        scale = self.option["scale"]
         result = {}
 
-        for column in columns:
-            if column in self.columns:
-                new_value = tick[column]
-                _min = self.option["min"][column]
-                _max = self.option["max"][column]
-                if do_update_minmax:
-                    if new_value < _min:
-                        _min = new_value
-                        self.option[column] = (_min, _max)
-                    if new_value > _max:
-                        _max = new_value
-                        self.option[column] = (_min, _max)
+        for column in self.columns:
+            new_value = tick[column]
+            _min = self.min_values[column]
+            _max = self.max_values[column]
+            if do_update_minmax:
+                if new_value < _min:
+                    _min = new_value
+                    self.min_values[column] = _min
+                if new_value > _max:
+                    _max = new_value
+                    self.max_values[column] = _max
 
-                scaled_new_value, _min, _max = standalization.mini_max(new_value, _min, _max, scale)
-                result[column] = scaled_new_value
+            scaled_new_value, _min, _max = standalization.mini_max(new_value, _min, _max, self.scale)
+            result[column] = scaled_new_value
 
         new_data = pd.Series(result)
         return new_data
@@ -222,32 +280,26 @@ class MinMaxPreProcess(ProcessBase):
         """
 
         if isinstance(data_set, pd.DataFrame):
-            if self.columns is None:
-                columns = data_set.columns
-            else:
-                columns = self.columns
-            data_set = data_set[columns].copy()
-            _min = self.option["min"]
-            _min = pd.Series(_min)
-            _max = self.option["max"]
-            _max = pd.Series(_max)
-            return standalization.revert_mini_max(data_set, _min, _max, self.option["scale"])
+            data_set = data_set[self.columns]
+            _min = pd.Series(self.min_values)
+            _max = pd.Series(self.max_values)
+            return standalization.revert_mini_max(data_set, _min, _max, self.scale)
         elif isinstance(data_set, pd.Series):
             column = data_set.name
             if column in self.columns:
-                _min = self.option["min"][column]
-                _max = self.option["max"][column]
+                _min = self.min_values[column]
+                _max = self.max_values[column]
             else:
                 columns = data_set.index
                 _min = []
                 _max = []
                 for column in columns:
                     if column in self.columns:
-                        _min.append(self.option["min"][column])
-                        _max.append(self.option["max"][column])
+                        _min.append(self.min_values[column])
+                        _max.append(self.max_values[column])
                 _min = pd.Series(_min, index=columns)
                 _max = pd.Series(_max, index=columns)
-            return standalization.revert_mini_max_from_series(data_set, _min, _max, self.option["scale"])
+            return standalization.revert_mini_max_from_series(data_set, _min, _max, self.scale)
         else:
             print(f"type{data_set} is not supported")
 

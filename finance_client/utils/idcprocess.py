@@ -1,7 +1,7 @@
 import numpy
 import pandas as pd
 
-from .convert import get_symbols
+from .convert import concat, get_symbols
 from .indicaters import technical
 from .process import ProcessBase
 
@@ -177,7 +177,7 @@ class MACDProcess(ProcessBase):
             Signal = (self.last_data[c_macd].iloc[-signal_window + 1 :].sum() + MACD) / signal_window
 
             new_data = pd.Series({cs_ema: short_ema, cl_ema: long_ema, c_macd: MACD, c_signal: Signal})
-            self.last_data = self.concat(self.last_data.iloc[1:], new_data)
+            self.last_data = concat(self.last_data.iloc[1:], new_data)
             return new_data
 
     def get_minimum_required_length(self):
@@ -246,7 +246,7 @@ class EMAProcess(ProcessBase):
         short_ema, long_ema, MACD = technical.update_ema(new_tick=tick, column=target_column, window=window)
 
         new_data = pd.Series({column: short_ema})
-        self.last_data = self.concat(self.last_data.iloc[1:], new_data)
+        self.last_data = concat(self.last_data.iloc[1:], new_data)
         return new_data
 
     def get_minimum_required_length(self):
@@ -355,7 +355,7 @@ class BBANDProcess(ProcessBase):
         c_width = self.columns[self.KEY_WIDTH_VALUE]
 
         new_data = pd.Series({c_ema: new_sma, c_ub: new_ub, c_lb: new_lb, c_width: new_width, target_column: tick[target_column]})
-        self.last_data = self.concat(self.last_data.iloc[1:], new_data)
+        self.last_data = concat(self.last_data.iloc[1:], new_data)
         return new_data[[c_ema, c_ub, c_lb, c_width]]
 
     def get_minimum_required_length(self):
@@ -422,7 +422,7 @@ class ATRProcess(ProcessBase):
         new_atr_value = technical.update_ATR(pre_data, tick, target_columns, c_atr, window)
         df = tick.copy()
         df[c_atr] = new_atr_value
-        self.last_data = self.concat(self.last_data.iloc[1:], df)
+        self.last_data = concat(self.last_data.iloc[1:], df)
         return df[[c_atr]]
 
     def get_minimum_required_length(self):
@@ -478,7 +478,7 @@ class RSIProcess(ProcessBase):
                 grouped_by_symbol=grouped_by_symbol,
                 mean_gain_name=self.KEY_GAIN,
                 mean_loss_name=self.KEY_LOSS,
-                rsi_name=self.KEY_RSI
+                rsi_name=self.KEY_RSI,
             )
         else:
             rsi_df = technical.RSIFromOHLC(
@@ -506,7 +506,7 @@ class RSIProcess(ProcessBase):
         tick[self.KEY_GAIN] = new_gain_val
         tick[self.KEY_LOSS] = new_loss_val
         tick[self.KEY_RSI] = new_rsi_value
-        self.last_data = self.concat(self.last_data.iloc[1:], tick)
+        self.last_data = concat(self.last_data.iloc[1:], tick)
         return tick
 
     def get_minimum_required_length(self):
@@ -691,7 +691,7 @@ class CCIProcess(ProcessBase):
     def update(self, tick: pd.Series, symbols: list = []):
         if self.data is not None:
             out_column = self.columns[self.KEY_CCI]
-            self.data = self.concat(self.data, tick)
+            self.data = concat(self.data, tick)
             cci = self.run(self.data)
             return cci[out_column].iloc[-1]
         else:

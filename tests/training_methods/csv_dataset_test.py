@@ -85,7 +85,16 @@ class TestCSVClient(unittest.TestCase):
             idc_process=[rsi_process],
         )
         
-        utils.DiffPreProcess()
+        diff_process = utils.DiffPreProcess(target_columns=["Open", "High", "Low", "Close"])
+        mm_process = utils.MinMaxPreProcess()
+        self.single_std_client = CSVClient(
+            files=csv_file,
+            observation_length=self.length,
+            logger=logger,
+            date_column=datetime_column,
+            start_index=self.length,
+            pre_process=[diff_process]
+        )
 
     def test_single_dataset(self):
         single_dataset = TestDataset(self.single_client, self.length)

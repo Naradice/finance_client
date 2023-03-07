@@ -1,11 +1,7 @@
 import pandas as pd
 
-# TODO: create option class so that user can know what parameter can be specified as option
-
 
 class ProcessBase:
-    columns = []
-    option = {}
     kinds = "base"
 
     def __init__(self, key: str):
@@ -43,18 +39,6 @@ class ProcessBase:
     def get_minimum_required_length(self) -> int:
         return 0
 
-    def concat(self, data: pd.DataFrame, new_data: pd.Series):
-        if type(data) == pd.DataFrame and type(new_data) == pd.Series:
-            return pd.concat([data, pd.DataFrame.from_records([new_data])], ignore_index=True, sort=False)
-        elif type(data) == pd.Series and type(new_data) == pd.DataFrame:
-            return pd.concat([pd.DataFrame.from_records([data]), new_data], ignore_index=True)
-        elif type(data) == pd.DataFrame and type(new_data) == pd.DataFrame:
-            return pd.concat([data, new_data], ignore_index=True)
-        elif type(data) == pd.Series and type(new_data) == pd.Series:
-            return pd.concat([pd.DataFrame.from_records([data]), pd.DataFrame.from_records([new_data])], ignore_index=True)
-        else:
-            raise Exception("concat accepts dataframe or series")
-
     def revert(self, data_set: tuple):
         """revert processed data to row data with option value
 
@@ -65,9 +49,6 @@ class ProcessBase:
             Boolean, dict: return (True, data: pd.dataFrame) if reverse_process is defined, otherwise (False, None)
         """
         return False, None
-
-    def init_params(self, data: pd.DataFrame):
-        pass
 
     def __eq__(self, __o: object) -> bool:
         if "key" in dir(__o):
