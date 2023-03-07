@@ -12,7 +12,6 @@ print(module_path)
 sys.path.append(module_path)
 
 import finance_client.frames as Frame
-from finance_client import utils
 from finance_client.csv.client import CSVClient
 
 try:

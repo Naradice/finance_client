@@ -89,7 +89,7 @@ class CoinCheckClient(Client):
 
         Args:
             budget (int, optional): Defaults to 1000000.
-            indicater_processes (list, optional): Indicaters maid by finance_client.utils.idcprocess. Defaults to [].
+            indicater_processes (list, optional): Indicaters made by finance_client.fprocess.idcprocess. Defaults to [].
             post_processes (list, optional): _description_. Defaults to [].
             frame (int, optional): Frame minutes. finance_client.frames is also available. Defaults to 30.
             initialized_with (Client | None, optional): CoinCheck API don't provide history data. You can specify other Client to initialized ohlc with history data of the client. Defaults to None.

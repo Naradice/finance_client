@@ -13,7 +13,7 @@ from logging import config, getLogger
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client import utils
+from finance_client import fprocess
 from finance_client.csv.client import CSVChunkClient, CSVClient
 
 try:
@@ -74,8 +74,8 @@ class TestCSVClient(unittest.TestCase):
 
     def test_get_indicaters(self):
         length = 10
-        bband = utils.BBANDProcess()
-        macd = utils.MACDProcess()
+        bband = fprocess.BBANDProcess()
+        macd = fprocess.MACDProcess()
         processes = [bband, macd]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         data = client.get_ohlc(length, idc_processes=processes)
@@ -84,10 +84,10 @@ class TestCSVClient(unittest.TestCase):
 
     def test_get_standalized_indicaters(self):
         length = 10
-        bband = utils.BBANDProcess()
-        macd = utils.MACDProcess()
+        bband = fprocess.BBANDProcess()
+        macd = fprocess.MACDProcess()
         processes = [bband, macd]
-        post_prs = [utils.DiffPreProcess(), utils.MinMaxPreProcess()]
+        post_prs = [fprocess.DiffPreProcess(), fprocess.MinMaxPreProcess()]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         data = client.get_ohlc(length, idc_processes=processes, pre_processes=post_prs)
         print(data)
@@ -233,8 +233,8 @@ class TestCSVClientMulti(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        cci = utils.CCIProcess(ohlc_column=ohlc_columns)
-        # macd = utils.MACDProcess(target_column=ohlc_columns[3])
+        cci = fprocess.CCIProcess(ohlc_column=ohlc_columns)
+        # macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         client = CSVClient(files=files, start_index=DATA_LENGTH * 10, logger=logger)
         df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci])
         self.assertEqual(len(df.columns), SYMBOL_COUNT * (len(ohlc_columns) + len(additional_column) + len(cci.columns)))
@@ -243,10 +243,10 @@ class TestCSVClientMulti(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        cci = utils.CCIProcess(ohlc_column=ohlc_columns)
-        # macd = utils.MACDProcess(target_column=ohlc_columns[3])
+        cci = fprocess.CCIProcess(ohlc_column=ohlc_columns)
+        # macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         client = CSVClient(files=files, start_index=DATA_LENGTH * 10, logger=logger)
-        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[utils.MinMaxPreProcess(scale=(0, 1))])
+        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[fprocess.MinMaxPreProcess(scale=(0, 1))])
         self.assertGreaterEqual(df.min().min(), 0)
         self.assertLessEqual(df.max().max(), 1)
 
@@ -456,8 +456,8 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        cci = utils.CCIProcess(ohlc_column=ohlc_columns)
-        # macd = utils.MACDProcess(target_column=ohlc_columns[3])
+        cci = fprocess.CCIProcess(ohlc_column=ohlc_columns)
+        # macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         client = CSVChunkClient(files=files, start_index=DATA_LENGTH * 10, chunksize=100, logger=logger)
         df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci])
         self.assertEqual(len(df.columns), SYMBOL_COUNT * (len(ohlc_columns) + len(additional_column) + len(cci.columns)))
@@ -466,10 +466,10 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        cci = utils.CCIProcess(ohlc_column=ohlc_columns)
-        # macd = utils.MACDProcess(target_column=ohlc_columns[3])
+        cci = fprocess.CCIProcess(ohlc_column=ohlc_columns)
+        # macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         client = CSVChunkClient(files=files, start_index=DATA_LENGTH * 10, chunksize=100, logger=logger)
-        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[utils.MinMaxPreProcess(scale=(0, 1))])
+        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[fprocess.MinMaxPreProcess(scale=(0, 1))])
         self.assertGreaterEqual(df.min().min(), 0)
         self.assertLessEqual(df.max().max(), 1)
 

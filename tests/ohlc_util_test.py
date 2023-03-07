@@ -7,7 +7,7 @@ import pandas as pd
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 
-from finance_client.utils import ohlc
+from finance_client.fprocess.fprocess import ohlc
 
 
 class TestStandalizationUtils(unittest.TestCase):

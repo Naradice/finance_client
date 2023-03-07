@@ -10,7 +10,7 @@ sys.path.append(module_path)
 
 import dotenv
 
-from finance_client.utils import addprocess
+from finance_client.fprocess import addprocess
 
 try:
     with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:

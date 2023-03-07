@@ -30,7 +30,7 @@ class TestYFClient(unittest.TestCase):
         self.client.close_all_positions()
 
     def test_get_rates_with_indicater(self):
-        from finance_client.utils.idcprocess import (BBANDProcess, MACDProcess,
+        from finance_client.fprocess.idcprocess import (BBANDProcess, MACDProcess,
                                                      RangeTrendProcess)
 
         macd_p = MACDProcess(short_window=12, long_window=26, signal_window=9, target_column="Close")

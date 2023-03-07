@@ -11,7 +11,7 @@ import time
 
 import pandas as pd
 
-from finance_client import utils
+from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 from finance_client.render.graph import Rendere
 
@@ -47,7 +47,7 @@ class TestRender(unittest.TestCase):
 
     def test_plot_bband_from_client_out(self):
         r = Rendere()
-        bban = utils.BBANDProcess(target_column="close", window=14)
+        bban = fprocess.BBANDProcess(target_column="close", window=14)
         columns = ["high", "low", "open", "close"]
         client = CSVClient(files=csv_file, columns=columns, date_column="time", idc_process=[bban], start_index=30)
         df = client.get_ohlc(30)

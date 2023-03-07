@@ -4,9 +4,14 @@ import pandas as pd
 
 from .. import frames as Frame
 from ..csv.client import CSVClient
-from ..utils.convert import str_to_currencies
-from ..utils.csvrw import get_file_path, read_csv, write_df_to_csv
 from . import target
+
+try:
+    from ..fprocess.fprocess.convert import str_to_currencies
+    from ..fprocess.fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
+except ImportError:
+    from ..fprocess.convert import str_to_currencies
+    from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
 
 class VantageClient(CSVClient):

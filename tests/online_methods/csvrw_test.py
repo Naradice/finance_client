@@ -13,8 +13,7 @@ import dotenv
 import pandas as pd
 import yfinance as yf
 
-import finance_client.utils.csvrw as csvrw
-from finance_client import utils
+import finance_client.fprocess.csvrw as csvrw
 from finance_client.csv.client import CSVClient
 from finance_client.render.graph import Rendere
 

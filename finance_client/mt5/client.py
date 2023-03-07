@@ -7,9 +7,13 @@ import MetaTrader5 as mt5
 import numpy
 import pandas as pd
 
-import finance_client.frames as Frame
-from finance_client.client_base import Client
-from finance_client.utils.csvrw import read_csv, write_df_to_csv
+from .. import frames as Frame
+from ..client_base import Client
+
+try:
+    from ..fprocess.fprocess.csvrw import read_csv, write_df_to_csv
+except ImportError:
+    from ..fprocess.csvrw import read_csv, write_df_to_csv
 
 
 class MT5Client(Client):

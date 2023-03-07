@@ -565,7 +565,8 @@ class CSVClient(CSVClientBase):
                 # Rolled result has NaN regardless market is open or not.
                 self.data = self.roll_ohlc_data(self.data, out_frame, grouped_by_symbol=True)
                 self.frame = out_frame
-        self.data = self.run_processes(self.data, self.symbols, self.idc_process, self.pre_process, True)
+        if self.data is not None and len(self.data) > 0:
+            self.data = self.run_processes(self.data, self.symbols, self.idc_process, self.pre_process, True)
 
     def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
         DFS = {}
@@ -653,6 +654,7 @@ class CSVClient(CSVClientBase):
                     rates = self.data[symbols]
                 else:
                     rates = self.data
+                rates = rates[self.get_ohlc_columns(out_type="list")]
                 rates = rates.iloc[index - length : index]
             except Exception as e:
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")

@@ -12,7 +12,7 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import utils
+from finance_client import fprocess
 
 try:
     with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
@@ -39,7 +39,7 @@ class TestPreProcess(unittest.TestCase):
         open = [random.random() * 123 for index in range(100)]
         close = [o_value + random.random() - 0.5 for o_value in open]
         ds = pd.DataFrame({"close": close, "open": open})
-        mm = utils.MinMaxPreProcess(scale=(-1, 1))
+        mm = fprocess.MinMaxPreProcess(scale=(-1, 1))
         mm.initialize(ds)
         result = mm.run(ds)
         self.assertTrue(len(result["close"]) == 100)
@@ -70,7 +70,7 @@ class TestPreProcess(unittest.TestCase):
 
         new_data = pd.Series({"close": new_close_value, "open": new_open_value})
         new_data_standalized = mm.update(new_data)
-        new_ds = utils.concat(result, new_data_standalized)
+        new_ds = fprocess.concat(result, new_data_standalized)
         self.assertTrue(new_data_standalized["open"] == 1)
         self.assertTrue(len(new_ds["close"]) == 101)
         self.assertTrue(new_ds["close"].min() >= -1)
@@ -88,14 +88,14 @@ class TestPreProcess(unittest.TestCase):
         time = [index for index in range(100)]
         ds = pd.DataFrame({"open": open, "high": high, "low": low, "close": close, "time": time})
 
-        mm = utils.MinMaxPreProcess(scale=(-1, 1), columns=["open", "high", "low", "close"])
+        mm = fprocess.MinMaxPreProcess(scale=(-1, 1), columns=["open", "high", "low", "close"])
         mm.initialize(ds)
         result = mm.run(ds)
         check = "time" in result
         self.assertFalse(check)
 
     def test_diff(self):
-        process = utils.DiffPreProcess()
+        process = fprocess.DiffPreProcess()
         ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.NaN, 10, -19, 4, 25]})
         diff_dict = process.run(ds)
         for index in range(1, len(ds)):
@@ -103,23 +103,21 @@ class TestPreProcess(unittest.TestCase):
 
         new_data = pd.Series({"input": 10, "expect": -20})
         standalized_new_data = process.update(new_data)
-        standalized_ds = utils.concat(ds, standalized_new_data)
+        standalized_ds = fprocess.concat(ds, standalized_new_data)
         self.assertEqual(len(standalized_ds), 6)
         self.assertEqual(standalized_ds["input"].iloc[-1], new_data["expect"])
 
         ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.NaN, numpy.NaN, numpy.NaN, -5, 10]})
-        process = utils.DiffPreProcess(floor=3)
+        process = fprocess.DiffPreProcess(floor=3)
         diff_dict = process.run(ds)
         for index in range(3, len(ds)):
             self.assertEqual(diff_dict["input"].iloc[index], ds["expect"].iloc[index])
 
         new_data = pd.Series({"input": 1, "expect": 0})
         standalized_new_data = process.update(new_data)
-        standalized_ds = utils.concat(ds, standalized_new_data)
+        standalized_ds = fprocess.concat(ds, standalized_new_data)
         self.assertEqual(len(standalized_ds), 6)
         self.assertEqual(standalized_ds["input"].iloc[-1], new_data["expect"])
-    
-    def 
 
 
 if __name__ == "__main__":

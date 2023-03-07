@@ -11,7 +11,7 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import utils
+from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 
 try:
@@ -39,7 +39,7 @@ class TestIndicaters(unittest.TestCase):
 
     def test_cci_process(self):
         ohlc = self.client.get_ohlc(110)
-        cci_prc = utils.CCIProcess(14, ohlc_column=ohlc_columns)
+        cci_prc = fprocess.CCIProcess(14, ohlc_column=ohlc_columns)
         input_data_1 = ohlc.iloc[:100].copy()
         self.assertEqual(len(input_data_1), 100)
         cci = cci_prc.run(input_data_1)
@@ -47,7 +47,7 @@ class TestIndicaters(unittest.TestCase):
         next_tick = ohlc.iloc[100]
         next_cci = cci_prc.update(next_tick)
         next_cci_from_run = cci_prc.run(ohlc.iloc[:101])
-        cci_column = cci_prc.columns["CCI"]
+        cci_column = cci_prc.KEY_CCI
         ans_value = next_cci_from_run[cci_column].iloc[-1]
         self.assertEqual(next_cci, ans_value)
 
@@ -60,12 +60,12 @@ class TestIndicaters(unittest.TestCase):
         macd = short_ema - long_ema
         signal = macd.rolling(9).mean()
 
-        process = utils.MACDProcess(target_column=ohlc_columns[3])
+        process = fprocess.MACDProcess(target_column=ohlc_columns[3])
         macd_dict = process.run(ds)
-        short_column = process.columns["S_EMA"]
-        long_column = process.columns["L_EMA"]
-        macd_column = process.columns["MACD"]
-        signal_column = process.columns["Signal"]
+        short_column = process.KEY_SHORT_EMA
+        long_column = process.KEY_LONG_EMA
+        macd_column = process.KEY_MACD
+        signal_column = process.KEY_SIGNAL
 
         self.assertEqual(macd_dict[short_column].iloc[-1], short_ema.iloc[-1])
         self.assertEqual(macd_dict[long_column].iloc[-1], long_ema.iloc[-1])
@@ -75,7 +75,7 @@ class TestIndicaters(unittest.TestCase):
     def test_macd_update(self):
         # prerequisites
         ds = pd.DataFrame({ohlc_columns[3]: [120.000 + i * 0.1 for i in range(30)]})
-        process = utils.MACDProcess(target_column=ohlc_columns[3])
+        process = fprocess.MACDProcess(target_column=ohlc_columns[3])
         macd_dict = process.run(ds)
 
         # input
@@ -86,14 +86,14 @@ class TestIndicaters(unittest.TestCase):
         test_data = process.update(new_data)
 
         # expect
-        ex_data_org = utils.concat(ds, new_data)
-        another_ps = utils.MACDProcess(target_column=ohlc_columns[3])
+        ex_data_org = fprocess.concat(ds, new_data)
+        another_ps = fprocess.MACDProcess(target_column=ohlc_columns[3])
         macd_dict = another_ps.run(ex_data_org)
 
-        short_column = process.columns["S_EMA"]
-        long_column = process.columns["L_EMA"]
-        macd_column = process.columns["MACD"]
-        signal_column = process.columns["Signal"]
+        short_column = process.KEY_SHORT_EMA
+        long_column = process.KEY_LONG_EMA
+        macd_column = process.KEY_MACD
+        signal_column = process.KEY_SIGNAL
 
         self.assertEqual(macd_dict[short_column].iloc[-1], test_data[short_column])
         self.assertEqual(macd_dict[long_column].iloc[-1], test_data[long_column])
@@ -111,8 +111,8 @@ class TestIndicaters(unittest.TestCase):
 
     def test_renko_process(self):
         client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
-        prc = utils.RenkoProcess(window=120, ohlc_column=ohlc_columns)
-        column = prc.columns["NUM"]
+        prc = fprocess.RenkoProcess(window=120, ohlc_column=ohlc_columns)
+        column = prc.KEY_BRICK_NUM
         start_time = datetime.datetime.now()
         data = client.get_ohlc(300, idc_processes=[prc])
         end_time = datetime.datetime.now()
@@ -122,8 +122,8 @@ class TestIndicaters(unittest.TestCase):
 
     def test_slope_process(self):
         client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
-        prc = utils.SlopeProcess(window=5, target_column=ohlc_columns[3])
-        slp_column = prc.columns["Slope"]
+        prc = fprocess.SlopeProcess(window=5, target_column=ohlc_columns[3])
+        slp_column = prc.KEY_SLOPE
         start_time = datetime.datetime.now()
         data = client.get_ohlc(100, idc_processes=[prc])
         end_time = datetime.datetime.now()
@@ -133,13 +133,13 @@ class TestIndicaters(unittest.TestCase):
 
     def test_macdslope_process(self):
         client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
-        macd = utils.MACDProcess(target_column=ohlc_columns[3])
-        macd_column = macd.columns["MACD"]
-        signal_column = macd.columns["Signal"]
-        prc = utils.SlopeProcess(key="m", window=5, target_column=macd_column)
-        s_prc = utils.SlopeProcess(key="s", window=5, target_column=signal_column)
-        slp_column = prc.columns["Slope"]
-        s_slp_column = s_prc.columns["Slope"]
+        macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
+        macd_column = macd.KEY_MACD
+        signal_column = macd.KEY_SIGNAL
+        prc = fprocess.SlopeProcess(key="m", window=5, target_column=macd_column)
+        s_prc = fprocess.SlopeProcess(key="s", window=5, target_column=signal_column)
+        slp_column = prc.KEY_SLOPE
+        s_slp_column = s_prc.KEY_SLOPE
         start_time = datetime.datetime.now()
         data = client.get_ohlc(100, idc_processes=[macd, prc, s_prc])
         end_time = datetime.datetime.now()
@@ -153,19 +153,19 @@ class TestIndicaters(unittest.TestCase):
     def test_range_process(self):
         client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
         slope_window = 4
-        range_p = utils.RangeTrendProcess(slope_window=slope_window)
-        bband_p = utils.BBANDProcess(alpha=2, target_column=ohlc_columns[3], window=14)
+        range_p = fprocess.RangeTrendProcess(slope_window=slope_window)
+        bband_p = fprocess.BBANDProcess(alpha=2, target_column=ohlc_columns[3], window=14)
         start_time = datetime.datetime.now()
         client.get_ohlc(100, idc_processes=[bband_p, range_p])
         end_time = datetime.datetime.now()
         logger.debug(f"range process took {end_time - start_time}")
         data = client.get_ohlc(100, idc_processes=[bband_p, range_p])
         self.assertEqual(len(data), 100)
-        ran = data[range_p.columns[range_p.KEY_RANGE]]
+        ran = data[range_p.KEY_RANGE]
         self.assertLessEqual(ran.max(), 1)
         self.assertGreaterEqual(ran.min(), -1)
-        mv = data["BB_MV"]
-        slope = data[range_p.columns[range_p.KEY_TREND]]
+        mv = data[bband_p.KEY_MEAN_VALUE]
+        slope = data[range_p.KEY_TREND]
         for i in range(14 + slope_window, 100):
             if slope.iloc[i] >= 0:
                 self.assertGreaterEqual(mv.iloc[i], mv.iloc[i - slope_window])

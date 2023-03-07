@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 import numpy
 import pandas as pd
 
-from finance_client import utils
+try:
+    from ..fprocess import fprocess
+except ImportError:
+    from .. import fprocess
 
 
 class Rendere:
@@ -17,7 +20,11 @@ class Rendere:
         self.__data = {}
         self.__is_shown = False
         self.__indicater_process_info = {
-            utils.BBANDProcess.kinds: {"function": self.overlap_bolinger_band, "columns": ("MV", "Width"), "option": ("alpha",)}
+            fprocess.BBANDProcess.kinds: {
+                "function": self.overlap_bolinger_band,
+                "columns": ("MV", "Width"),
+                "option": ("alpha",),
+            }
         }
 
     def add_subplot(self):
@@ -253,8 +260,7 @@ class Rendere:
             if idc.kinds in self.__indicater_process_info:
                 process_info = self.__indicater_process_info[idc.kinds]
                 plot_func = process_info["function"]
-                column_keys = process_info["columns"]
-                columns = tuple(idc.columns[key] for key in column_keys)
+                columns = idc.columns
                 option_keys = process_info["option"]
                 options = tuple(idc.option[key] for key in option_keys)
 
@@ -278,7 +284,8 @@ class Rendere:
         else:
             print(f"{index} is not registered.")
 
-    def overlap_bolinger_band(self, data, index, mean_column, width_column=None, alpha=2, std_column=None):
+    def overlap_bolinger_band(self, data, index, columns, alpha=2, std_column=None):
+        mean_column, _, _, width_column = columns
         ax = self.__get_ax(index)
         x = numpy.arange(0, len(data))
         std = data[width_column] / alpha
@@ -335,7 +342,7 @@ class Rendere:
         if "indicaters" in content:
             for idc_plot_info in content["indicaters"]:
                 func, columns, option = idc_plot_info
-                func(ohlc, index, *columns, *option)
+                func(ohlc, index, columns, *option)
         index = 0
         for idx, val in ohlc.iterrows():
             color = "#2CA453"

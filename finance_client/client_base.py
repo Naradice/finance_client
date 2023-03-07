@@ -13,8 +13,13 @@ import numpy as np
 import pandas as pd
 
 from . import frames as Frame
-from . import market, utils
+from . import market
 from .render import graph
+
+try:
+    from .fprocess import fprocess
+except ImportError:
+    from . import fprocess
 
 
 class Client(metaclass=ABCMeta):
@@ -274,8 +279,7 @@ class Client(metaclass=ABCMeta):
         data_cp = data.copy()
 
         for process in idc_processes:
-            idc_df = process.run(data_cp, symbols, grouped_by_symbol)
-            data_cp = pd.concat([data_cp, idc_df], axis=1)
+            data_cp = process.run(data_cp, symbols, grouped_by_symbol)
 
         for process in pre_processes:
             data_cp = process.run(data_cp)
@@ -284,7 +288,7 @@ class Client(metaclass=ABCMeta):
     def get_economic_idc(self, keys, start, end):
         data = []
         for key in keys:
-            idc_data = utils.get_indicater(key, start, end)
+            idc_data = fprocess.get_indicater(key, start, end)
             if idc_data is not None:
                 data.append(idc_data)
         if len(data) > 0:
@@ -620,7 +624,7 @@ class Client(metaclass=ABCMeta):
         if len(symbols) == 0:
             symbols = self.symbols
 
-        data_freq = Frame.to_panda_freq(frame)
+        data_freq = Frame.freq_str[frame]
 
         if index is None or type(index) is int:
             # return DataFrame for trading
@@ -753,9 +757,9 @@ class Client(metaclass=ABCMeta):
             diffs = []
             current_bid = self.get_current_bid()
             if standalization == "minimax":
-                current_bid = utils.mini_max(current_bid, self.min, self.max, (0, 1))
+                current_bid = fprocess.mini_max(current_bid, self.min, self.max, (0, 1))
                 for key, position in positions.items():
-                    price = utils.mini_max(position.price, self.min, self.max, (0, 1))
+                    price = fprocess.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(current_bid - price)
             else:
                 for key, position in positions.items():
@@ -770,9 +774,9 @@ class Client(metaclass=ABCMeta):
             diffs = []
             current_ask = self.get_current_ask()
             if standalization == "minimax":
-                current_ask = utils.mini_max(current_ask, self.min, self.max, (0, 1))
+                current_ask = fprocess.mini_max(current_ask, self.min, self.max, (0, 1))
                 for key, position in positions.items():
-                    price = utils.mini_max(position.price, self.min, self.max, (0, 1))
+                    price = fprocess.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(price - current_ask)
             else:
                 for key, position in positions.items():
@@ -823,7 +827,7 @@ class Client(metaclass=ABCMeta):
             self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
         return position
 
-    def get_ohlc_columns(self, symbol: str = None) -> dict:
+    def get_ohlc_columns(self, symbol: str = None, out_type="dict") -> dict:
         """returns column names of ohlc data.
 
         Returns:
@@ -841,7 +845,7 @@ class Client(metaclass=ABCMeta):
             columns = data.columns
             if type(columns) == pd.MultiIndex:
                 if symbol is None:
-                    if utils.ohlc.is_grouped_by_symbol(columns):
+                    if fprocess.ohlc.is_grouped_by_symbol(columns):
                         columns = set(columns.droplevel(0))
                     else:
                         columns = set(columns.droplevel(1))
@@ -869,7 +873,11 @@ class Client(metaclass=ABCMeta):
                 elif "spread" in column_:
                     self.ohlc_columns["Spread"] = column
 
-        return self.ohlc_columns
+        if out_type == "dict":
+            return self.ohlc_columns
+        else:
+            columns = [item for key, item in self.ohlc_columns.items()]
+            return columns
 
     def revert_preprocesses(self, data: pd.DataFrame = None):
         if data is None:
@@ -919,7 +927,7 @@ class Client(metaclass=ABCMeta):
             raise Exception("Either to_frame or freq should be provided.")
 
         if to_freq is None:
-            freq = Frame.to_panda_freq(to_frame)
+            freq = Frame.freq_str[to_frame]
         else:
             freq = to_freq
 

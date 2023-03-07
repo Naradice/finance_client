@@ -1,10 +1,14 @@
 from . import frames as Frame
-from . import utils
+
+try:
+    from .fprocess import fprocess
+except ImportError:
+    from . import fprocess
+
 from .client_base import Client
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
 from .mt5.client import MT5Client
-from .utils.indicaters import countory_code, indicater_code
 from .vantage.client import VantageClient
 
 available_clients = {

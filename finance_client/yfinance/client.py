@@ -6,7 +6,11 @@ import yfinance as yf
 
 from .. import frames as Frame
 from ..csv.client import CSVClient
-from ..utils.csvrw import get_file_path, read_csv, write_df_to_csv
+
+try:
+    from ..fprocess.fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
+except ImportError:
+    from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
 
 class YahooClient(CSVClient):
@@ -225,9 +229,7 @@ class YahooClient(CSVClient):
             DFS = {}
             for symbol in symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(
-                    ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
-                )
+                write_df_to_csv(ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
                 DFS[symbol] = ticks_df
                 self.__updated_time[symbol] = datetime.datetime.now()
             if len(DFS) > 1:
@@ -259,9 +261,7 @@ class YahooClient(CSVClient):
         for symbol in symbols:
             if symbol not in self.symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(
-                    ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
-                )
+                write_df_to_csv(ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
                 self.__updated_time[symbol] = datetime.datetime.now()
         return super()._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)
 

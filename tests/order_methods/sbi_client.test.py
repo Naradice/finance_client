@@ -13,7 +13,6 @@ from logging import config, getLogger
 import dotenv
 
 import finance_client.frames as Frame
-from finance_client import utils
 from finance_client.sbi.client import SBIClient
 
 dotenv.load_dotenv("../.env")

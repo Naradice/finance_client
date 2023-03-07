@@ -15,7 +15,7 @@ from logging import config, getLogger
 import dotenv
 
 import finance_client.frames as Frame
-from finance_client import utils
+from finance_client import fprocess
 from finance_client.mt5 import MT5Client
 
 dotenv.load_dotenv("../.env")
@@ -73,7 +73,7 @@ class TestMT5Client(unittest.TestCase):
     def test_get_rate_with_indicaters(self):
         columns = self.client.get_ohlc_columns()
         close_column = columns["Close"]
-        macd_p = utils.MACDProcess(target_column=close_column)
+        macd_p = fprocess.MACDProcess(target_column=close_column)
         macd_column = macd_p.columns["MACD"]
         data = self.client.get_ohlc(100, idc_processes=[macd_p])
         self.assertEqual(macd_column in data[self.symbol[0]].columns, True)
