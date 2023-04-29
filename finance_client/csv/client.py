@@ -183,10 +183,10 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         dfs = []
         DFS = {}
         __columns = list(set(columns) - set(time_column))
-        if is_multi_mode:
-            dfs = [data[_symbol] for _symbol in symbols]
-        else:
-            dfs = [data]
+        # if is_multi_mode:
+        dfs = [data[_symbol] for _symbol in symbols]
+        # else:
+        #     dfs = [data]
         for index in range(0, len(symbols)):
             df = dfs[index].dropna()
             symbol = symbols[index]
@@ -280,6 +280,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         economic_keys=None,
         start_index=0,
         start_date=None,
+        keep_observation_length=True,
         start_random_index=False,
         auto_step_index=True,
         skiprows=None,
@@ -313,6 +314,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         self.files = []
         self.ohlc_columns = {}
         self.auto_step_index = auto_step_index
+        self.keep_observation_length = keep_observation_length
         slip_type = slip_type.lower()
         if slip_type in self.available_slip_type:
             if slip_type == "percent" or slip_type == "pct":
@@ -502,6 +504,7 @@ class CSVClient(CSVClientBase):
         start_date=None,
         start_random_index=False,
         auto_step_index=True,
+        keep_observation_length=True,
         skiprows=None,
         auto_reset_index=False,
         slip_type="random",
@@ -527,6 +530,7 @@ class CSVClient(CSVClientBase):
             economic_keys (list<str>): list of key of technical indicaters
             start_index (int, optional): specify minimum index. If not specified, start from 0. Defauls to None.
             start_date (datetime, optional): specify start date. start_date overwrite the start_index. If not specified, start from index=0. Defaults to None.
+            keep_observation_length(bool, optional): If true, observation_length is kept when index reach to the end. Otherwise observation_length become less than it. Defaults to True.
             start_random_index (bool, optional): After init or reset_index, random index is used as initial index. Defaults to False.
             auto_step_index (bool, optional): If true, get_rate function returns data with advancing the index. Otherwise data index is advanced only when get_next_tick is called
             skiprows (int, optional): specify number to skip row of csv. For multi symbols, row is skipped for each files. Defaults None, not skipped.
@@ -549,6 +553,7 @@ class CSVClient(CSVClientBase):
             economic_keys,
             start_index,
             start_date,
+            keep_observation_length,
             start_random_index,
             auto_step_index,
             skiprows,
@@ -654,7 +659,7 @@ class CSVClient(CSVClientBase):
                     rates = self.data[symbols]
                 else:
                     rates = self.data
-                rates = rates[self.get_ohlc_columns(out_type="list")]
+                rates = rates[self.get_ohlc_columns(out_type="list", ignore="Time")]
                 rates = rates.iloc[index - length : index]
             except Exception as e:
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
@@ -704,13 +709,13 @@ class CSVClient(CSVClientBase):
                     if self._auto_reset:
                         # todo initialize based on parameters
                         self._step_index = random.randint(0, len(self.data))
-                        index = self._step_index
                     else:
-                        self.logger.warning(
-                            f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index"
-                        )
-                        self._step_index = self._step_index - 1
-                        index = self._step_index
+                        if self.keep_observation_length:
+                            self.logger.warning(
+                                f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index"
+                            )
+                            self._step_index = self._step_index - 1
+                index = self._step_index
 
         if length is not None:
             if index < length - 1:

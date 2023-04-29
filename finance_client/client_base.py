@@ -669,7 +669,6 @@ class Client(metaclass=ABCMeta):
     def _get_ohlc_from_client(self, length, symbols: list, frame: int, columns: list, index: list, grouped_by_symbol: bool):
         return {}
 
-    @abstractmethod
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass
 
@@ -681,11 +680,9 @@ class Client(metaclass=ABCMeta):
     def get_current_bid(self, symbols=[]) -> pd.Series:
         print("Need to implement get_current_bid on your client")
 
-    @abstractmethod
     def get_params(self) -> dict:
         print("Need to implement get_params")
 
-    @abstractmethod
     def get_next_tick(self, frame=5):
         print("Need to implement get_next_tick")
 
@@ -827,7 +824,7 @@ class Client(metaclass=ABCMeta):
             self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
         return position
 
-    def get_ohlc_columns(self, symbol: str = None, out_type="dict") -> dict:
+    def get_ohlc_columns(self, symbol: str = None, out_type="dict", ignore=None) -> dict:
         """returns column names of ohlc data.
 
         Returns:
@@ -873,10 +870,17 @@ class Client(metaclass=ABCMeta):
                 elif "spread" in column_:
                     self.ohlc_columns["Spread"] = column
 
+        ohlc_columns = self.ohlc_columns.copy()
+        if ignore is not None:
+            if type(ignore) == str:
+                ohlc_columns.pop(ignore)
+            elif type(ignore):
+                for key in ignore:
+                    ohlc_columns.pop(key)
         if out_type == "dict":
-            return self.ohlc_columns
+            return ohlc_columns
         else:
-            columns = [item for key, item in self.ohlc_columns.items()]
+            columns = [item for key, item in ohlc_columns.items()]
             return columns
 
     def revert_preprocesses(self, data: pd.DataFrame = None):
