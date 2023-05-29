@@ -210,7 +210,7 @@ class Client(metaclass=ABCMeta):
                 return None, False
             position_plot = -2
         elif position.order_type == "bid":
-            self.logger.debug(f"close long position is ordered for {id}")
+            self.logger.debug(f"close short position is ordered for {id}")
             if price is None:
                 self.logger.debug(f"order close with current bid rate {price} if market sell is not allowed")
                 price = self.get_current_ask(position.symbol)
@@ -428,7 +428,7 @@ class Client(metaclass=ABCMeta):
             ohlc_columns = self.get_ohlc_columns()
             args_dict = {
                 "ohlc_columns": (ohlc_columns["Open"], ohlc_columns["High"], ohlc_columns["Low"], ohlc_columns["Close"]),
-                "idc_processes": self.__idc_processes,
+                "idc_processes": self.idc_process,
                 "index": self.__ohlc_index,
             }
             result = self.__rendere.register_ohlc_with_indicaters(symbols, data_df, **args_dict)
@@ -872,11 +872,12 @@ class Client(metaclass=ABCMeta):
 
         ohlc_columns = self.ohlc_columns.copy()
         if ignore is not None:
-            if type(ignore) == str:
+            if type(ignore) == str and ignore in ohlc_columns:
                 ohlc_columns.pop(ignore)
             elif type(ignore):
                 for key in ignore:
-                    ohlc_columns.pop(key)
+                    if key in ohlc_columns:
+                        ohlc_columns.pop(key)
         if out_type == "dict":
             return ohlc_columns
         else:
