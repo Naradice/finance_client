@@ -1,3 +1,5 @@
+from datetime import datetime
+
 MIN1 = 1
 MIN5 = 5
 MIN10 = 10
@@ -50,3 +52,34 @@ def to_str(value: int):
     if value in min_str:
         return min_str[value]
     return str(value)
+
+
+def get_frame_time(time: datetime, frame):
+    frame = int(frame)
+    year, month, day, hour, minute = time.year, time.month, time.day, time.hour, time.minute
+    tz = time.tzinfo
+
+    if frame <= H1:
+        frame_minute = (minute // frame) * frame
+    elif frame <= D1:
+        frame_minute = ((hour * 60 + minute) // frame) * frame
+        hour = frame_minute // 60
+        frame_minute = frame_minute % 60
+    elif frame <= W1:
+        frame_minute = ((day * 24 * 60 + hour * 60 + minute) // frame) * frame
+        day = frame_minute // (24 * 60)
+        frame_minute = frame_minute % (24 * 60)
+        hour = frame_minute // 60
+        frame_minute = frame_minute % 60
+    else:
+        frame_minute = ((month * 31 * 24 * 60 + day * 24 * 60 + hour * 60 + minute) // frame) * frame
+        month = frame_minute // (31 * 24 * 60) + 1
+        # assume monthly. Don' care 45 deys etc.
+        day = 1
+        hour = 0
+        frame_minute = 0
+
+    # datetimeオブジェクトを作成
+    frame_time = datetime(year, month, day, hour, frame_minute, tzinfo=tz)
+
+    return frame_time
