@@ -46,9 +46,10 @@ class TestMT5Client(unittest.TestCase):
         symbols=symbol,
         auto_index=False,
         simulation=simulation,
-        frame=Frame.MIN5,
+        frame=Frame.MIN30,
         logger=logger,
     )
+    client.get_ohlc()
 
     def test_get_current_ask(self):
         ask_value = self.client.get_current_ask()

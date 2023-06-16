@@ -7,7 +7,9 @@ from time import sleep
 
 
 class Position:
-    def __init__(self, order_type: str, symbol: str, price: float, amount: float, tp: float, sl: float, option, result, id=None):
+    def __init__(
+        self, order_type: str, symbol: str, price: float, amount: float, tp: float, sl: float, index: int, option, result, id=None
+    ):
         if id is None:
             self.id = str(uuid.uuid4())
         else:
@@ -23,6 +25,7 @@ class Position:
             self.result = None
         self.symbol = symbol
         self.tp = tp
+        self.index = index
         if tp == "null":
             self.tp = None
         self.sl = sl
@@ -82,6 +85,7 @@ class Manager:
                         _position["amount"],
                         _position["tp"],
                         _position["sl"],
+                        _position["index"],
                         _position["option"],
                         _position["result"],
                         _position["id"],
@@ -98,6 +102,7 @@ class Manager:
                         _position["amount"],
                         _position["tp"],
                         _position["sl"],
+                        _position["index"],
                         _position["option"],
                         _position["result"],
                         _position["id"],
@@ -209,11 +214,23 @@ class Manager:
         self.positions[position.order_type][position.id] = position
         self.logger.debug(f"position is stored: {position}")
 
-    def open_position(self, order_type: str, symbol: str, price: float, amount: float, tp=None, sl=None, option=None, result=None):
+    def open_position(
+        self, order_type: str, symbol: str, price: float, amount: float, tp=None, sl=None, index=None, option=None, result=None
+    ):
         order_type = self.__check_order_type(order_type)
         # Market buy without price is ordered during market closed
         if price is None:
-            position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
+            position = Position(
+                order_type=order_type,
+                symbol=symbol,
+                price=price,
+                amount=amount,
+                tp=tp,
+                sl=sl,
+                index=index,
+                option=option,
+                result=result,
+            )
             self.positions[order_type][position.id] = position
         else:
             # check if budget has enough amount
@@ -221,7 +238,17 @@ class Manager:
             # if enough, add position
             budget = self.positions["budget"]
             if required_budget <= budget:
-                position = Position(order_type=order_type, symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, option=option, result=result)
+                position = Position(
+                    order_type=order_type,
+                    symbol=symbol,
+                    price=price,
+                    amount=amount,
+                    tp=tp,
+                    sl=sl,
+                    index=index,
+                    option=option,
+                    result=result,
+                )
                 self.positions[order_type][position.id] = position
                 # then reduce budget
                 self.positions["budget"] = budget - required_budget
