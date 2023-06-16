@@ -119,7 +119,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         return data
 
     def _proceed_step_until_date(self, data, start_date):
-        is_date_found = True
+        is_date_found = False
         if data is not None and len(data) > 0:
             if start_date is not None and type(start_date) is datetime.datetime:
                 # start_date = start_date.astimezone(datetime.timezone.utc)
@@ -130,6 +130,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                     start_index = len(data.index) - remaining_length
                     # date is retrievd by [:step_index], so we need to plus 1
                     self._step_index = start_index + 1
+                    is_date_found = True
+                    self.logger.debug(f"step index is set to {self._step_index}. start date is {data.index[start_index]}")
                 else:
                     self._step_index = len(data.index)
                     self.logger.warning(f"start date {start_date} doesn't exit in the index")
@@ -659,7 +661,12 @@ class CSVClient(CSVClientBase):
                     rates = self.data[symbols]
                 else:
                     rates = self.data
-                rates = rates[self.get_ohlc_columns(out_type="list", ignore="Time")]
+                ohlc_columns = self.get_ohlc_columns(out_type="list", ignore="Time")
+                rates = rates[ohlc_columns]
+            except Exception as e:
+                self.logger.error(f"can't find columns in data: {e}")
+
+            try:
                 rates = rates.iloc[index - length : index]
             except Exception as e:
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
