@@ -79,6 +79,7 @@ class MT5Client(Client):
         back_test=False,
         do_render=False,
         budget=1000000,
+        enable_trade_log=False,
         logger=None,
         seed=1017,
     ):
@@ -90,6 +91,7 @@ class MT5Client(Client):
             provider=server,
             do_render=do_render,
             logger_name=__name__,
+            enable_trade_log=enable_trade_log,
             logger=logger,
         )
         self.back_test = back_test

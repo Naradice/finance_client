@@ -30,6 +30,7 @@ class SBIClient(Client):
         frame: int = Frame.D1,
         provider="Default",
         do_render=False,
+        enable_trade_log=False,
         logger_name=None,
         logger=None,
     ):
@@ -60,7 +61,13 @@ class SBIClient(Client):
         else:
             print("get_rate is not available if you specify use_yfinance=False")
         super().__init__(
-            budget=budget, provider=provider, frame=frame, do_render=do_render, logger_name=logger_name, logger=logger
+            budget=budget,
+            provider=provider,
+            frame=frame,
+            do_render=do_render,
+            enable_trade_log=enable_trade_log,
+            logger_name=logger_name,
+            logger=logger,
         )
 
     def get_additional_params(self):
@@ -70,7 +77,7 @@ class SBIClient(Client):
         self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True
     ):
         if self.client:
-            return self.client._get_ohlc_from_client(length, symbols, frame,  columns, index, grouped_by_symbol)
+            return self.client._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)
         else:
             return None
 

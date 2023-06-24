@@ -81,6 +81,7 @@ class CoinCheckClient(Client):
         frame: int = 30,
         observation_length=None,
         do_render=False,
+        enable_trade_log=False,
         logger=None,
     ):
         """CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
@@ -103,6 +104,7 @@ class CoinCheckClient(Client):
             frame=frame,
             observation_length=observation_length,
             do_render=do_render,
+            enable_trade_log=enable_trade_log,
             logger_name="ccheck",
             logger=logger,
         )

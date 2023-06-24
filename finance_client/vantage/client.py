@@ -41,6 +41,7 @@ class VantageClient(CSVClient):
         seed=1017,
         slip_type="random",
         do_render=False,
+        enable_trade_log=False,
         budget=1000000,
         logger=None,
     ):
@@ -96,6 +97,7 @@ class VantageClient(CSVClient):
             do_render=do_render,
             seed=seed,
             slip_type=slip_type,
+            enable_trade_log=enable_trade_log,
             budget=budget,
             logger=logger,
         )
@@ -191,7 +193,9 @@ class VantageClient(CSVClient):
 
     def __download(self, symbol):
         file_name = self._generate_file_name(symbol)
-        existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col": self.TIME_INDEX_NAME})
+        existing_rate_df = read_csv(
+            self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col": self.TIME_INDEX_NAME}
+        )
         MAX_LENGTH = 950  # not accurate
 
         if existing_rate_df is None:

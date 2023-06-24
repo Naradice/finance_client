@@ -73,6 +73,7 @@ class YahooClient(CSVClient):
         do_render=False,
         idc_processes=[],
         post_process=[],
+        enable_trade_log=False,
         budget=1000000,
         logger=None,
     ):
@@ -129,6 +130,7 @@ class YahooClient(CSVClient):
             do_render=do_render,
             seed=seed,
             slip_type=slip_type,
+            enable_trade_log=enable_trade_log,
             budget=budget,
             logger=logger,
         )
