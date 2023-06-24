@@ -292,6 +292,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         do_render=False,
         seed=1017,
         provider="csv",
+        enable_trade_log=False,
         logger=None,
     ):
         """CSV Client Base
@@ -308,6 +309,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             frame=frame,
             observation_length=observation_length,
             provider=provider,
+            enable_trade_log=enable_trade_log,
             logger_name=__name__,
             logger=logger,
         )
@@ -458,6 +460,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
     def get_current_bid(self, symbols=None):
         pass
 
+    def get_current_datetime(self):
+        return self.data.index[self._step_index - 1]
+
     @abstractmethod
     def reset(self, mode: str = None, retry=0):
         pass
@@ -513,7 +518,7 @@ class CSVClient(CSVClientBase):
         budget=1000000,
         do_render=False,
         seed=1017,
-        provider="csv",
+        enable_trade_log=False,
         logger=None,
     ):
         """CSV Client for time series data like bitcoin, stock, finance
@@ -539,6 +544,7 @@ class CSVClient(CSVClientBase):
             auto_reset_index ( bool, optional): refreh the index when index reach the end. Defaults False
             slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. prcent or pct: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters.
+            enable_trade_log (bool, optional): If true, trade log is enabled. Defaults to False.
             seed (int, optional): specify random seed. Defaults to 1017
         """
         super().__init__(
@@ -564,7 +570,8 @@ class CSVClient(CSVClientBase):
             budget,
             do_render,
             seed,
-            provider,
+            "csv",
+            enable_trade_log,
             logger,
         )
         if out_frame is not None:

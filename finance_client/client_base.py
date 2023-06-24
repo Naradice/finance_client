@@ -157,6 +157,58 @@ class Client(metaclass=ABCMeta):
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
 
+    def _trading_log(self, position: wallet.Position, price, amount, profit):
+        # get past prices for logging
+        num_steps = 1
+        try:
+            close_index = self.get_current_datetime()
+            diff_delta = close_index - position.index
+            num_steps = int(diff_delta.total_seconds() / (self.frame * 60))
+        except Exception as e:
+            self.logger.error(f"fail to get caliculate held steps: {e}")
+            return None
+        if num_steps >= 1:
+            ohlc_df = self.get_ohlc(num_steps, symbols=[position.symbol], idc_processes=[], pre_processes=[], economic_keys=[])
+            try:
+                # since timedelta may have steps which doesn't have data, filter it
+                ohlc_df = ohlc_df[ohlc_df.index >= position.index]
+            except Exception as e:
+                self.logger.error(f"fail to filter ohlc_df: {e}")
+            if len(ohlc_df) > 0:
+                ohlc_columns_dict = self.get_ohlc_columns()
+                if position.order_type == "ask":
+                    column = ohlc_columns_dict["High"]
+                    target_srs = ohlc_df[column]
+                    max_revenue_srs = target_srs - position.price
+                elif position.order_type == "bid":
+                    column = ohlc_columns_dict["Low"]
+                    target_srs = ohlc_df[column]
+                    max_revenue_srs = position.price - target_srs
+                log_srs = max_revenue_srs.describe()
+                if position.order_type == "ask":
+                    order_type = 1
+                else:
+                    order_type = -1
+                log_srs["symbol"] = position.symbol
+                log_srs["open_time"] = position.index
+                log_srs["open_price"] = position.price
+                log_srs["close_time"] = close_index
+                log_srs["close_price"] = price
+                log_srs["amount"] = amount
+                log_srs["profit"] = profit
+                log_srs["order_type"] = order_type
+                file_path = "test_log.csv"
+                save_header = not os.path.exists(file_path)
+                pd.DataFrame([log_srs.values], columns=log_srs.index.values).to_csv(
+                    file_path, mode="a", header=save_header, index_label=None, index=False
+                )
+            else:
+                self.logger.debug(f"no data for logging: {num_steps}, {position.index}, {diff_delta}")
+
+        else:
+            self.logger.error(f"num_steps for logging is less than 1: {num_steps}")
+            return None
+
     def close_position(
         self, price: float = None, position: wallet.Position = None, id=None, amount=None, symbol=None, order_type=None
     ):
@@ -200,6 +252,7 @@ class Client(metaclass=ABCMeta):
                 sl=None,
                 option=None,
                 result=None,
+                index=self.get_current_datetime(),
                 id=None,
             )
 
@@ -226,7 +279,10 @@ class Client(metaclass=ABCMeta):
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
-        return self.wallet.close_position(position, price, amount), True
+        price, position.price, price_diff, profit = self.wallet.close_position(position, price, amount=amount)
+        if self.enable_trade_log:
+            self._trading_log(position, price, amount, profit)
+        return price, position.price, price_diff, profit, True
 
     def close_all_positions(self, symbols=[]):
         """close all open_position.
@@ -368,7 +424,7 @@ class Client(metaclass=ABCMeta):
                 if position.sl is not None:
                     if position.order_type == "ask":
                         if position.sl >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.sl)
+                            result = self.wallet.close_position(position, position.sl, index=self._step_index)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Long Position is closed to stop loss: {result}")
@@ -378,7 +434,7 @@ class Client(metaclass=ABCMeta):
                             continue
                     elif position.order_type == "bid":
                         if position.sl <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.sl)
+                            result = self.wallet.close_position(position, position.sl, index=self._step_index)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Short Position is closed to stop loss: {result}")
@@ -394,7 +450,7 @@ class Client(metaclass=ABCMeta):
                     if position.order_type == "ask":
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.tp)
+                            result = self.wallet.close_position(position, position.tp, index=self._step_index)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
@@ -405,7 +461,7 @@ class Client(metaclass=ABCMeta):
                     elif position.order_type == "bid":
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.tp)
+                            result = self.wallet.close_position(position, position.tp, index=self._step_index)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
@@ -547,6 +603,7 @@ class Client(metaclass=ABCMeta):
                     self.__plot_data_width_indicaters(symbols, data)
             else:
                 self.logger.error("data length is insufficient to caliculate indicaters.")
+                data = ohlc_df
         else:
             data = ohlc_df
             if self.do_render:
@@ -685,7 +742,7 @@ class Client(metaclass=ABCMeta):
         print("Need to implement get_current_bid on your client")
 
     # Override if provider has datetime index
-    def get_current_date(self):
+    def get_current_datetime(self):
         return Frame.get_frame_time(datetime.datetime.utcnow(), self.frame)
 
     def get_params(self) -> dict:
@@ -823,7 +880,7 @@ class Client(metaclass=ABCMeta):
             amount=amount,
             tp=tp,
             sl=sl,
-            index=self._step_index,
+            index=self.get_current_datetime(),
             option=option_info,
             result=result,
         )
@@ -840,7 +897,7 @@ class Client(metaclass=ABCMeta):
             amount=amount,
             tp=tp,
             sl=sl,
-            index=self._step_index,
+            index=self.get_current_datetime(),
             option=option_info,
             result=result,
         )
