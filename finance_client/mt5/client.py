@@ -247,6 +247,8 @@ class MT5Client(Client):
     def get_current_ask(self, symbols=[]):
         if len(symbols) == 0:
             symbols = self.symbols
+        if isinstance(symbols, str):
+            symbols = [symbols]
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
@@ -278,6 +280,8 @@ class MT5Client(Client):
     def get_current_bid(self, symbols=[]):
         if len(symbols) == 0:
             symbols = self.symbols
+        if isinstance(symbols, str):
+            symbols = [symbols]
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
