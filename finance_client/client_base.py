@@ -6,7 +6,6 @@ import random
 import threading
 import time
 from abc import ABCMeta, abstractmethod
-from collections.abc import Iterable
 from logging import config, getLogger
 
 import numpy as np
