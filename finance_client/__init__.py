@@ -12,6 +12,7 @@ from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
 from .mt5.client import MT5Client
 from .vantage.client import VantageClient
+from .yfinance.client import YahooClient
 
 available_clients = {
     CSVClient.kinds: CSVClient,

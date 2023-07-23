@@ -29,9 +29,12 @@ class YahooClient(CSVClient):
 
     max_range = {
         "1m": datetime.timedelta(days=29),
+        "2m": datetime.timedelta(days=59),
         "5m": datetime.timedelta(days=59),
         "15m": datetime.timedelta(days=59),
+        "30m": datetime.timedelta(days=59),
         "60m": datetime.timedelta(days=729),
+        "90m": datetime.timedelta(days=59),
     }
     available_frames = [Frame.MIN1, Frame.MIN5, Frame.MIN15, Frame.MIN30, Frame.H1, Frame.D1, Frame.W1, Frame.MO1]
 
@@ -53,7 +56,7 @@ class YahooClient(CSVClient):
         file_name = f"yfinance_{symbol}_{Frame.to_str(self.frame)}.csv"
         return file_name
 
-    def _file_name_generator(self, symbol):
+    def _file_path_generator(self, symbol):
         file_name = self._create_filename(symbol)
         file_path = get_file_path(self.kinds, file_name=file_name)
         return file_path
@@ -119,10 +122,9 @@ class YahooClient(CSVClient):
         self.__get_rates(self.symbols)
         super().__init__(
             auto_step_index=auto_step_index,
-            file_name_generator=self._file_name_generator,
+            file_name_generator=self._file_path_generator,
             symbols=self.symbols,
             frame=frame,
-            provider="csv",
             out_frame=None,
             columns=self.OHLC_COLUMNS,
             date_column=self.TIME_INDEX_NAME,
@@ -232,7 +234,7 @@ class YahooClient(CSVClient):
             for symbol in symbols:
                 ticks_df = self.__download(symbol, interval)
                 write_df_to_csv(
-                    ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
+                    ticks_df, self.kinds, self._create_filename(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
                 )
                 DFS[symbol] = ticks_df
                 self.__updated_time[symbol] = datetime.datetime.now()
@@ -266,7 +268,7 @@ class YahooClient(CSVClient):
             if symbol not in self.symbols:
                 ticks_df = self.__download(symbol, interval)
                 write_df_to_csv(
-                    ticks_df, self.kinds, self._file_name_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
+                    ticks_df, self.kinds, self._file_path_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
                 )
                 self.__updated_time[symbol] = datetime.datetime.now()
         return super()._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)

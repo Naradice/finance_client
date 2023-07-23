@@ -20,7 +20,6 @@ try:
 except ImportError:
     from . import fprocess
 
-
 class Client(metaclass=ABCMeta):
     def __init__(
         self,
@@ -625,6 +624,38 @@ class Client(metaclass=ABCMeta):
             return data
         else:
             return data.iloc[-length:]
+        
+    def download(self, length: int = None, symbols: list = None, frame: int = None, grouped_by_symbol=True, file_path=None):
+        """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
+
+        Args:
+            length (int | None): specify data length > 1. If None is specified, return all date.
+            symbols (list[str]): list of symbols. Defaults to [].
+            frame (int | None): specify frame to get time series data. If None, default value is used instead.
+            grouped_by_symbol (bool): if True, return data is grouped by symbol. Defaults to True.
+            file_path (str): file path to save data. If None, file is save on default path. Default path is specified by enviornment variables by data_path, it environment variable is not set, data is saved on os.getcwd()/data_source
+
+        Returns:
+            pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
+            Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
+
+        """
+
+        if symbols is None:
+            symbols = self.symbols
+        if type(symbols) == str:
+            symbols = [symbols]
+        if len(symbols) == 0:
+            raise ValueError("symbols must be specified by either initial parameter or function parameter.")
+        if frame is None:
+            frame = self.frame
+        # data save should be handled by each client
+        ohlc_df = self._get_ohlc_from_client(
+            length=length, symbols=symbols, frame=frame, columns=None, index=None, grouped_by_symbol=True
+        )
+        if file_path is not None:
+            ohlc_df.to_csv(file_path, index=True)
+        return ohlc_df
 
     def get_ohlc(
         self,
@@ -638,7 +669,7 @@ class Client(metaclass=ABCMeta):
         economic_keys=None,
         grouped_by_symbol=True,
     ) -> pd.DataFrame or np.array:
-        """get ohlc data with length length
+        """get ohlc data with specified length
 
         Args:
             length (int | None): specify data length > 1. If None is specified, return all date.

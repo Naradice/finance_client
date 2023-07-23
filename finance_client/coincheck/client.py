@@ -6,6 +6,11 @@ import pandas as pd
 import finance_client.frames as Frame
 from finance_client.client_base import Client
 
+try:
+    from ..fprocess.fprocess.csvrw import write_df_to_csv
+except ImportError:
+    from ..fprocess.csvrw import write_df_to_csv
+
 from . import apis
 from .apis.servicebase import ServiceBase
 from .apis.ws import TradeHistory
@@ -13,6 +18,7 @@ from .apis.ws import TradeHistory
 
 class CoinCheckClient(Client):
     kinds = "cc"
+    provider = "CoinCheck"
 
     def __store_ticks(self, tick):
         tick_time = tick["time"]
@@ -258,6 +264,12 @@ class CoinCheckClient(Client):
     def _get_ohlc_from_client(
         self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
     ):
+        try:
+            write_df_to_csv(
+                self.data, self.provider, f"CC_BTC_{self.frame}.csv"
+            )
+        except Exception as e:
+            self.logger.error(e)
         if length is None:
             if index is None:
                 if self.__return_intermidiate_data:
