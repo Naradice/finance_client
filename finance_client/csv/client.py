@@ -580,7 +580,7 @@ class CSVClient(CSVClientBase):
                 self.data = self.roll_ohlc_data(self.data, out_frame, grouped_by_symbol=True)
                 self.frame = out_frame
         if self.data is not None and len(self.data) > 0:
-            self.data = self.run_processes(self.data, self.symbols, self.idc_process, self.pre_process, True)
+            self.data = super().run_processes(self.data, self.symbols, self.idc_process, self.pre_process, True)
 
     def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
         DFS = {}
@@ -897,6 +897,24 @@ class CSVClient(CSVClientBase):
             else:
                 self.logger.warning(f"not more data on index {self._step_index}")
             return pd.DataFrame(), True
+
+    # Overwrite base class method to ignore applied process
+    def run_processes(
+        self, data: pd.DataFrame, symbols: list = [], idc_processes=[], pre_processes=[], grouped_by_symbol=False
+    ) -> pd.DataFrame:
+        """
+        Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
+        """
+        data_cp = data.copy()
+
+        for process in idc_processes:
+            if process not in self.idc_process:
+                data_cp = process(data_cp, symbols, grouped_by_symbol)
+
+        for process in pre_processes:
+            if process not in self.pre_process:
+                data_cp = process(data_cp)
+        return data_cp
 
     @property
     def max(self):

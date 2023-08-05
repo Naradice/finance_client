@@ -15,9 +15,7 @@ from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 from finance_client.render.graph import Rendere
 
-csv_file = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_d1.csv")
-)
+csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "./test_data/USDJPY_H4.csv"))
 
 
 class TestRender(unittest.TestCase):
