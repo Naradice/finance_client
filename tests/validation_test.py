@@ -10,11 +10,11 @@ sys.path.append(module_path)
 
 from finance_client.fprocess.fprocess import validation
 
-csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
+csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "./test_data/USDJPY_H4.csv"))
 df = pd.read_csv(csv_file, parse_dates=True, index_col=0)
 OPEN_WEEKDAY = 0
 CLOSE_WEEKDAY = 4
-FREQ = 30
+FREQ = 60 * 4
 
 
 class TestValidation(unittest.TestCase):

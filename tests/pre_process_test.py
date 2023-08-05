@@ -14,23 +14,6 @@ sys.path.append(module_path)
 
 from finance_client import fprocess
 
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_indicaters_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
-
-file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
-ohlc_columns = ["open", "high", "low", "close"]
-date_column = "time"
-
 
 class TestPreProcess(unittest.TestCase):
     def test_min_max(self):
@@ -91,8 +74,8 @@ class TestPreProcess(unittest.TestCase):
         mm = fprocess.MinMaxPreProcess(scale=(-1, 1), columns=["open", "high", "low", "close"])
         mm.initialize(ds)
         result = mm.run(ds)
-        check = "time" in result
-        self.assertFalse(check)
+        check = "time" in result.columns
+        self.assertTrue(check)
 
     def test_diff(self):
         process = fprocess.DiffPreProcess()
@@ -108,7 +91,7 @@ class TestPreProcess(unittest.TestCase):
         self.assertEqual(standalized_ds["input"].iloc[-1], new_data["expect"])
 
         ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.NaN, numpy.NaN, numpy.NaN, -5, 10]})
-        process = fprocess.DiffPreProcess(floor=3)
+        process = fprocess.DiffPreProcess(periods=3)
         diff_dict = process.run(ds)
         for index in range(3, len(ds)):
             self.assertEqual(diff_dict["input"].iloc[index], ds["expect"].iloc[index])

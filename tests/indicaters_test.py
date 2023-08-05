@@ -30,9 +30,7 @@ config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 dotenv.load_dotenv(".env")
 
-file_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv")
-)
+file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "./test_data/AUDJPY_Candlestick.csv"))
 
 
 class TestIndicaters(unittest.TestCase):
@@ -99,7 +97,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertLessEqual(len(renko["Brick"]), 120)
 
     def test_slope(self):
-        data_length = 1000
+        data_length = 60
         df = self.client.get_ohlc(data_length)
         start_time = datetime.datetime.now()
         slope_df = technical.SlopeFromOHLC(df, window=10, column="close")
@@ -108,7 +106,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(len(slope_df["Slope"]), data_length)
 
     def test_macdslope(self):
-        data_length = 1000
+        data_length = 60
         df = self.client.get_ohlc(data_length)
         start_time = datetime.datetime.now()
         slope_df = technical.SlopeFromOHLC(df, window=10, column="close")
@@ -117,9 +115,9 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(len(slope_df["Slope"]), data_length)
 
     def test_cci(self):
-        ohlc = self.client.get_ohlc(100)
+        ohlc = self.client.get_ohlc(60)
         cci = technical.CommodityChannelIndex(ohlc, ohlc_columns=self.ohlc_columns)
-        self.assertEqual(len(cci), 100)
+        self.assertEqual(len(cci), 60)
         max_value = cci.max().values
         self.assertLess(max_value, 300)
         min_value = cci.min().values

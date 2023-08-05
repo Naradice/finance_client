@@ -27,26 +27,26 @@ logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config)
 logger = getLogger("finance_client.test")
 
-file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
+file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "./test_data/AUDJPY_Candlestick.csv"))
 ohlc_columns = ["open", "high", "low", "close"]
 date_column = "time"
 
 
 class TestIndicaters(unittest.TestCase):
     client = CSVClient(
-        files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False, start_index=200
+        files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False, start_index=10
     )
 
     def test_cci_process(self):
-        ohlc = self.client.get_ohlc(110)
+        ohlc = self.client.get_ohlc(20)
         cci_prc = fprocess.CCIProcess(14, ohlc_column=ohlc_columns)
-        input_data_1 = ohlc.iloc[:100].copy()
-        self.assertEqual(len(input_data_1), 100)
+        input_data_1 = ohlc.iloc[:15]
+        self.assertEqual(len(input_data_1), 15)
         cci = cci_prc.run(input_data_1)
 
-        next_tick = ohlc.iloc[100]
+        next_tick = ohlc.iloc[15].copy()
         next_cci = cci_prc.update(next_tick)
-        next_cci_from_run = cci_prc.run(ohlc.iloc[:101])
+        next_cci_from_run = cci_prc.run(ohlc.iloc[:16])
         cci_column = cci_prc.KEY_CCI
         ans_value = next_cci_from_run[cci_column].iloc[-1]
         self.assertEqual(next_cci, ans_value)
@@ -110,29 +110,29 @@ class TestIndicaters(unittest.TestCase):
             out_ex.append(out_ex[i - 1] * (1 - alpha) + input[i] * alpha)
 
     def test_renko_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
-        prc = fprocess.RenkoProcess(window=120, ohlc_column=ohlc_columns)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=20)
+        prc = fprocess.RenkoProcess(window=10, ohlc_column=ohlc_columns)
         column = prc.KEY_BRICK_NUM
         start_time = datetime.datetime.now()
-        data = client.get_ohlc(300, idc_processes=[prc])
+        data = client.get_ohlc(30, idc_processes=[prc])
         end_time = datetime.datetime.now()
         logger.debug(f"renko process took {end_time - start_time}")
         self.assertEqual(column in data.columns, True)
-        self.assertEqual(len(data[column]), 300)
+        self.assertEqual(len(data[column]), 30)
 
     def test_slope_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=20)
         prc = fprocess.SlopeProcess(window=5, target_column=ohlc_columns[3])
         slp_column = prc.KEY_SLOPE
         start_time = datetime.datetime.now()
-        data = client.get_ohlc(100, idc_processes=[prc])
+        data = client.get_ohlc(10, idc_processes=[prc])
         end_time = datetime.datetime.now()
         logger.debug(f"slope process took {end_time - start_time}")
         self.assertEqual(slp_column in data.columns, True)
-        self.assertEqual(len(data[slp_column]), 100)
+        self.assertEqual(len(data[slp_column]), 10)
 
     def test_macdslope_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=20)
         macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         macd_column = macd.KEY_MACD
         signal_column = macd.KEY_SIGNAL
@@ -141,32 +141,32 @@ class TestIndicaters(unittest.TestCase):
         slp_column = prc.KEY_SLOPE
         s_slp_column = s_prc.KEY_SLOPE
         start_time = datetime.datetime.now()
-        data = client.get_ohlc(100, idc_processes=[macd, prc, s_prc])
+        data = client.get_ohlc(10, idc_processes=[macd, prc, s_prc])
         end_time = datetime.datetime.now()
         logger.debug(f"macd slope process took {end_time - start_time}")
         self.assertEqual(slp_column in data.columns, True)
-        self.assertEqual(len(data[slp_column]), 100)
+        self.assertEqual(len(data[slp_column]), 10)
         self.assertEqual(s_slp_column in data.columns, True)
-        self.assertEqual(len(data[s_slp_column]), 100)
+        self.assertEqual(len(data[s_slp_column]), 10)
         self.assertNotEqual(data[slp_column].iloc[-1], data[s_slp_column].iloc[-1])
 
     def test_range_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=20)
         slope_window = 4
         range_p = fprocess.RangeTrendProcess(slope_window=slope_window)
         bband_p = fprocess.BBANDProcess(alpha=2, target_column=ohlc_columns[3], window=14)
         start_time = datetime.datetime.now()
-        client.get_ohlc(100, idc_processes=[bband_p, range_p])
+        client.get_ohlc(30, idc_processes=[bband_p, range_p])
         end_time = datetime.datetime.now()
         logger.debug(f"range process took {end_time - start_time}")
-        data = client.get_ohlc(100, idc_processes=[bband_p, range_p])
-        self.assertEqual(len(data), 100)
+        data = client.get_ohlc(30, idc_processes=[bband_p, range_p])
+        self.assertEqual(len(data), 30)
         ran = data[range_p.KEY_RANGE]
         self.assertLessEqual(ran.max(), 1)
         self.assertGreaterEqual(ran.min(), -1)
         mv = data[bband_p.KEY_MEAN_VALUE]
         slope = data[range_p.KEY_TREND]
-        for i in range(14 + slope_window, 100):
+        for i in range(14 + slope_window, 30):
             if slope.iloc[i] >= 0:
                 self.assertGreaterEqual(mv.iloc[i], mv.iloc[i - slope_window])
             else:
