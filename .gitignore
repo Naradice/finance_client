@@ -1,6 +1,7 @@
 *.csv
 !finance_client/vantage/resources/digital_currency_list.csv
 !finance_client/vantage/resources/physical_currency_list.csv
+!tests/test_data/*.csv
 #Python env
 bin/
 lib/
