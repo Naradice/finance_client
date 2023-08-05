@@ -646,30 +646,37 @@ class CSVClient(CSVClientBase):
             return __symbols, data
         return target_symbols, pd.DataFrame()
 
-    def __get_rates(self, index, length, symbols, frame, columns):
+    def __get_rates(self, index, length, symbols, frame, columns, grouped_by_symbol):
+        rates = self.data.copy()
+        is_multi_index = type(rates.columns) is pd.MultiIndex
+
         if length is None:
-            rates = self.data
             if frame is not None and self.frame < frame:
-                rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
+                rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=grouped_by_symbol)
             if len(symbols) > 0:
+                if grouped_by_symbol is False and is_multi_index is True:
+                    rates.columns = rates.columns.swaplevel(0, 1)
+                    grouped_by_symbol = True
                 rates = rates[symbols]
             if columns is None:
                 return rates.iloc[:index]
             else:
+                if is_multi_index is True and grouped_by_symbol is True:
+                    rates.columns = rates.columns.swaplevel(0, 1)
                 return rates[columns].iloc[:index]
         elif length >= 1:
-            rates = None
             out_length = length
             if frame is not None and self.frame < frame:
                 length = math.ceil(frame / self.frame) * length
             try:
                 # return data which have length length
                 if len(symbols) > 0:
-                    rates = self.data[symbols]
-                else:
-                    rates = self.data
-                ohlc_columns = self.get_ohlc_columns(out_type="list", ignore="Time")
-                rates = rates[ohlc_columns]
+                    if grouped_by_symbol is False and is_multi_index is True:
+                        rates.columns = rates.columns.swaplevel(0, 1)
+                        rates = rates[symbols]
+                    else:
+                        # Since len(symbols) > 0, assume is_multi_index is True
+                        rates = rates[symbols]
             except Exception as e:
                 self.logger.error(f"can't find columns in data: {e}")
 
@@ -679,11 +686,13 @@ class CSVClient(CSVClientBase):
                 self.logger.error(f"can't find data fom {index - length} to {index}: {e}")
 
             if frame is not None and self.frame < frame:
-                rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
+                rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=grouped_by_symbol)
             rates = rates.iloc[:out_length]
             if columns is None:
                 return rates
             else:
+                if is_multi_index is True and grouped_by_symbol is True:
+                    rates.columns = rates.columns.swaplevel(0, 1)
                 return rates[columns]
         else:
             raise Exception("interval should be greater than 0.")
@@ -739,7 +748,7 @@ class CSVClient(CSVClientBase):
                 index = length
         else:
             self._update_rates(symbols)
-        rates = self.__get_rates(index, length, target_symbols, frame, target_columns)
+        rates = self.__get_rates(index, length, target_symbols, frame, target_columns, grouped_by_symbol=grouped_by_symbol)
         if grouped_by_symbol is False and type(rates.columns) is pd.MultiIndex:
             rates.columns = rates.columns.swaplevel(0, 1)
             rates.sort_index(level=0, axis=1, inplace=True)

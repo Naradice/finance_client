@@ -20,6 +20,7 @@ try:
 except ImportError:
     from . import fprocess
 
+
 class Client(metaclass=ABCMeta):
     def __init__(
         self,
@@ -262,7 +263,7 @@ class Client(metaclass=ABCMeta):
                 self.logger.debug(f"order close with current ask rate {price} if budget sell is not allowed")
             result = self._sell_for_settlment(position.symbol, price, amount, position.option, position.result)
             if result is False:
-                return None, False
+                return price, position.price, None, None, False
             position_plot = -2
         elif position.order_type == "bid":
             self.logger.debug(f"close short position is ordered for {id}")
@@ -271,7 +272,7 @@ class Client(metaclass=ABCMeta):
                 price = self.get_current_ask(position.symbol)
             result = self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             if result is False:
-                return None, False
+                return price, position.price, None, None, False
             position_plot = -1
         else:
             self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
@@ -624,7 +625,7 @@ class Client(metaclass=ABCMeta):
             return data
         else:
             return data.iloc[-length:]
-        
+
     def download(self, length: int = None, symbols: list = None, frame: int = None, grouped_by_symbol=True, file_path=None):
         """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
 
@@ -1046,8 +1047,8 @@ class Client(metaclass=ABCMeta):
             freq = Frame.freq_str[to_frame]
         else:
             freq = to_freq
-
-        if grouped_by_symbol:
+        isMultiIndex = type(data.columns) is pd.MultiIndex
+        if isMultiIndex and grouped_by_symbol:
             data.columns = data.columns.swaplevel(0, 1)
 
         ohlc_columns_dict = self.get_ohlc_columns()
@@ -1090,7 +1091,7 @@ class Client(metaclass=ABCMeta):
 
         if len(rolled_data_dict) > 0:
             rolled_df = pd.concat(rolled_data_dict.values(), axis=1, keys=rolled_data_dict.keys())
-            if grouped_by_symbol:
+            if isMultiIndex and grouped_by_symbol:
                 data.columns = data.columns.swaplevel(0, 1)
                 rolled_df.columns = rolled_df.columns.swaplevel(0, 1)
                 rolled_df.sort_index(level=0, axis=1, inplace=True)

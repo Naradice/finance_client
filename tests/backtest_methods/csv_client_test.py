@@ -1,46 +1,33 @@
 import datetime
-import json
+import logging
 import os
 import sys
 import unittest
+
+import pandas as pd
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from logging import config, getLogger
-
-import pandas as pd
-
 import finance_client.frames as Frame
 from finance_client import fprocess
 from finance_client.csv.client import CSVChunkClient, CSVClient
 
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
+log_path = os.path.abspath(f'./csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log')
+logger = logging.getLogger("csv_client.test")
+fh = logging.FileHandler(log_path)
+logger.addHandler(fh)
+logger.setLevel(logging.DEBUG)
 
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = os.path.abspath(f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs')
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config.copy())
-logger = getLogger("finance_client.test")
-
-file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../finance_client/data_source/yfinance"))
-symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
-datetime_column = "Time"
-ohlc_columns = ["Open", "High", "Low", "Close"]
-additional_column = ["Adj Close", "Volume"]
-csv_files = [f"{file_base}/yfinance_{symbol}_D1.csv" for symbol in symbols]
-# csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
-csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
-# csv_file_5min = f'{file_base}/yfinance_{symbols[0]}_MIN5.csv'
-csv_file_5min = os.path.abspath("L:/data/csv/USDJPY_forex_min5.csv")
-csv_files_5min = [f"{file_base}/yfinance_{symbol}_MIN5.csv" for symbol in symbols[:2]]
+file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../test_data"))
+symbols = ["AUDJPY", "AUDUSD", "EURUSD"]
+datetime_column = "time"
+ohlc_columns = ["open", "high", "low", "close"]
+additional_column = ["Volume"]
+csv_files = [f"{file_base}/{symbol}_Candlestick.csv" for symbol in symbols]
+# csv_file_5min = os.path.abspath("L:/data/csv/USDJPY_forex_min5.csv")
+# csv_files_5min = [f"{file_base}/yfinance_{symbol}_MIN5.csv" for symbol in symbols[:2]]
 
 
 class TestCSVClient(unittest.TestCase):
@@ -48,34 +35,39 @@ class TestCSVClient(unittest.TestCase):
         client = CSVClient(logger=logger)
 
     def test_get_rates(self):
+        csv_file = csv_files[0]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column, start_index=10)
         length = 10
         rates = client.get_ohlc(length)
-        self.assertEqual(len(rates["Close"]), length)
+        self.assertEqual(len(rates[ohlc_columns[3]]), length)
         rates = client.get_ohlc()
-        self.assertGreater(len(rates["Close"]), length)
+        self.assertGreater(len(rates[ohlc_columns[3]]), length)
 
     def test_get_next_tick(self):
+        csv_file = csv_files[0]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         df, suc = client.get_next_tick()
         self.assertEqual(type(df), pd.Series)
 
     def test_get_current_ask(self):
+        csv_file = csv_files[0]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         ask_value = client.get_current_ask()
         print(ask_value)
         self.assertGreater(ask_value, 0)
 
     def test_get_current_bid(self):
+        csv_file = csv_files[0]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         bid_value = client.get_current_bid()
         print(bid_value)
         self.assertGreater(bid_value, 0)
 
     def test_get_indicaters(self):
+        csv_file = csv_files[0]
         length = 10
-        bband = fprocess.BBANDProcess()
-        macd = fprocess.MACDProcess()
+        bband = fprocess.BBANDProcess(target_column=ohlc_columns[3])
+        macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         processes = [bband, macd]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
         data = client.get_ohlc(length, idc_processes=processes)
@@ -83,9 +75,10 @@ class TestCSVClient(unittest.TestCase):
         self.assertEqual(len(data[ohlc_columns[3]]), length)
 
     def test_get_standalized_indicaters(self):
+        csv_file = csv_files[0]
         length = 10
-        bband = fprocess.BBANDProcess()
-        macd = fprocess.MACDProcess()
+        bband = fprocess.BBANDProcess(target_column=ohlc_columns[3])
+        macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         processes = [bband, macd]
         post_prs = [fprocess.DiffPreProcess(), fprocess.MinMaxPreProcess()]
         client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column)
@@ -94,16 +87,18 @@ class TestCSVClient(unittest.TestCase):
         self.assertEqual(len(data[ohlc_columns[3]]), length)
 
     def test_get_rolled_data(self):
-        client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, out_frame=Frame.MIN30)
+        csv_file = csv_files[0]
+        client = CSVClient(files=csv_file, logger=logger, date_column=datetime_column, out_frame=Frame.MIN5)
         df = client.get_ohlc(length=10)
         self.assertEqual(len(df), 10)
         delta = df.index[1] - df.index[0]
-        delta_ex = datetime.timedelta(minutes=30)
+        delta_ex = datetime.timedelta(minutes=5)
         self.assertEqual(delta, delta_ex)
 
     def test_add_indicaters(self):
+        csv_file = csv_files[0]
         client = CSVClient(
-            files=csv_file_5min,
+            files=csv_file,
             logger=logger,
             date_column=datetime_column,
             economic_keys=["SP500"],
@@ -113,8 +108,9 @@ class TestCSVClient(unittest.TestCase):
         print(data)
 
     def get_current_date(self):
+        csv_file = csv_files[0]
         client = CSVClient(
-            files=csv_file_5min,
+            files=csv_file,
             logger=logger,
             date_column=datetime_column,
             economic_keys=["SP500"],
@@ -128,10 +124,7 @@ class TestCSVClient(unittest.TestCase):
 
 class TestCSVClientMulti(unittest.TestCase):
     def test_initialize_with_files(self):
-        files = csv_files[:2]
-        # client = CSVClient(files=files, out_frame=30)
-        # del client
-        client = CSVClient(files=files, auto_reset_index=True, logger=logger)
+        client = CSVClient(files=csv_files, auto_reset_index=True, logger=logger)
         del client
 
     def test_get_data_with_files_basic(self):
@@ -150,7 +143,7 @@ class TestCSVClientMulti(unittest.TestCase):
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del client, df
 
-        client = CSVClient(files=files, date_column="Datetime", logger=logger)
+        client = CSVClient(files=files, date_column="time", logger=logger)
         print("warning is shown")
         df = client.get_ohlc(DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
@@ -195,7 +188,7 @@ class TestCSVClientMulti(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        START_DATE = datetime.datetime(year=2001, month=4, day=1, tzinfo=datetime.timezone.utc)
+        START_DATE = datetime.datetime(year=2021, month=3, day=1, hour=22, minute=30, tzinfo=datetime.timezone.utc)
 
         client = CSVClient(files=files, start_date=START_DATE, logger=logger)
         df = client.get_ohlc(DATA_LENGTH)
@@ -307,27 +300,36 @@ class TestCSVClientMulti(unittest.TestCase):
         self.assertEqual(len(df_1.columns), len(limited_symbols_1) * (len(ohlc_columns) + len(additional_column)))
 
     def test_get_rolled_data(self):
-        client = CSVClient(files=csv_files_5min, logger=logger, date_column="Datetime", out_frame=Frame.MIN30, start_index=100)
+        client = CSVClient(files=csv_files[0], logger=logger, date_column="time", out_frame=Frame.MIN5, start_index=0)
         df = client.get_ohlc(length=10)
         self.assertEqual(len(df), 10)
         delta = df.index[1] - df.index[0]
-        delta_ex = datetime.timedelta(minutes=30)
+        delta_ex = datetime.timedelta(minutes=5)
         self.assertEqual(delta, delta_ex)
 
     def test_get_rolled_data_with_less_memory(self):
-        client = CSVClient(files=csv_files_5min, logger=logger, date_column="Datetime", start_index=100)
-        df = client.get_ohlc(length=10, frame=30)
-        self.assertEqual(len(df), 10)
+        length = 10
+        frame = 5
+        client = CSVClient(files=csv_files[0], logger=logger, date_column="time", start_index=length * frame)
+        df = client.get_ohlc(length=length, frame=frame)
+        self.assertEqual(len(df), length)
         delta = df.index[1] - df.index[0]
-        delta_ex = datetime.timedelta(minutes=30)
+        delta_ex = datetime.timedelta(minutes=frame)
         self.assertEqual(delta, delta_ex)
 
     def test_get_rolled_data_twiced(self):
-        client = CSVClient(files=csv_files_5min, logger=logger, date_column="Datetime", out_frame=30, start_index=100)
-        df = client.get_ohlc(length=10, frame=60)
-        self.assertEqual(len(df), 10)
+        frame_1 = 5
+
+        length_2 = 5
+        frame_2 = 10
+
+        client = CSVClient(
+            files=csv_files[0], logger=logger, date_column="time", out_frame=frame_1, start_index=length_2 * (frame_2 / frame_1)
+        )
+        df = client.get_ohlc(length=length_2, frame=frame_2)
+        self.assertEqual(len(df), length_2)
         delta = df.index[1] - df.index[0]
-        delta_ex = datetime.timedelta(minutes=60)
+        delta_ex = datetime.timedelta(minutes=frame_2)
         self.assertEqual(delta, delta_ex)
 
 
@@ -510,8 +512,9 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         for i in range(0, 5):
             df = client.get_ohlc(10)
         results = client.close_long_positions(symbols[1])
-        self.assertEqual(len(results[0][0]), 4)
-        self.assertNotEqual(results[0][0][0], results[0][0][1])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results[0]), 5)
+        self.assertNotEqual(results[0][0], results[0][1])
 
     def test_trade_symbols(self):
         files = csv_files[:3]
@@ -532,21 +535,6 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertNotEqual(results[0][0], results[0][1])
 
-
-"""
-
-class TestCSVClientMultiChunkWOInit:
-    pass
-
-
-class TestCSVClientMultiWOInit:
-    pass
-
-
-class TestCSVClientMultiChunkWOInit:
-    pass
-
-"""
 
 if __name__ == "__main__":
     unittest.main()

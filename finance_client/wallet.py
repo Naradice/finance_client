@@ -5,6 +5,8 @@ import uuid
 from logging import config, getLogger
 from time import sleep
 
+import numpy as np
+
 
 class Position:
     def __init__(
@@ -219,7 +221,7 @@ class Manager:
     ):
         order_type = self.__check_order_type(order_type)
         # Market buy without price is ordered during market closed
-        if price is None:
+        if price is None or np.isnan(price):
             position = Position(
                 order_type=order_type,
                 symbol=symbol,
@@ -232,6 +234,7 @@ class Manager:
                 result=result,
             )
             self.positions[order_type][position.id] = position
+            return position
         else:
             # check if budget has enough amount
             required_budget = self.trade_unit * amount * price
