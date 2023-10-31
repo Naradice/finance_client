@@ -423,7 +423,7 @@ class Client(metaclass=ABCMeta):
                 if position.sl is not None:
                     if position.order_type == "ask":
                         if position.sl >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.sl, index=self._step_index)
+                            result = self.wallet.close_position(position, position.sl)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Long Position is closed to stop loss: {result}")
@@ -433,7 +433,7 @@ class Client(metaclass=ABCMeta):
                             continue
                     elif position.order_type == "bid":
                         if position.sl <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.sl, index=self._step_index)
+                            result = self.wallet.close_position(position, position.sl)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Short Position is closed to stop loss: {result}")
@@ -449,7 +449,7 @@ class Client(metaclass=ABCMeta):
                     if position.order_type == "ask":
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.tp, index=self._step_index)
+                            result = self.wallet.close_position(position, position.tp)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
@@ -460,7 +460,7 @@ class Client(metaclass=ABCMeta):
                     elif position.order_type == "bid":
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.tp, index=self._step_index)
+                            result = self.wallet.close_position(position, position.tp)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
@@ -584,7 +584,12 @@ class Client(metaclass=ABCMeta):
             else:
                 target_length = length
             ohlc_df = self._get_ohlc_from_client(
-                length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
+                length=target_length,
+                symbols=symbols,
+                frame=frame,
+                columns=columns,
+                index=index,
+                grouped_by_symbol=grouped_by_symbol,
             )
 
         if isinstance(ohlc_df.index, pd.DatetimeIndex):

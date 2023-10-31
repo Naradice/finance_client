@@ -342,6 +342,8 @@ class MT5Client(Client):
                 tp=tp,
             )
             return True, result
+        else:
+            return True, {}
 
     def _buy_for_settlement(self, symbol, price, amount, option, result):
         if self.__ignore_order is False:
@@ -381,6 +383,8 @@ class MT5Client(Client):
                 tp=tp,
             )
             return True, result
+        else:
+            return True, {}
 
     def buy_order(self, symbol, value, tp=None, sl=None):
         if self.__ignore_order is False:
