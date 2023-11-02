@@ -26,3 +26,4 @@ finance_client/data_source/gmo/config.json
 sandbox/
 data_source
 /samples/data
+*venv*/
