@@ -291,7 +291,7 @@ class Manager:
 
     def close_position(self, position: Position, price: float, amount: float = None):
         if price is None or position is None:
-            return None
+            return None, None, None, None
         if type(position) == Position and type(position.amount) == float or type(position.amount) == int:
             if amount is None:
                 amount = position.amount
