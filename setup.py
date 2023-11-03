@@ -14,6 +14,9 @@ install_requires = [
     "python-dotenv",
     # for yfinance
     "yfinance",
+    # for sbi
+    "selenium",
+    "webdriver_manager",
     # for economic indicators
     "pandas_datareader",
 ]
