@@ -112,7 +112,7 @@ class SBIClient(Client):
         return False, err_msg
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        return self.rpa_client.sell_to_close_buy_order(symbol, amount, ask_rate)
+        return False, None
 
     def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
         return self.rpa_client.sell_to_close_buy_order(symbol, amount, bid_rate)
