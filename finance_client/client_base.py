@@ -20,6 +20,7 @@ try:
 except ImportError:
     from . import fprocess
 
+
 class Client(metaclass=ABCMeta):
     def __init__(
         self,
@@ -69,7 +70,7 @@ class Client(metaclass=ABCMeta):
 
             try:
                 log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-                log_folder = os.path.join(os.path.dirname(__file__), "logs")
+                log_folder = os.path.join(os.path.dirname(__file__), "log")
                 if os.path.exists(log_folder) is False:
                     os.makedirs(log_folder)
                 logger_config["handlers"]["fileHandler"][
@@ -624,7 +625,7 @@ class Client(metaclass=ABCMeta):
             return data
         else:
             return data.iloc[-length:]
-        
+
     def download(self, length: int = None, symbols: list = None, frame: int = None, grouped_by_symbol=True, file_path=None):
         """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
 
@@ -655,6 +656,13 @@ class Client(metaclass=ABCMeta):
         )
         if file_path is not None:
             ohlc_df.to_csv(file_path, index=True)
+            self.logger.info(f"file is saved on {file_path}")
+        else:
+            default_path = self._get_default_path()
+            if default_path is None:
+                self.logger.info(f"save is not supported by this client.")
+            else:
+                self.logger.info(f"file is saved on {default_path}")
         return ohlc_df
 
     def get_ohlc(
@@ -780,6 +788,9 @@ class Client(metaclass=ABCMeta):
 
     def get_next_tick(self, frame=5):
         print("Need to implement get_next_tick")
+
+    def _get_default_path(self):
+        return None
 
     @abstractmethod
     def __len__(self):

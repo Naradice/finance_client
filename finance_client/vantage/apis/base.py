@@ -13,7 +13,9 @@ class API_BASE:
     work_day_in_week = 5
 
     currency_code_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/digital_currency_list.csv"))
-    phys_currency_code_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/physical_currency_list.csv"))
+    phys_currency_code_file_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../resources/physical_currency_list.csv")
+    )
 
     digital_code_list = None
     physical_code_list = None
@@ -76,7 +78,7 @@ class API_BASE:
                     os.makedirs(log_folder)
                 logger_config["handlers"]["fileHandler"][
                     "filename"
-                ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
+                ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
                 config.dictConfig(logger_config)
             except Exception as e:
                 self.logger.error(f"fail to set configure file: {e}")

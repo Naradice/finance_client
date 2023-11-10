@@ -148,7 +148,7 @@ class Manager:
                         os.makedirs(log_folder)
                     logger_config["handlers"]["fileHandler"][
                         "filename"
-                    ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs'
+                    ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
                     config.dictConfig(logger_config)
                 except Exception as e:
                     print(f"fail to set configure file: {e}")

@@ -25,7 +25,7 @@ except Exception as e:
 
 logger_config = settings["log"]
 log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = os.path.abspath(f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.logs')
+log_path = os.path.abspath(f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log')
 logger_config["handlers"]["fileHandler"]["filename"] = log_path
 config.dictConfig(logger_config.copy())
 logger = getLogger("finance_client.test")

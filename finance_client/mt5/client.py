@@ -11,9 +11,9 @@ from .. import frames as Frame
 from ..client_base import Client
 
 try:
-    from ..fprocess.fprocess.csvrw import read_csv, write_df_to_csv
+    from ..fprocess.fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 except ImportError:
-    from ..fprocess.csvrw import read_csv, write_df_to_csv
+    from ..fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 
 
 class MT5Client(Client):
@@ -171,6 +171,13 @@ class MT5Client(Client):
             self.__ignore_order = True
         else:
             self.__ignore_order = False
+
+    def __get_provider_string(self):
+        return os.path.join(self.kinds, self.provider)
+
+    def _get_default_path(self):
+        data_folder = get_datafolder_path()
+        os.path.join(data_folder, self.__get_provider_string())
 
     def __post_market_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
         request = {
@@ -444,7 +451,7 @@ class MT5Client(Client):
     def __download_entire(self, symbol, frame):
         existing_rate_df = None
         file_name = self.__generate_file_name(symbol, frame)
-        existing_rate_df = read_csv(self.kinds, file_name, ["time"])
+        existing_rate_df = read_csv(self.__get_provider_string(), file_name, ["time"])
 
         MAX_LENGTH = 12 * 24 * 345  # not accurate, may depend on server
 
@@ -475,21 +482,25 @@ class MT5Client(Client):
             else:
                 break
         rate_df = pd.DataFrame(rates)
-        rate_df["time"] = pd.to_datetime(rate_df["time"], unit="s")
+        if len(rate_df) > 0:
+            rate_df["time"] = pd.to_datetime(rate_df["time"], unit="s")
 
-        if existing_rate_df is not None:
-            rate_df = pd.concat([existing_rate_df, rate_df])
+            if existing_rate_df is not None:
+                rate_df = pd.concat([existing_rate_df, rate_df])
 
-        rate_df = rate_df.sort_values("time")
-        rate_df = rate_df.drop_duplicates()
+            rate_df = rate_df.sort_values("time")
+            rate_df = rate_df.drop_duplicates()
 
-        write_df_to_csv(
-            rate_df,
-            os.path.join(self.kinds, self.provider),
-            file_name,
-            panda_option={"mode": "w", "index": False, "header": True},
-        )
-        return rate_df
+            write_df_to_csv(
+                rate_df,
+                self.__get_provider_string(),
+                file_name,
+                panda_option={"mode": "w", "index": False, "header": True},
+            )
+            return rate_df
+        else:
+            self.logger.error(f"no new data found for {symbol}")
+            return existing_rate_df
 
     def __download(self, length, symbol, frame, index=None):
         if index is None:
