@@ -668,8 +668,8 @@ class CSVClient(CSVClientBase):
                     rates = self.data[symbols]
                 else:
                     rates = self.data
-                ohlc_columns = self.get_ohlc_columns(out_type="list", ignore="Time")
-                rates = rates[ohlc_columns]
+                    ohlc_columns = self.get_ohlc_columns(out_type="list", ignore="Time")
+                    rates = rates[ohlc_columns]
             except Exception as e:
                 self.logger.error(f"can't find columns in data: {e}")
 
