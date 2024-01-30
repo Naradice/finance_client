@@ -156,57 +156,25 @@ class Client(metaclass=ABCMeta):
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
 
-    def _trading_log(self, position: wallet.Position, price, amount, profit):
-        # get past prices for logging
-        num_steps = 1
-        try:
-            close_index = self.get_current_datetime()
-            diff_delta = close_index - position.index
-            num_steps = int(diff_delta.total_seconds() / (self.frame * 60))
-        except Exception as e:
-            self.logger.error(f"fail to get caliculate held steps: {e}")
-            return None
-        if num_steps >= 1:
-            ohlc_df = self.get_ohlc(num_steps, symbols=[position.symbol], idc_processes=[], pre_processes=[], economic_keys=[])
-            try:
-                # since timedelta may have steps which doesn't have data, filter it
-                ohlc_df = ohlc_df[ohlc_df.index >= position.index]
-            except Exception as e:
-                self.logger.error(f"fail to filter ohlc_df: {e}")
-            if len(ohlc_df) > 0:
-                ohlc_columns_dict = self.get_ohlc_columns()
-                if position.order_type == "ask":
-                    column = ohlc_columns_dict["High"]
-                    target_srs = ohlc_df[column]
-                    max_revenue_srs = target_srs - position.price
-                elif position.order_type == "bid":
-                    column = ohlc_columns_dict["Low"]
-                    target_srs = ohlc_df[column]
-                    max_revenue_srs = position.price - target_srs
-                log_srs = max_revenue_srs.describe()
-                if position.order_type == "ask":
-                    order_type = 1
-                else:
-                    order_type = -1
-                log_srs["symbol"] = position.symbol
-                log_srs["open_time"] = position.index
-                log_srs["open_price"] = position.price
-                log_srs["close_time"] = close_index
-                log_srs["close_price"] = price
-                log_srs["amount"] = amount
-                log_srs["profit"] = profit
-                log_srs["order_type"] = order_type
-                file_path = "test_log.csv"
-                save_header = not os.path.exists(file_path)
-                pd.DataFrame([log_srs.values], columns=log_srs.index.values).to_csv(
-                    file_path, mode="a", header=save_header, index_label=None, index=False
-                )
-            else:
-                self.logger.debug(f"no data for logging: {num_steps}, {position.index}, {diff_delta}")
-
+    def _trading_log(self, position: wallet.Position, price, amount, order_type):
+        index = self.get_current_datetime()
+        log_items = {}
+        if position.order_type == "ask":
+            order_type = 1
         else:
-            self.logger.error(f"num_steps for logging is less than 1: {num_steps}")
-            return None
+            order_type = -1
+        log_items["symbol"] = position.symbol
+        log_items["time"] = position.index
+        log_items["price"] = price
+        log_items["amount"] = amount
+        log_items["position_type"] = order_type
+        log_items["order_type"] = order_type
+        log_items["logged_at"] = index
+        file_path = f"{os.getcwd()}/finance_client_trading_log.csv"
+        save_header = not os.path.exists(file_path)
+        pd.DataFrame([log_items.values()], columns=log_items.keys()).to_csv(
+            file_path, mode="a", header=save_header, index_label=None, index=False
+        )
 
     def close_position(
         self, price: float = None, position: wallet.Position = None, id=None, amount=None, symbol=None, order_type=None
@@ -280,7 +248,7 @@ class Client(metaclass=ABCMeta):
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         price, position.price, price_diff, profit = self.wallet.close_position(position, price, amount=amount)
         if self.enable_trade_log:
-            self._trading_log(position, price, amount, profit)
+            self._trading_log(position, price, amount, "close")
         return price, position.price, price_diff, profit, True
 
     def close_all_positions(self, symbols=[]):
@@ -545,7 +513,7 @@ class Client(metaclass=ABCMeta):
                 if frame < Frame.D1:
                     if indicaters_df.index.tzinfo is None:
                         indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
-                indicaters_df = indicaters_df.fillna(method="ffill")
+                indicaters_df = indicaters_df.ffill()
                 data = pd.concat([data, indicaters_df], axis=1)
                 data.dropna(thresh=4, inplace=True)
 
@@ -617,7 +585,7 @@ class Client(metaclass=ABCMeta):
                 if frame < Frame.D1:
                     if indicaters_df.index.tzinfo is None:
                         indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
-                indicaters_df = indicaters_df.fillna(method="ffill")
+                indicaters_df = indicaters_df.ffill()
             data = pd.concat([data, indicaters_df], axis=1)
             data.dropna(thresh=4, inplace=True)
 
@@ -927,6 +895,8 @@ class Client(metaclass=ABCMeta):
         )
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
+        if self.enable_trade_log:
+            self._trading_log(position, boughtRate, amount, "open")
         return position
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
@@ -944,6 +914,8 @@ class Client(metaclass=ABCMeta):
         )
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
+        if self.enable_trade_log:
+            self._trading_log(position, soldRate, amount, "open")
         return position
 
     def get_ohlc_columns(self, symbol: str = None, out_type="dict", ignore=None) -> dict:
