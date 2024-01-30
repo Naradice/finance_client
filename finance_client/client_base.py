@@ -893,10 +893,11 @@ class Client(metaclass=ABCMeta):
             option=option_info,
             result=result,
         )
-        if self.do_render:
-            self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
-        if self.enable_trade_log:
-            self._trading_log(position, boughtRate, amount, "open")
+        if position is not None:
+            if self.do_render:
+                self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
+            if self.enable_trade_log:
+                self._trading_log(position, boughtRate, amount, "open")
         return position
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
@@ -912,10 +913,11 @@ class Client(metaclass=ABCMeta):
             option=option_info,
             result=result,
         )
-        if self.do_render:
-            self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
-        if self.enable_trade_log:
-            self._trading_log(position, soldRate, amount, "open")
+        if position is not None:
+            if self.do_render:
+                self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
+            if self.enable_trade_log:
+                self._trading_log(position, soldRate, amount, "open")
         return position
 
     def get_ohlc_columns(self, symbol: str = None, out_type="dict", ignore=None) -> dict:
