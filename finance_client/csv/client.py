@@ -769,7 +769,7 @@ class CSVClient(CSVClientBase):
             raise Exception(f"length should be greater than 0. {length} is provided.")
 
     def get_current_ask(self, symbols=[]):
-        last_10_ticks = self.data.iloc[: self._step_index].fillna(method="ffill")
+        last_10_ticks = self.data.iloc[: self._step_index].ffill()
         tick = last_10_ticks.iloc[-1]
         open_column = self.ohlc_columns["Open"]
         high_column = self.ohlc_columns["High"]
@@ -805,7 +805,7 @@ class CSVClient(CSVClientBase):
         return self._get_current_ask(open_value, high_value)
 
     def get_current_bid(self, symbols=[]):
-        last_10_ticks = self.data.iloc[: self._step_index].fillna(method="ffill")
+        last_10_ticks = self.data.iloc[: self._step_index].ffill()
         tick = last_10_ticks.iloc[-1]
         open_column = self.ohlc_columns["Open"]
         low_column = self.ohlc_columns["Low"]
