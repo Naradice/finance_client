@@ -160,14 +160,14 @@ class Client(metaclass=ABCMeta):
         index = self.get_current_datetime()
         log_items = {}
         if position.order_type == "ask":
-            order_type = 1
+            position_type = 1
         else:
-            order_type = -1
+            position_type = -1
         log_items["symbol"] = position.symbol
         log_items["time"] = position.index
         log_items["price"] = price
         log_items["amount"] = amount
-        log_items["position_type"] = order_type
+        log_items["position_type"] = position_type
         log_items["order_type"] = order_type
         log_items["logged_at"] = index
         file_path = f"{os.getcwd()}/finance_client_trading_log.csv"
