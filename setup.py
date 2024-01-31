@@ -16,7 +16,6 @@ install_requires = [
     "yfinance",
     # for sbi
     "selenium",
-    "webdriver_manager",
     # for economic indicators
     "pandas_datareader",
 ]
