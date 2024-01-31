@@ -232,6 +232,7 @@ class Manager:
                 result=result,
             )
             self.positions[order_type][position.id] = position
+            return position
         else:
             # check if budget has enough amount
             required_budget = self.trade_unit * amount * price
