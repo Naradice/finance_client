@@ -112,10 +112,11 @@ class SBIClient(Client):
         return False, err_msg
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        return False, None
+        return False
 
     def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
-        return self.rpa_client.sell_to_close_buy_order(symbol, amount, bid_rate)
+        result, err = self.rpa_client.sell_to_close_buy_order(symbol, amount, bid_rate)
+        return result
 
     def get_params(self) -> dict:
         print("Need to implement get_params")
