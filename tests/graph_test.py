@@ -1,18 +1,15 @@
-import datetime
-import json
 import os
 import sys
+import time
 import unittest
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 
-import time
-
 import pandas as pd
 
-from finance_client import fprocess
 from finance_client.csv.client import CSVClient
+from finance_client.fprocess import fprocess
 from finance_client.render.graph import Rendere
 
 csv_file = os.path.abspath(

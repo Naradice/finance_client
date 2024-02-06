@@ -1,12 +1,4 @@
 from . import frames as Frame
-
-try:
-    from .fprocess import fprocess
-except ImportError:
-    from . import fprocess
-except ModuleNotFoundError:
-    from . import fprocess
-
 from .client_base import Client
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient

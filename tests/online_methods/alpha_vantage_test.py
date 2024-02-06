@@ -1,9 +1,6 @@
-import datetime
-import json
 import os
 import sys
 import unittest
-from logging import config, getLogger
 
 import dotenv
 
@@ -13,21 +10,9 @@ sys.path.append(module_path)
 
 import finance_client.frames as Frame
 import finance_client.vantage.target as Target
+from finance_client import logger
 from finance_client.vantage.apis import DIGITAL, FOREX, STOCK
 from finance_client.vantage.client import VantageClient
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_vantage-clienttest_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
 
 dotenv.load_dotenv(".env")
 fx = FOREX(os.environ["vantage_api_key"], logger)

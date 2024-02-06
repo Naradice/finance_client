@@ -1,131 +1,13 @@
-import datetime
 import json
 import os
-import uuid
-from logging import config, getLogger
 from time import sleep
 
-
-class Position:
-    def __init__(
-        self, order_type: str, symbol: str, price: float, amount: float, tp: float, sl: float, index: int, option, result, id=None
-    ):
-        if id is None:
-            self.id = str(uuid.uuid4())
-        else:
-            self.id = id
-        self.order_type = order_type
-        self.price = price
-        self.amount = amount
-        self.option = option
-        if option == "null":
-            self.option = None
-        self.result = result
-        if result == "null":
-            self.result = None
-        self.symbol = symbol
-        self.tp = tp
-        self.index = index
-        if tp == "null":
-            self.tp = None
-        self.sl = sl
-        if sl == "null":
-            self.sl = None
-        self.timestamp = datetime.datetime.utcnow()
-
-    def __str__(self):
-        return f"(order_type:{self.order_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol})"
-
-    def __repr__(self):
-        return self.__str__()
-
-    def to_dict(self):
-        return {
-            "order_type": self.order_type,
-            "price": self.price,
-            "amount": self.amount,
-            "option": json.dumps(self.option),
-            "result": json.dumps(self.result),
-            "symbol": self.symbol,
-            "tp": self.tp,
-            "sl": self.sl,
-            "timestamp": self.timestamp.isoformat(),
-            "id": self.id,
-        }
+from finance_client.position import Position
 
 
 class Manager:
-    positions = {"budget": 0, "ask": {}, "bid": {}}
-
-    pending_orders = {"ask": {}, "bid": {}}
-
     __singleton = {}
     listening_positions = {}
-
-    file_path = f"{os.getcwd()}/positions.json"
-
-    def __initialize_positions(self):
-        if os.path.exists(self.file_path):
-            with open(self.file_path, mode="r") as fp:
-                _positions = json.load(fp)
-
-            if self.provider in _positions:
-                _position = _positions[self.provider]
-                if self.__start_budget is None:
-                    budget = _position["budget"]
-                    self.positions["budget"] = budget
-                long_position_list = _position["ask"]
-                short_position_list = _position["bid"]
-
-                for _position in long_position_list:
-                    position = Position(
-                        _position["order_type"],
-                        _position["symbol"],
-                        _position["price"],
-                        _position["amount"],
-                        _position["tp"],
-                        _position["sl"],
-                        _position["index"],
-                        _position["option"],
-                        _position["result"],
-                        _position["id"],
-                    )
-                    self.positions["ask"][position.id] = position
-                    if position.tp is not None or position.sl is not None:
-                        self.listening_positions[position.id] = position
-
-                for _position in short_position_list:
-                    position = Position(
-                        _position["order_type"],
-                        _position["symbol"],
-                        _position["price"],
-                        _position["amount"],
-                        _position["tp"],
-                        _position["sl"],
-                        _position["index"],
-                        _position["option"],
-                        _position["result"],
-                        _position["id"],
-                    )
-                    self.positions["bid"][position.id] = position
-                    if position.tp is not None or position.sl is not None:
-                        self.listening_positions[position.id] = position
-
-    def save_positions(self):
-        _positions = {}
-        if os.path.exists(self.file_path):
-            with open(self.file_path, mode="r") as fp:
-                _positions = json.load(fp)
-
-        _position = {
-            "budget": self.positions["budget"],
-            "ask": [self.positions["ask"][position_id].to_dict() for position_id in self.positions["ask"]],
-            "bid": [self.positions["bid"][position_id].to_dict() for position_id in self.positions["bid"]],
-        }
-
-        _positions[self.provider] = _position
-        with open(self.file_path, mode="w") as fp:
-            json.dump(_positions, fp)
 
     def __new__(cls, budget, provider="Default", logger=None):
         if provider not in cls.__singleton:
@@ -140,47 +22,27 @@ class Manager:
                 raise e
 
             if logger is None:
-                logger_config = settings["log"]
-                try:
-                    log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-                    log_folder = os.path.join(os.path.dirname(__file__), "logs")
-                    if os.path.exists(log_folder) is False:
-                        os.makedirs(log_folder)
-                    logger_config["handlers"]["fileHandler"][
-                        "filename"
-                    ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
-                    config.dictConfig(logger_config)
-                except Exception as e:
-                    print(f"fail to set configure file: {e}")
-                    raise e
                 singleton.logger = getLogger(__name__)
             else:
                 singleton.logger = logger
 
-            singleton.positions["budget"] = budget
-            singleton.__start_budget = budget
+            singleton.budget = budget
 
             providers = settings["providers"]
-            if provider in providers:
+            if provider not in providers:
+                error_txt = f"provider {provider} is not defined in settings.json. use default settings instead."
+                singleton.logger.error(error_txt)
                 SymbolInfo = providers[provider]
                 singleton.provider = provider
             else:
-                error_txt = f"provider {provider} is not defined in settings.json"
-                singleton.logger.error(error_txt)
-                raise Exception(error_txt)
+                SymbolInfo = providers["Default"]
+                singleton.provider = provider
 
             singleton.trade_unit = SymbolInfo["trade_unit"]
             singleton.__initialize_positions()
             singleton.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
             cls.__singleton[provider] = singleton
         return cls.__singleton[provider]
-
-    def initialize_budget(self, budget=None):
-        if budget is None:
-            budget = self.__start_budget
-        self.positions["budget"] = budget
-        self.__start_budget = budget
-        self.logger.info(f"MarketManager updated budget to {budget}")
 
     @property
     def budget(self):

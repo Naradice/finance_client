@@ -1,34 +1,25 @@
 import datetime
-import json
 import os
 import sys
 import unittest
+
+import dotenv
+
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from logging import config, getLogger
-
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client import fprocess
+from finance_client import logger
 from finance_client.csv.client import CSVChunkClient, CSVClient
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = os.path.abspath(f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log')
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config.copy())
-logger = getLogger("finance_client.test")
+from finance_client.fprocess import fprocess
 
 file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../finance_client/data_source/yfinance"))
 symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]

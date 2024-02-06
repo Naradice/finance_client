@@ -1,5 +1,3 @@
-import datetime
-import json
 import os
 import random
 import sys
@@ -11,7 +9,6 @@ sys.path.append(module_path)
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client import fprocess
 from finance_client.client_base import Client
 
 

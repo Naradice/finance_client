@@ -1,31 +1,22 @@
 import datetime
-import json
 import os
 import sys
 import unittest
-from logging import config, getLogger
 
+import dotenv
 import pandas as pd
+
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import fprocess
 from finance_client.csv.client import CSVClient
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_indicaters_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
+from finance_client.fprocess import fprocess
 
 file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
 ohlc_columns = ["open", "high", "low", "close"]
