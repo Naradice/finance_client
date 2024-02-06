@@ -15,8 +15,8 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
+from finance_client import fprocess
 from finance_client.csv.client import CSVClient
-from finance_client.fprocess import fprocess
 
 file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
 ohlc_columns = ["open", "high", "low", "close"]

@@ -17,9 +17,8 @@ sys.path.append(module_path)
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client import logger
+from finance_client import fprocess, logger
 from finance_client.csv.client import CSVChunkClient, CSVClient
-from finance_client.fprocess import fprocess
 
 file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../finance_client/data_source/yfinance"))
 symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]

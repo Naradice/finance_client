@@ -16,8 +16,7 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.append(module_path)
 
 import finance_client.frames as Frame
-from finance_client import logger
-from finance_client.fprocess import fprocess
+from finance_client import fprocess, logger
 from finance_client.mt5 import MT5Client
 
 id = int(os.environ["mt5_id"])

@@ -15,9 +15,8 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import logger
+from finance_client import fprocess, logger
 from finance_client.csv.client import CSVClient
-from finance_client.fprocess import fprocess
 
 try:
     with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
