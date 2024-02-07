@@ -42,6 +42,9 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 return True
             return False
 
+        if isinstance(file_names, str):
+            file_names = [file_names]
+
         indices = random.sample(range(0, len(file_names)), k=len(file_names))
         base_file_name = file_names[indices[0]]
 
@@ -146,7 +149,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                 usecols = set(usecols)
                 usecols.add(date_column)
                 kwargs["usecols"] = usecols
-            kwargs["parse_dates"] = [date_column]
+            kwargs["parse_dates"] = True
             kwargs["index_col"] = date_column
 
         # skiplow is applied after concat in case of multi symbols
@@ -193,7 +196,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             df = dfs[index].dropna()
             symbol = symbols[index]
             df.set_index(time_column, inplace=True)
-            if type(df.index) != pd.DatetimeIndex:
+            if isinstance(df.index, pd.DatetimeIndex) is False:
                 df.index = pd.to_datetime(df.index, utc=True)
             df = df.sort_index(ascending=True)
             if __columns is not None and len(__columns) > 0:
@@ -547,31 +550,31 @@ class CSVClient(CSVClientBase):
             seed (int, optional): specify random seed. Defaults to 1017
         """
         super().__init__(
-            files,
-            columns,
-            date_column,
-            file_name_generator,
-            symbols,
-            frame,
-            out_frame,
-            observation_length,
-            idc_process,
-            pre_process,
-            economic_keys,
-            start_index,
-            start_date,
-            keep_observation_length,
-            start_random_index,
-            auto_step_index,
-            skiprows,
-            auto_reset_index,
-            slip_type,
-            budget,
-            do_render,
-            seed,
-            "csv",
-            enable_trade_log,
-            logger,
+            files=files,
+            columns=columns,
+            date_column=date_column,
+            file_name_generator=file_name_generator,
+            symbols=symbols,
+            frame=frame,
+            out_frame=out_frame,
+            observation_length=observation_length,
+            idc_process=idc_process,
+            pre_process=pre_process,
+            economic_keys=economic_keys,
+            start_index=start_index,
+            start_date=start_date,
+            keep_observation_length=keep_observation_length,
+            start_random_index=start_random_index,
+            auto_step_index=auto_step_index,
+            skiprows=skiprows,
+            auto_reset_index=auto_reset_index,
+            slip_type=slip_type,
+            budget=budget,
+            do_render=do_render,
+            seed=seed,
+            provider="csv",
+            enable_trade_log=enable_trade_log,
+            logger=logger,
         )
         if out_frame is not None:
             if self.frame < out_frame:
@@ -590,13 +593,11 @@ class CSVClient(CSVClientBase):
 
         # create kwargs from provided args
         kwargs = self._create_csv_kwargs(columns, date_col, skiprows, is_multi_mode)
-        is_date_index = False
-        if "parse_dates" in kwargs:
-            is_date_index = True
 
         # read csvs by pandas feature
         DFS, __symbols = self._create_dfs_by_files(files, symbols, kwargs)
         data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+        is_date_index = isinstance(data.index, pd.DatetimeIndex)
 
         if skiprows is not None and is_multi_mode:
             if skiprows > 0:
@@ -607,20 +608,28 @@ class CSVClient(CSVClientBase):
         self._update_columns(__columns)
 
         # convert TIME column values to datetime index if date column name is not defined, but there is time column
-        if is_date_index is False and "Time" in self.ohlc_columns:
-            # make Time column to index
-            time_column = self.ohlc_columns["Time"]
-            if time_column in __columns:
-                DFS = self._make_timecolumn_to_index(data, __symbols, time_column, columns, is_multi_mode)
-                data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
-                is_date_index = True
+        if is_date_index is False:
+            if "Time" in self.ohlc_columns:
+                # make Time column to index
+                time_column = self.ohlc_columns["Time"]
+                if time_column in __columns and time_column is not None:
+                    DFS = self._make_timecolumn_to_index(data, __symbols, time_column, columns, is_multi_mode)
+                    data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
+                    is_date_index = True
+            elif "parse_dates" in kwargs:
+                try:
+                    data.index = pd.to_datetime(data.index, utc=True)
+                    data.sort_index(ascending=True, inplace=True)
+                    is_date_index = False
+                except Exception:
+                    self.logger.exception("failed to convert index to datetime.")
         if is_date_index is False:
             if start_date is not None and frame is not None:
                 data.index = self._create_datetime_index(start_date, frame, len(data))
                 is_date_index = True
             else:
-                raise Exception("Couldn't daterming date column")
-        if len(data) > 0:
+                self.logger.error("Couldn't daterming date column")
+        elif len(data) > 0:
             data = self._initialize_date_index(data, True)
             self._proceed_step_until_date(data, start_date)
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols

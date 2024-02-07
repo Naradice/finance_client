@@ -34,7 +34,7 @@ class FileConnector(BaseConnector):
             extension = default_file_name.split(".")[-1]
             if extension not in file_path:
                 raise ValueError(f"only {extension} is supported. specified {file_path}")
-        base_path = os.path.basename(file_path)
+        base_path = os.path.dirname(file_path)
         if os.path.exists(base_path) is False:
             os.makedirs(base_path)
         return file_path
@@ -71,17 +71,16 @@ class FileConnector(BaseConnector):
         self._save_json(_positions)
 
     def load_positions(self):
-        """ 
+        """
 
         Returns:
             Tuple(Dict[id:Position], Dict[id:Position], Dict[id:Position]): return long, short, listening tp/sl positions
         """
+        long_positions = {}
+        short_positions = {}
+        listening_positions = {}
         if os.path.exists(self.positions_path):
             positions_dict = self._load_json(self.positions_path)
-
-            long_positions = {}
-            short_positions = {}
-            listening_positions = {}
             if positions_dict is None:
                 return long_positions, short_positions, listening_positions
             if self.provider in positions_dict:
@@ -140,7 +139,7 @@ class SQLiteConnector(BaseConnector):
         self.__table_init()
         self.agent_id = agent_id
 
-    def _signal_to_str(self, signal: PositionZzs, open_at):
+    def _signal_to_str(self, signal: Position, open_at):
         return (
             self.agent_id,
             signal.symbol,
@@ -154,83 +153,6 @@ class SQLiteConnector(BaseConnector):
             signal.sl,
             signal.amount,
         )
-
-    def _str_to_position(self, position_str_set, keys: List[str]):
-        SIGNAL_ID_ATTR = "signal_type"
-        if keys == "*":
-            keys = SQL2SignalMapper.get_attr()
-        if SIGNAL_ID_ATTR in keys:
-            signal_dict = {}
-            for index, key in enumerate(keys):
-                signal_attr_key = SQL2SignalMapper.forward_key(key)
-                if signal_attr_key is not None:
-                    signal_dict[signal_attr_key] = position_str_set[index]
-            signal = from_dict(signal_dict)
-            return signal
-        else:
-            print("failed to convert query result to Signal class")
-            return position_str_set
-
-    def store_signals(self, signals: List[Signal]):
-        """store signals to sqlite table to persist it
-
-        Args:
-            signals (List[Signal]): list of instances of Signal class
-        """
-        current_time = datetime.datetime.utcnow().isoformat()
-
-        if len(signals) > 0:
-            open_items = [self._signal_to_str(signal, current_time) for signal in signals]
-            open_keys = (
-                "agent_id, symbol_id, signal_type, order_type, position_type, possibility, dev, order_price, tp, sl, amount"
-            )
-            query = f"INSERT INTO {self.POSITION_TABLE} ({open_keys}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-            cursor = self.__conn.cursor()
-            cursor.executemany(query, open_items)
-            self.__conn.commit()
-            cursor.close()
-
-    def store_symbols(self, symbols: dict):
-        cursor = self.__conn.cursor()
-        for symbol, value in symbols.items():
-            pass
-        cursor.close()
-
-    def store_ratings(self, ratings: dict):
-        cursor = self.__conn.cursor()
-        for symbol, value in ratings.items():
-            pass
-        cursor.close()
-
-    def load_signals(self, target_symbol_ids: list = None, open_only=True):
-        base_query = f"""
-            SELECT *
-            FROM {self.POSITION_TABLE}
-            WHERE (symbol_id, updated_at) IN (
-                SELECT symbol_id, MAX(updated_at) AS latest_updated_at
-                FROM {self.POSITION_TABLE}
-                GROUP BY symbol_id
-            )
-            AND agent_id = '{self.agent_id}'
-        """
-        if open_only is True:
-            cond = "AND position_type != 0"
-            base_query = f"{base_query} {cond}"
-        cur = self.__conn.cursor()
-        if target_symbol_ids is None or len(target_symbol_ids) == 0:
-            res = cur.execute(base_query)
-        else:
-            cond = f"AND symbol_id IN ({','.join(['?']*len(target_symbol_ids))})"
-            query = f"{base_query} {cond}"
-            res = cur.execute(query, target_symbol_ids)
-        positions = res.fetchall()
-        return positions
-
-    def load_symbols(self):
-        return {}
-
-    def load_ratings(self):
-        return {}
 
     def close(self):
         self.__conn.close()

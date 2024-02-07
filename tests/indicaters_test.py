@@ -20,14 +20,14 @@ import finance_client as fc
 from finance_client import logger
 from finance_client.fprocess.fprocess.indicaters import technical
 
-file_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv")
-)
+file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv"))
 
 
 class TestIndicaters(unittest.TestCase):
     ohlc_columns = ["open", "high", "low", "close"]
-    client = fc.CSVClient(files=file_path, columns=["open", "high", "low", "close"], date_column="time", logger=logger)
+    client = fc.CSVClient(
+        files=file_path, columns=["open", "high", "low", "close"], date_column="time", start_index=1000, logger=logger
+    )
 
     def __init__(self, methodName: str = ...) -> None:
         self.window = 4

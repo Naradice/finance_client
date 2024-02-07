@@ -64,6 +64,10 @@ def warning(message: str, **kwargs):
         print(message)
 
 
+def warn(message: str, **kwargs):
+    warning(message, **kwargs)
+
+
 def error(message: str, **kwargs):
     try:
         __logger.error(message, **kwargs)

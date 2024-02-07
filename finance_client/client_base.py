@@ -1,5 +1,4 @@
 import datetime
-import json
 import os
 import queue
 import random
@@ -10,6 +9,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 import pandas as pd
 
+from . import db
 from . import frames as Frame
 from . import logger as lg
 from . import wallet
@@ -36,6 +36,7 @@ class Client(metaclass=ABCMeta):
         observation_length=None,
         do_render=False,
         enable_trade_log=False,
+        storage: db.BaseConnector = None,
         logger=None,
     ):
         self.auto_index = None
@@ -58,7 +59,9 @@ class Client(metaclass=ABCMeta):
         self.out_ohlc_columns = out_ohlc_columns
 
         self.logger = lg if logger is None else logger
-        self.wallet = wallet.Manager(budget, logger=logger, provider=provider)
+        if storage is None:
+            storage = db.FileConnector(provider)
+        self.wallet = wallet.Manager(storage, budget=budget, logger=logger, provider=provider)
 
         if idc_process is None:
             self.idc_process = []
@@ -280,7 +283,7 @@ class Client(metaclass=ABCMeta):
             data_cp = process(data_cp, symbols, grouped_by_symbol)
 
         for process in pre_processes:
-            data_cp = process(data_cp)
+            data_cp = process(data_cp, symbols, grouped_by_symbol)
         return data_cp
 
     def get_economic_idc(self, keys, start, end):
@@ -643,9 +646,9 @@ class Client(metaclass=ABCMeta):
             frame = self.frame
 
         if idc_processes is None:
-            idc_processes = self.idc_process
+            idc_processes = []
         if pre_processes is None:
-            pre_processes = self.pre_process
+            pre_processes = []
         if economic_keys is None:
             economic_keys = self.eco_keys
 

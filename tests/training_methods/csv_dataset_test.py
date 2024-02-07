@@ -18,16 +18,9 @@ sys.path.append(module_path)
 from finance_client import fprocess, logger
 from finance_client.csv.client import CSVClient
 
-file_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../finance_client/data_source/yfinance"))
-symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
-datetime_column = "Time"
-ohlc_columns = ["Open", "High", "Low", "Close"]
-additional_column = ["Volume"]
-csv_files = [f"{file_base}/yfinance_{symbol}_D1.csv" for symbol in symbols]
-csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
-
-csv_files_5min = [f"{file_base}/yfinance_{symbol}_MIN5.csv" for symbol in symbols[:2]]
-csv_file_5min = os.path.abspath("L:/data/csv/USDJPY_forex_min5.csv")
+datetime_column = "time"
+ohlc_columns = ["open", "high", "low", "close"]
+csv_file = os.path.abspath("L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv")
 
 
 class TestDataset:
@@ -74,8 +67,9 @@ class TestCSVClient(unittest.TestCase):
             start_index=self.length,
             idc_process=[rsi_process],
         )
+        self.feature_size = len(ohlc_columns) + len(rsi_process.columns)
 
-        diff_process = fprocess.DiffPreProcess(target_columns=["Open", "High", "Low", "Close"])
+        diff_process = fprocess.DiffPreProcess(columns=ohlc_columns)
         mm_process = fprocess.MinMaxPreProcess()
         self.single_std_client = CSVClient(
             files=csv_file,
@@ -83,20 +77,19 @@ class TestCSVClient(unittest.TestCase):
             logger=logger,
             date_column=datetime_column,
             start_index=self.length,
-            pre_process=[diff_process],
+            pre_process=[diff_process, mm_process],
         )
 
     def test_single_dataset(self):
         single_dataset = TestDataset(self.single_client, self.length)
         batch_size = 16
-        feature_size = len(ohlc_columns)
         for index in range(0, len(single_dataset), batch_size):
             if index + batch_size > len(single_dataset):
                 break
             src, tgt = single_dataset[index : index + batch_size]
             if src.shape[0] != batch_size:
                 print("strange")
-            self.assertEqual(src.shape, (batch_size, self.length, feature_size), f"test_signal_dataset failed at {index}")
+            self.assertEqual(src.shape, (batch_size, self.length, self.feature_size), f"test_signal_dataset failed at {index}")
 
     def test_single_dataset_with_column(self):
         single_dataset = TestDataset(self.single_client, self.length)

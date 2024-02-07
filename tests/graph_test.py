@@ -12,9 +12,7 @@ from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 from finance_client.render.graph import Rendere
 
-csv_file = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_d1.csv")
-)
+csv_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv"))
 
 
 class TestRender(unittest.TestCase):
@@ -46,7 +44,7 @@ class TestRender(unittest.TestCase):
         r = Rendere()
         bban = fprocess.BBANDProcess(target_column="close", window=14)
         columns = ["high", "low", "open", "close"]
-        client = CSVClient(files=csv_file, columns=columns, date_column="time", idc_process=[bban], start_index=30)
+        client = CSVClient(files=csv_file, columns=columns, date_column="time", idc_process=[bban], start_index=100)
         df = client.get_ohlc(30)
         index = r.register_ohlc_with_indicaters(["symbol"], df, [bban], ohlc_columns=columns)
         r.plot()
