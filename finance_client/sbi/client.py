@@ -31,7 +31,6 @@ class SBIClient(Client):
         provider="Default",
         do_render=False,
         enable_trade_log=False,
-        logger_name=None,
         logger=None,
     ):
         if id is None:
@@ -66,7 +65,6 @@ class SBIClient(Client):
             frame=frame,
             do_render=do_render,
             enable_trade_log=enable_trade_log,
-            logger_name=logger_name,
             logger=logger,
         )
 

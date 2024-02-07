@@ -1,12 +1,11 @@
-import datetime
 import json
 import os
 import time
-from logging import config, getLogger
 
 import pandas as pd
 
 import finance_client.frames as Frame
+from finance_client import logger as lg
 
 
 class API_BASE:
@@ -59,33 +58,11 @@ class API_BASE:
         exists_in_physical = self.check_physical_currency(currency_code)
         return exists_in_digital or exists_in_physical
 
-    def __init__(self, api_key, logger_name=None, logger=None) -> None:
+    def __init__(self, api_key, logger=None) -> None:
         self.URL_BASE = "https://www.alphavantage.co/"
         self.api_key = api_key
         if logger is None:
-            try:
-                with open(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../settings.json")), "r") as f:
-                    settings = json.load(f)
-            except Exception as e:
-                print(f"fail to load settings file on client: {e}")
-                raise e
-            logger_config = settings["log"]
-
-            try:
-                log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-                log_folder = os.path.join(os.path.dirname(__file__), "logs")
-                if os.path.exists(log_folder) is False:
-                    os.makedirs(log_folder)
-                logger_config["handlers"]["fileHandler"][
-                    "filename"
-                ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
-                config.dictConfig(logger_config)
-            except Exception as e:
-                self.logger.error(f"fail to set configure file: {e}")
-                raise e
-            if logger_name is None:
-                logger_name == __name__
-            self.logger = getLogger(logger_name)
+            self.logger = lg
         else:
             self.logger = logger
 

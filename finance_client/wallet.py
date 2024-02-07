@@ -2,14 +2,15 @@ import json
 import os
 from time import sleep
 
+from finance_client import logger as lg
+from finance_client.db import BaseConnector
 from finance_client.position import Position
 
 
 class Manager:
     __singleton = {}
-    listening_positions = {}
 
-    def __new__(cls, budget, provider="Default", logger=None):
+    def __new__(cls, storage: BaseConnector, budget, provider="Default", logger=None):
         if provider not in cls.__singleton:
             singleton = super(Manager, cls).__new__(cls)
             singleton.__locked = False
@@ -22,7 +23,7 @@ class Manager:
                 raise e
 
             if logger is None:
-                singleton.logger = getLogger(__name__)
+                singleton.logger = lg
             else:
                 singleton.logger = logger
 
@@ -39,22 +40,20 @@ class Manager:
                 singleton.provider = provider
 
             singleton.trade_unit = SymbolInfo["trade_unit"]
-            singleton.__initialize_positions()
+            long, short, listening = storage.load_positions()
+            singleton.positions = {"long": long, "short": short}
+            singleton.listening_positions = listening
             singleton.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
             cls.__singleton[provider] = singleton
         return cls.__singleton[provider]
 
     @property
-    def budget(self):
-        return self.positions["budget"]
+    def long_positions(self):
+        return self.positions["long"]
 
     @property
-    def ask_positions(self):
-        return self.positions["ask"]
-
-    @property
-    def bid_positions(self):
-        return self.positions["bid"]
+    def short_positions(self):
+        return self.positions["short"]
 
     def __wait_lock(self):
         while self.__locked:
@@ -62,13 +61,12 @@ class Manager:
         return True
 
     def __check_order_type(self, order_type: str):
-        if order_type and type(order_type) == str:
+        if type(order_type) == str:
             order_type = str.lower(order_type)
-            # if order_type == "ask" or order_type == "buy" or order_type == "long" or order_type == "bid" or order_type == "sell" or order_type == "short":
-            if order_type == "ask" or order_type == "bid":
+            if order_type == "long" or order_type == "short":
                 return order_type
             else:
-                raise Exception("unkown order_type: {order_type}")
+                raise Exception(f"unkown order_type: {order_type}")
         else:
             raise Exception(f"order_type should be specified: {order_type}")
 
@@ -99,8 +97,7 @@ class Manager:
             # check if budget has enough amount
             required_budget = self.trade_unit * amount * price
             # if enough, add position
-            budget = self.positions["budget"]
-            if required_budget <= budget:
+            if required_budget <= self.budget:
                 position = Position(
                     order_type=order_type,
                     symbol=symbol,
@@ -114,20 +111,20 @@ class Manager:
                 )
                 self.positions[order_type][position.id] = position
                 # then reduce budget
-                self.positions["budget"] = budget - required_budget
+                self.budget -= required_budget
                 # check if tp/sl exists
                 if tp is not None or sl is not None:
                     self.listening_positions[position.id] = position
                     self.logger.debug("position is stored to listening list")
                 return position
             else:
-                self.logger.info(f"current budget {budget} is less than required {required_budget}")
+                self.logger.info(f"current budget {self.budget} is less than required {required_budget}")
 
     def get_position(self, id):
-        if id in self.positions["ask"]:
-            return self.positions["ask"][id]
-        elif id in self.positions["bid"]:
-            return self.positions["bid"][id]
+        if id in self.positions["long"]:
+            return self.positions["long"][id]
+        elif id in self.positions["short"]:
+            return self.positions["short"][id]
         return None
 
     def get_open_positions(self, order_type: str = None, symbols=[]) -> list:
@@ -146,7 +143,7 @@ class Manager:
                 if is_all_symbols or position.symbol in symbols:
                     positions.append(position)
         else:
-            for order_type in ["ask", "bid"]:
+            for order_type in ["long", "short"]:
                 for id, position in self.positions[order_type].items():
                     if is_all_symbols or position.symbol in symbols:
                         positions.append(position)
@@ -161,9 +158,9 @@ class Manager:
             if position.amount < amount:
                 self.logger.info(f"specified amount is greater than position. use position value. {position.amount} < {amount}")
                 amount = position.amount
-            if position.order_type == "ask":
+            if position.order_type == "long":
                 price_diff = price - position.price
-            elif position.order_type == "bid":
+            elif position.order_type == "short":
                 price_diff = position.price - price
 
             profit = self.trade_unit * amount * price_diff

@@ -6,12 +6,12 @@ import random
 import threading
 import time
 from abc import ABCMeta, abstractmethod
-from logging import config, getLogger
 
 import numpy as np
 import pandas as pd
 
 from . import frames as Frame
+from . import logger as lg
 from . import wallet
 from .render import graph
 
@@ -36,12 +36,10 @@ class Client(metaclass=ABCMeta):
         observation_length=None,
         do_render=False,
         enable_trade_log=False,
-        logger_name=None,
         logger=None,
     ):
         self.auto_index = None
         self._step_index = start_index
-        dir = os.path.dirname(__file__)
         self.__data_queue = None
         self.do_render = do_render
         self.__pending_order_results = {}
@@ -56,39 +54,12 @@ class Client(metaclass=ABCMeta):
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1
             self.__is_graph_initialized = False
-
-        try:
-            with open(os.path.join(dir, "./settings.json"), "r") as f:
-                settings = json.load(f)
-        except Exception as e:
-            print(f"fail to load settings file on client: {e}")
-            raise e
         self.ohlc_columns = None
-
-        if logger is None:
-            logger_config = settings["log"]
-
-            try:
-                log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-                log_folder = os.path.join(os.path.dirname(__file__), "log")
-                if os.path.exists(log_folder) is False:
-                    os.makedirs(log_folder)
-                logger_config["handlers"]["fileHandler"][
-                    "filename"
-                ] = f'{log_folder}/{log_file_base_name}_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
-                config.dictConfig(logger_config)
-                if logger_name is None:
-                    logger_name == __name__
-                self.logger = getLogger(logger_name)
-                self.wallet = wallet.Manager(budget)
-            except Exception as e:
-                print(f"fail to set configure file: {e}")
-                raise e
-        else:
-            self.logger = logger
-            self.wallet = wallet.Manager(budget, logger=logger, provider=provider)
-
         self.out_ohlc_columns = out_ohlc_columns
+
+        self.logger = lg if logger is None else logger
+        self.wallet = wallet.Manager(budget, logger=logger, provider=provider)
+
         if idc_process is None:
             self.idc_process = []
         else:
@@ -159,7 +130,7 @@ class Client(metaclass=ABCMeta):
     def _trading_log(self, position: wallet.Position, price, amount, order_type):
         index = self.get_current_datetime()
         log_items = {}
-        if position.order_type == "ask":
+        if position.order_type == "long":
             position_type = 1
         else:
             position_type = -1
@@ -224,7 +195,7 @@ class Client(metaclass=ABCMeta):
             )
 
         position_plot = 0
-        if position.order_type == "ask":
+        if position.order_type == "long":
             self.logger.debug(f"close long position is ordered for {id}")
             if price is None:
                 price = self.get_current_bid(position.symbol)
@@ -233,7 +204,7 @@ class Client(metaclass=ABCMeta):
             if result is False:
                 return None, False
             position_plot = -2
-        elif position.order_type == "bid":
+        elif position.order_type == "short":
             self.logger.debug(f"close short position is ordered for {id}")
             if price is None:
                 self.logger.debug(f"order close with current bid rate {price} if budget sell is not allowed")
@@ -270,7 +241,7 @@ class Client(metaclass=ABCMeta):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.wallet.get_open_positions(order_type="ask", symbols=symbols)
+        positions = self.wallet.get_open_positions(order_type="long", symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -281,7 +252,7 @@ class Client(metaclass=ABCMeta):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.wallet.get_open_positions(order_type="bid", symbols=symbols)
+        positions = self.wallet.get_open_positions(order_type="short", symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -389,7 +360,7 @@ class Client(metaclass=ABCMeta):
             for id, position in positions.items():
                 # start checking stop loss at first.
                 if position.sl is not None:
-                    if position.order_type == "ask":
+                    if position.order_type == "long":
                         if position.sl >= tick[low_column]:
                             result = self.wallet.close_position(position, position.sl, index=self._step_index)
                             if result is not None:
@@ -399,7 +370,7 @@ class Client(metaclass=ABCMeta):
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             self.wallet.remove_position_from_listening(position)
                             continue
-                    elif position.order_type == "bid":
+                    elif position.order_type == "short":
                         if position.sl <= tick[high_column]:
                             result = self.wallet.close_position(position, position.sl, index=self._step_index)
                             if result is not None:
@@ -414,7 +385,7 @@ class Client(metaclass=ABCMeta):
                         continue
 
                 if position.tp is not None:
-                    if position.order_type == "ask":
+                    if position.order_type == "long":
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
                             result = self.wallet.close_position(position, position.tp, index=self._step_index)
@@ -425,7 +396,7 @@ class Client(metaclass=ABCMeta):
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.tp, self.__ohlc_index)
                             else:
                                 self.wallet.remove_position_from_listening(position)
-                    elif position.order_type == "bid":
+                    elif position.order_type == "short":
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
                             result = self.wallet.close_position(position, position.tp, index=self._step_index)
@@ -823,7 +794,7 @@ class Client(metaclass=ABCMeta):
         return -1
 
     def __get_long_position_diffs(self, standalization="minimax"):
-        positions = self.wallet.positions["ask"]
+        positions = self.wallet.positions["long"]
         if len(positions) > 0:
             diffs = []
             current_bid = self.get_current_bid()
@@ -840,7 +811,7 @@ class Client(metaclass=ABCMeta):
             return []
 
     def __get_short_position_diffs(self, standalization="minimax"):
-        positions = self.wallet.positions["bid"]
+        positions = self.wallet.positions["short"]
         if len(positions) > 0:
             diffs = []
             current_ask = self.get_current_ask()
@@ -857,9 +828,9 @@ class Client(metaclass=ABCMeta):
             return []
 
     def get_diffs(self, position_type=None) -> list:
-        if position_type == "ask" or position_type == "long":
+        if position_type == "long" or position_type == "long":
             return self.__get_long_position_diffs()
-        elif position_type == "bid" or position_type == "short":
+        elif position_type == "short" or position_type == "short":
             return self.__get_short_position_diffs()
         else:
             diffs = self.__get_long_position_diffs()
@@ -869,9 +840,9 @@ class Client(metaclass=ABCMeta):
             return diffs
 
     def get_diffs_with_minmax(self, position_type=None) -> list:
-        if position_type == "ask" or position_type == "long":
+        if position_type == "long" or position_type == "long":
             return self.__get_long_position_diffs(standalization="minimax")
-        elif position_type == "bid" or position_type == "short":
+        elif position_type == "short" or position_type == "short":
             return self.__get_short_position_diffs(standalization="minimax")
         else:
             diffs = self.__get_long_position_diffs(standalization="minimax")
@@ -883,7 +854,7 @@ class Client(metaclass=ABCMeta):
     def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
         self.logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         position = self.wallet.open_position(
-            order_type="ask",
+            order_type="long",
             symbol=symbol,
             price=boughtRate,
             amount=amount,
@@ -903,7 +874,7 @@ class Client(metaclass=ABCMeta):
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
         self.logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         position = self.wallet.open_position(
-            order_type="bid",
+            order_type="short",
             symbol=symbol,
             price=soldRate,
             amount=amount,
@@ -1098,28 +1069,28 @@ class Client(metaclass=ABCMeta):
         return self.wallet.budget, in_use, profit
 
     def get_portfolio(self) -> tuple:
-        portfolio = {"ask": {}, "bid": {}}
-        ask_positions = self.wallet.ask_positions
+        portfolio = {"long": {}, "short": {}}
+        long_positions = self.wallet.long_positions
         ask_symbols = []
-        if len(ask_positions) > 0:
-            for id, position in ask_positions.items():
+        if len(long_positions) > 0:
+            for id, position in long_positions.items():
                 symbol = position.symbol
                 ask_symbols.append(symbol)
-                if symbol in portfolio["ask"]:
-                    portfolio["ask"][symbol].append(position)
+                if symbol in portfolio["long"]:
+                    portfolio["long"][symbol].append(position)
                 else:
-                    portfolio["ask"][symbol] = [position]
+                    portfolio["long"][symbol] = [position]
 
-        bid_positions = self.wallet.bid_positions
+        short_positions = self.wallet.short_positions
         bid_symbols = []
-        if len(bid_positions) > 0:
-            for id, position in bid_positions.items():
+        if len(short_positions) > 0:
+            for id, position in short_positions.items():
                 symbol = position.symbol
                 bid_symbols.append(symbol)
-                if symbol in portfolio["bid"]:
-                    portfolio["bid"][symbol].append(position)
+                if symbol in portfolio["short"]:
+                    portfolio["short"][symbol].append(position)
                 else:
-                    portfolio["bid"][symbol] = [position]
+                    portfolio["short"][symbol] = [position]
 
         bid_rates = self.get_current_bid(ask_symbols)
         if type(bid_rates) == pd.Series:
@@ -1127,7 +1098,7 @@ class Client(metaclass=ABCMeta):
         else:
             get_bid_rate = lambda symbol: bid_rates
         ask_position_states = []
-        for symbol, positions in portfolio["ask"].items():
+        for symbol, positions in portfolio["long"].items():
             bid_rate = get_bid_rate(symbol)
             for position in positions:
                 profit = (bid_rate - position.price) * position.amount
@@ -1140,7 +1111,7 @@ class Client(metaclass=ABCMeta):
         else:
             get_ask_rate = lambda symbol: ask_rates
         bid_position_states = []
-        for symbol, positions in portfolio["bid"].items():
+        for symbol, positions in portfolio["short"].items():
             ask_rate = get_ask_rate(symbol)
             for position in positions:
                 profit = (position.price - ask_rate) * position.amount

@@ -90,7 +90,6 @@ class MT5Client(Client):
             observation_length=observation_length,
             provider=server,
             do_render=do_render,
-            logger_name=__name__,
             enable_trade_log=enable_trade_log,
             logger=logger,
         )

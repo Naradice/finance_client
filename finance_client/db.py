@@ -14,7 +14,7 @@ class BaseConnector:
         pass
 
     def load_positions(self):
-        pass
+        return {}, {}, {}
 
     def store_trade_log(self, log: list):
         pass
@@ -71,7 +71,7 @@ class FileConnector(BaseConnector):
         self._save_json(_positions)
 
     def load_positions(self):
-        """
+        """ 
 
         Returns:
             Tuple(Dict[id:Position], Dict[id:Position], Dict[id:Position]): return long, short, listening tp/sl positions
