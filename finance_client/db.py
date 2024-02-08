@@ -1,20 +1,60 @@
-import datetime
 import json
 import os
+import threading
+import time
 from typing import List
 
-from finance_client.position import Position
+from finance_client import logger
+from finance_client.position import POSITION_TYPE, Position
 
 
-class BaseConnector:
+class BaseStorage:
     def __init__(self, provider: str) -> None:
         self.provider = provider
+        self._positions = {POSITION_TYPE.long: {}, POSITION_TYPE.short: {}}
+
+    def store_position(self, position: Position):
+        self._positions[position.position_type][position.id] = position
 
     def store_positions(self, positions: List[Position]):
-        pass
+        for position in positions:
+            self.store_position(position)
 
-    def load_positions(self):
-        return {}, {}, {}
+    def get_position(self, id):
+        if id in self._positions[POSITION_TYPE.long]:
+            return self._positions[POSITION_TYPE.long][id]
+        elif id in self._positions[POSITION_TYPE.short]:
+            return self._positions[POSITION_TYPE.short][id]
+        return None
+
+    def get_positions(self, symbols: list = None):
+        return self.get_long_positions(symbols=symbols), self.get_short_positions(symbols=symbols)
+
+    def get_long_positions(self, symbols: list = None) -> list:
+        long_positions = self._positions[POSITION_TYPE.long].values()
+        if symbols is None or len(symbols) == 0:
+            return long_positions
+        else:
+            if isinstance(symbols, str):
+                symbols = [symbols]
+            return list(filter(lambda position: position.symbol in symbols, long_positions))
+
+    def get_short_positions(self, symbols: list = None) -> list:
+        short_positions = self._positions[POSITION_TYPE.short].values()
+        if symbols is None or len(symbols) == 0:
+            return short_positions
+        else:
+            if isinstance(symbols, str):
+                symbols = [symbols]
+            return list(filter(lambda position: position.symbol in symbols, short_positions))
+
+    def get_listening_positions(self):
+        listening_positions = {}
+        for positions in self._positions.values():
+            for position in positions:
+                if position.tp is not None or position.sl is not None:
+                    listening_positions[position.id] = position
+        return listening_positions
 
     def store_trade_log(self, log: list):
         pass
@@ -26,7 +66,7 @@ class BaseConnector:
         pass
 
 
-class FileConnector(BaseConnector):
+class FileStorage(BaseStorage):
     def _check_path(self, file_path, default_file_name: str):
         if file_path is None:
             file_path = os.path.join(os.getcwd(), default_file_name)
@@ -41,36 +81,59 @@ class FileConnector(BaseConnector):
 
     def __init__(self, provider: str, positions_path: str = None) -> None:
         super().__init__(provider)
+        self.__position_lock = threading.Lock()
+        self.__log_lock = threading.Lock()
         self.positions_path = self._check_path(positions_path, "positions.json")
+        self._load_positions()
+        self.__update_required = False
+        self.save_span = 60.0
+        threading.Thread(target=self._prerodical_update, daemon=True).start()
 
     def _save_json(self, obj, file_path):
         try:
             with open(file_path, mode="w") as fp:
                 json.dump(obj, fp)
-        except Exception as e:
-            print(f"failed to save due to {e}")
+        except Exception:
+            logger.exception("failed to save")
 
     def _load_json(self, file_path):
         try:
             with open(file_path, mode="r") as fp:
                 return json.load(fp)
-        except Exception as e:
-            print(f"failed to load due to {e}")
+        except Exception:
+            logger.exception("failed to load")
 
-    def store_positions(self, long_positions: List[Position], short_positions: List[Position]):
-        _positions = self._load_json(self.positions_path)
+    def __update_positions_file(self):
+        new_positions = self._positions.copy()
+        with self.__position_lock:
+            _positions = self._load_json(self.positions_path)
         if _positions is None:
             _positions = {}
-
         provider_positions = {
-            "long": [position.to_dict() for position in long_positions],
-            "short": [position.to_dict() for position in short_positions],
+            POSITION_TYPE.long.name: [position.to_dict() for position in new_positions[POSITION_TYPE.long].values()],
+            POSITION_TYPE.short.name: [position.to_dict() for position in new_positions[POSITION_TYPE.short].values()],
         }
-
         _positions[self.provider] = provider_positions
-        self._save_json(_positions)
+        with self.__position_lock:
+            self._save_json(_positions, self.positions_path)
 
-    def load_positions(self):
+    def _prerodical_update(self):
+        while True:
+            time.sleep(self.save_span)
+            if self.__update_required is True:
+                self.__update_positions_file()
+                self.__update_required = False
+
+    def store_position(self, position: Position):
+        super().store_position(position)
+        self.__update_required = True
+
+    def store_positions(self, positions: List[Position]):
+        super().store_positions(positions)
+        t = threading.Thread(target=self.__update_positions_file)
+        t.start()
+
+    def _load_positions(self):
         """
 
         Returns:
@@ -80,13 +143,14 @@ class FileConnector(BaseConnector):
         short_positions = {}
         listening_positions = {}
         if os.path.exists(self.positions_path):
-            positions_dict = self._load_json(self.positions_path)
+            with self.__log_lock:
+                positions_dict = self._load_json(self.positions_path)
             if positions_dict is None:
                 return long_positions, short_positions, listening_positions
             if self.provider in positions_dict:
                 _position = positions_dict[self.provider]
-                long_position_list = _position["long"]
-                short_position_list = _position["short"]
+                long_position_list = _position[POSITION_TYPE.long.name]
+                short_position_list = _position[POSITION_TYPE.short.name]
 
                 for _position in long_position_list:
                     position = Position(**_position)
@@ -99,10 +163,7 @@ class FileConnector(BaseConnector):
                     short_positions[position.id] = position
                     if position.tp is not None or position.sl is not None:
                         listening_positions[position.id] = position
-            else:
-                return long_positions, short_positions, listening_positions
-        else:
-            return long_positions, short_positions, listening_positions
+        long_positions, short_positions, listening_positions
 
     def store_trade_log(self, log: list):
         pass
@@ -111,7 +172,7 @@ class FileConnector(BaseConnector):
         return []
 
 
-class SQLiteConnector(BaseConnector):
+class SQLiteStorage(BaseStorage):
     POSITION_TABLE = "position"
 
     def __table_init(self):
@@ -121,7 +182,7 @@ class SQLiteConnector(BaseConnector):
             CREATE TABLE IF NOT EXISTS {self.POSITION_TABLE} (
                     id TEXT PRIMARY KEY,
                     symbol_id TEXT,
-                    order_type TEXT,
+                    position_type TEXT,
                     position_type INTEGER,
                     price REAL,
                     tp REAL,
@@ -144,7 +205,7 @@ class SQLiteConnector(BaseConnector):
             self.agent_id,
             signal.symbol,
             signal.id,
-            signal.order_type,
+            signal.position_type,
             signal.position_state,
             signal.possibility,
             signal.dev,

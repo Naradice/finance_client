@@ -19,6 +19,7 @@ import pandas as pd
 import finance_client.frames as Frame
 from finance_client import fprocess, logger
 from finance_client.csv.client import CSVClient
+from finance_client.position import ORDER_TYPE
 
 file_base = "L:/data/yfinance"
 symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
@@ -493,7 +494,7 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         files = csv_files[:2]
         target_symbols = symbols[:2]
         client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger)
-        client.open_trade(True, 1, "Market", symbols[1])
+        client.open_trade(True, 1, ORDER_TYPE.market, symbols[1])
 
         for i in range(0, 5):
             df = client.get_ohlc(10)
@@ -505,11 +506,11 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         files = csv_files[:3]
         target_symbols = symbols[:3]
         client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger)
-        client.open_trade(True, 1, "Market", symbols[1])
+        client.open_trade(True, 1, ORDER_TYPE.market, symbols[1])
 
         for i in range(0, 5):
             df = client.get_ohlc(10)
-        client.open_trade(True, 1, "Market", symbols[2])
+        client.open_trade(True, 1, ORDER_TYPE.market, symbols[2])
         for i in range(0, 5):
             df = client.get_ohlc(10)
         results = client.close_long_positions(symbols[2])

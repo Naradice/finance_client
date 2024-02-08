@@ -13,6 +13,7 @@ from . import db
 from . import frames as Frame
 from . import logger as lg
 from . import wallet
+from .position import ORDER_TYPE, POSITION_TYPE, Position
 from .render import graph
 
 try:
@@ -36,7 +37,7 @@ class Client(metaclass=ABCMeta):
         observation_length=None,
         do_render=False,
         enable_trade_log=False,
-        storage: db.BaseConnector = None,
+        storage: db.BaseStorage = None,
         logger=None,
     ):
         self.auto_index = None
@@ -60,7 +61,7 @@ class Client(metaclass=ABCMeta):
 
         self.logger = lg if logger is None else logger
         if storage is None:
-            storage = db.FileConnector(provider)
+            storage = db.FileStorage(provider)
         self.wallet = wallet.Manager(storage, budget=budget, logger=logger, provider=provider)
 
         if idc_process is None:
@@ -79,11 +80,16 @@ class Client(metaclass=ABCMeta):
 
         self._indices = None
 
-    def initialize_wallet(self, budget):
-        self.wallet(budget)
-
     def open_trade(
-        self, is_buy, amount: float, order_type: str, symbol: str, price: float = None, tp=None, sl=None, option_info=None
+        self,
+        is_buy,
+        amount: float,
+        symbol: str,
+        price: float = None,
+        tp=None,
+        sl=None,
+        option_info=None,
+        order_type: ORDER_TYPE = ORDER_TYPE.market,
     ):
         """by calling this in your client, order function is called and position is stored
 
@@ -91,7 +97,7 @@ class Client(metaclass=ABCMeta):
             is_buy (bool): buy order or not
             amount (float): amount of trade unit
             stop (_type_): _description_
-            order_type (str): Market,
+            order_type (int): Market,
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             option_info (any, optional): store info you want to position. Defaults to None.
 
@@ -99,7 +105,7 @@ class Client(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): you can specify position or position.id to close the position
         """
-        if order_type == "Market":
+        if order_type == ORDER_TYPE.market:
             self.logger.debug("budget order is requested.")
             if is_buy:
                 if price is None:
@@ -130,10 +136,10 @@ class Client(metaclass=ABCMeta):
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
 
-    def _trading_log(self, position: wallet.Position, price, amount, order_type):
+    def _trading_log(self, position: Position, price, amount, is_open):
         index = self.get_current_datetime()
         log_items = {}
-        if position.order_type == "long":
+        if position.position_type == POSITION_TYPE.long:
             position_type = 1
         else:
             position_type = -1
@@ -142,7 +148,7 @@ class Client(metaclass=ABCMeta):
         log_items["price"] = price
         log_items["amount"] = amount
         log_items["position_type"] = position_type
-        log_items["order_type"] = order_type
+        log_items["is_open"] = is_open
         log_items["logged_at"] = index
         file_path = f"{os.getcwd()}/finance_client_trading_log.csv"
         save_header = not os.path.exists(file_path)
@@ -151,7 +157,7 @@ class Client(metaclass=ABCMeta):
         )
 
     def close_position(
-        self, price: float = None, position: wallet.Position = None, id=None, amount=None, symbol=None, order_type=None
+        self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None
     ):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
@@ -163,7 +169,7 @@ class Client(metaclass=ABCMeta):
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
             symbols (str, optional):
-            order_type (str, optional)
+            position_type (str, optional)
         """
         if position is not None:
             id = position.id
@@ -175,17 +181,20 @@ class Client(metaclass=ABCMeta):
                 self.__pending_order_results.pop(id)
                 return closed_result, False
             if position is None:
-                position = self.wallet.get_position(id)
+                position = self.wallet.storage.get_position(id)
             if amount is None:
-                amount = position.amount
+                if position is not None:
+                    amount = position.amount
+                else:
+                    self.logger.error(f"both amount and position is None: {id}")
         else:
-            if symbol is None or order_type is None:
-                self.logger.error("Either id or symbol and order_type should be specified.")
+            if symbol is None or position_type is None:
+                self.logger.error("Either id or symbol and position_type should be specified.")
                 return None, False
             if amount is None:
                 amount = 1
-            position = wallet.Position(
-                order_type=order_type,
+            position = Position(
+                position_type=position_type,
                 symbol=symbol,
                 price=price,
                 amount=amount,
@@ -198,7 +207,7 @@ class Client(metaclass=ABCMeta):
             )
 
         position_plot = 0
-        if position.order_type == "long":
+        if position.position_type == POSITION_TYPE.long:
             self.logger.debug(f"close long position is ordered for {id}")
             if price is None:
                 price = self.get_current_bid(position.symbol)
@@ -207,7 +216,7 @@ class Client(metaclass=ABCMeta):
             if result is False:
                 return None, False
             position_plot = -2
-        elif position.order_type == "short":
+        elif position.position_type == POSITION_TYPE.short:
             self.logger.debug(f"close short position is ordered for {id}")
             if price is None:
                 self.logger.debug(f"order close with current bid rate {price}")
@@ -217,19 +226,23 @@ class Client(metaclass=ABCMeta):
                 return None, False
             position_plot = -1
         else:
-            self.logger.warning(f"Unkown order_type {position.order_type} is specified on close_position.")
+            self.logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         price, position.price, price_diff, profit = self.wallet.close_position(position, price, amount=amount)
         if self.enable_trade_log:
-            self._trading_log(position, price, amount, "close")
+            self._trading_log(position, price, amount, False)
         return price, position.price, price_diff, profit, True
 
-    def close_all_positions(self, symbols=[]):
+    def close_all_positions(self, symbols: list = None):
         """close all open_position.
         sell_for_settlement or _buy_for_settlement is calleds for each position
         """
-        positions = self.wallet.get_open_positions(symbols=symbols)
+
+        if symbols is None:
+            symbols = []
+
+        positions = self.wallet.storage.get_positions(symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -240,22 +253,22 @@ class Client(metaclass=ABCMeta):
             self.__pending_order_results.pop(id)
         return results
 
-    def close_long_positions(self, symbols=[]):
+    def close_long_positions(self, symbols: list = None):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.wallet.get_open_positions(order_type="long", symbols=symbols)
+        positions = self.wallet.storage.get_long_positions(symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
             results.append(result)
         return results
 
-    def close_short_positions(self, symbols=[]):
+    def close_short_positions(self, symbols: list = None):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
-        positions = self.wallet.get_open_positions(order_type="short", symbols=symbols)
+        positions = self.wallet.storage.get_short_positions(symbols=symbols)
         results = []
         for position in positions:
             result = self.close_position(position=position)
@@ -263,7 +276,9 @@ class Client(metaclass=ABCMeta):
         return results
 
     def get_positions(self) -> list:
-        return self.wallet.get_open_positions()
+        long_positions, short_positions = self.wallet.storage.get_positions()
+        long_positions.extend(short_positions)
+        return long_positions
 
     def _get_required_length(self, processes: list) -> int:
         required_length_list = [0]
@@ -346,7 +361,7 @@ class Client(metaclass=ABCMeta):
         self.__data_queue.put(data)
 
     def get_client_params(self):
-        common_args = {"budget": self.wallet.positions["budget"], "frame": self.frame, "provider": self.wallet.provider}
+        common_args = {"budget": self.wallet.budget, "frame": self.frame, "provider": self.wallet.provider}
         add_params = self.get_additional_params()
         common_args.update(add_params)
         return common_args
@@ -363,7 +378,7 @@ class Client(metaclass=ABCMeta):
             for id, position in positions.items():
                 # start checking stop loss at first.
                 if position.sl is not None:
-                    if position.order_type == "long":
+                    if position.position_type == POSITION_TYPE.longON_TYPE.long:
                         if position.sl >= tick[low_column]:
                             result = self.wallet.close_position(position, position.sl, index=self._step_index)
                             if result is not None:
@@ -373,7 +388,7 @@ class Client(metaclass=ABCMeta):
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             self.wallet.remove_position_from_listening(position)
                             continue
-                    elif position.order_type == "short":
+                    elif position.position_type == POSITION_TYPE.short:
                         if position.sl <= tick[high_column]:
                             result = self.wallet.close_position(position, position.sl, index=self._step_index)
                             if result is not None:
@@ -384,11 +399,11 @@ class Client(metaclass=ABCMeta):
                             self.wallet.remove_position_from_listening(position)
                             continue
                     else:
-                        self.logger.error(f"unkown order_type: {position.order_type}")
+                        self.logger.error(f"unkown position_type: {position.position_type}")
                         continue
 
                 if position.tp is not None:
-                    if position.order_type == "long":
+                    if position.position_type == POSITION_TYPE.long:
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
                             result = self.wallet.close_position(position, position.tp, index=self._step_index)
@@ -399,7 +414,7 @@ class Client(metaclass=ABCMeta):
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.tp, self.__ohlc_index)
                             else:
                                 self.wallet.remove_position_from_listening(position)
-                    elif position.order_type == "short":
+                    elif position.position_type == POSITION_TYPE.short:
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
                             result = self.wallet.close_position(position, position.tp, index=self._step_index)
@@ -411,7 +426,7 @@ class Client(metaclass=ABCMeta):
                             else:
                                 self.wallet.remove_position_from_listening(position)
                     else:
-                        self.logger.error(f"unkown order_type: {position.order_type}")
+                        self.logger.error(f"unkown position_type: {position.position_type}")
 
     def __plot_data(self, symbols: list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
@@ -600,7 +615,7 @@ class Client(metaclass=ABCMeta):
         else:
             default_path = self._get_default_path()
             if default_path is None:
-                self.logger.info(f"save is not supported by this client.")
+                self.logger.info("save is not supported by this client.")
             else:
                 self.logger.info(f"file is saved on {default_path}")
         return ohlc_df
@@ -795,14 +810,14 @@ class Client(metaclass=ABCMeta):
         return -1
 
     def __get_long_position_diffs(self, standalization="minimax"):
-        positions = self.wallet.positions["long"]
+        positions = self.wallet.storage.get_long_positions()
         if len(positions) > 0:
             diffs = []
             current_bid = self.get_current_bid()
             if standalization == "minimax":
-                current_bid = fprocess.mini_max(current_bid, self.min, self.max, (0, 1))
+                current_bid = fprocess.standalization.mini_max(current_bid, self.min, self.max, (0, 1))
                 for key, position in positions.items():
-                    price = fprocess.mini_max(position.price, self.min, self.max, (0, 1))
+                    price = fprocess.standalization.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(current_bid - price)
             else:
                 for key, position in positions.items():
@@ -812,14 +827,14 @@ class Client(metaclass=ABCMeta):
             return []
 
     def __get_short_position_diffs(self, standalization="minimax"):
-        positions = self.wallet.positions["short"]
+        positions = self.wallet.storage.get_short_positions()
         if len(positions) > 0:
             diffs = []
             current_ask = self.get_current_ask()
             if standalization == "minimax":
-                current_ask = fprocess.mini_max(current_ask, self.min, self.max, (0, 1))
+                current_ask = fprocess.standalization.mini_max(current_ask, self.min, self.max, (0, 1))
                 for key, position in positions.items():
-                    price = fprocess.mini_max(position.price, self.min, self.max, (0, 1))
+                    price = fprocess.standalization.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(price - current_ask)
             else:
                 for key, position in positions.items():
@@ -829,9 +844,9 @@ class Client(metaclass=ABCMeta):
             return []
 
     def get_diffs(self, position_type=None) -> list:
-        if position_type == "long" or position_type == "long":
+        if position_type == POSITION_TYPE.long:
             return self.__get_long_position_diffs()
-        elif position_type == "short" or position_type == "short":
+        elif position_type == POSITION_TYPE.short:
             return self.__get_short_position_diffs()
         else:
             diffs = self.__get_long_position_diffs()
@@ -841,9 +856,9 @@ class Client(metaclass=ABCMeta):
             return diffs
 
     def get_diffs_with_minmax(self, position_type=None) -> list:
-        if position_type == "long" or position_type == "long":
+        if position_type == POSITION_TYPE.long:
             return self.__get_long_position_diffs(standalization="minimax")
-        elif position_type == "short" or position_type == "short":
+        elif position_type == POSITION_TYPE.short:
             return self.__get_short_position_diffs(standalization="minimax")
         else:
             diffs = self.__get_long_position_diffs(standalization="minimax")
@@ -855,7 +870,7 @@ class Client(metaclass=ABCMeta):
     def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
         self.logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         position = self.wallet.open_position(
-            order_type="long",
+            position_type=POSITION_TYPE.long,
             symbol=symbol,
             price=boughtRate,
             amount=amount,
@@ -869,13 +884,13 @@ class Client(metaclass=ABCMeta):
             if self.do_render:
                 self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
             if self.enable_trade_log:
-                self._trading_log(position, boughtRate, amount, "open")
+                self._trading_log(position, boughtRate, amount, True)
         return position
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
         self.logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         position = self.wallet.open_position(
-            order_type="short",
+            position_type=POSITION_TYPE.short,
             symbol=symbol,
             price=soldRate,
             amount=amount,
@@ -889,7 +904,7 @@ class Client(metaclass=ABCMeta):
             if self.do_render:
                 self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
             if self.enable_trade_log:
-                self._trading_log(position, soldRate, amount, "open")
+                self._trading_log(position, soldRate, amount, True)
         return position
 
     def get_ohlc_columns(self, symbol: str = None, out_type="dict", ignore=None) -> dict:
@@ -1071,7 +1086,7 @@ class Client(metaclass=ABCMeta):
 
     def get_portfolio(self) -> tuple:
         portfolio = {"long": {}, "short": {}}
-        long_positions = self.wallet.long_positions
+        long_positions, short_positions = self.wallet.storage.get_positions()
         ask_symbols = []
         if len(long_positions) > 0:
             for id, position in long_positions.items():
@@ -1082,7 +1097,6 @@ class Client(metaclass=ABCMeta):
                 else:
                     portfolio["long"][symbol] = [position]
 
-        short_positions = self.wallet.short_positions
         bid_symbols = []
         if len(short_positions) > 0:
             for id, position in short_positions.items():
@@ -1094,7 +1108,7 @@ class Client(metaclass=ABCMeta):
                     portfolio["short"][symbol] = [position]
 
         bid_rates = self.get_current_bid(ask_symbols)
-        if type(bid_rates) == pd.Series:
+        if isinstance(bid_rates, pd.Series):
             get_bid_rate = lambda symbol: bid_rates[symbol]
         else:
             get_bid_rate = lambda symbol: bid_rates
@@ -1107,7 +1121,7 @@ class Client(metaclass=ABCMeta):
                 ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
 
         ask_rates = self.get_current_ask(bid_symbols)
-        if type(ask_rates) == pd.Series:
+        if isinstance(ask_rates, pd.Series):
             get_ask_rate = lambda symbol: ask_rates[symbol]
         else:
             get_ask_rate = lambda symbol: ask_rates

@@ -79,7 +79,6 @@ def get_frame_time(time: datetime, frame):
         hour = 0
         frame_minute = 0
 
-    # datetimeオブジェクトを作成
     frame_time = datetime(year, month, day, hour, frame_minute, tzinfo=tz)
 
     return frame_time
