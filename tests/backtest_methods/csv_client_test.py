@@ -22,15 +22,13 @@ from finance_client.csv.client import CSVClient
 
 file_base = "L:/data/yfinance"
 symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
-datetime_column = "Time"
+datetime_column = "Datetime"
 ohlc_columns = ["Open", "High", "Low", "Close"]
 additional_column = ["Adj Close", "Volume"]
 csv_files = [f"{file_base}/yfinance_{symbol}_D1.csv" for symbol in symbols]
-# csv_file = f'{file_base}/yfinance_{symbols[0]}_D1.csv'
-csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
-# csv_file_5min = f'{file_base}/yfinance_{symbols[0]}_MIN5.csv'
-csv_file_5min = os.path.abspath("L:/data/csv/USDJPY_forex_min5.csv")
+csv_file = f"{file_base}/yfinance_{symbols[0]}_D1.csv"
 csv_files_5min = [f"{file_base}/yfinance_{symbol}_MIN5.csv" for symbol in symbols[:2]]
+csv_file_5min = csv_files_5min[0]
 
 
 class TestCSVClient(unittest.TestCase):
@@ -84,7 +82,7 @@ class TestCSVClient(unittest.TestCase):
         self.assertEqual(len(data[ohlc_columns[3]]), length)
 
     def test_get_rolled_data(self):
-        client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, out_frame=Frame.MIN30)
+        client = CSVClient(files=csv_file_5min, logger=logger, date_column=datetime_column, out_frame=Frame.MIN30, start_date=10)
         df = client.get_ohlc(length=10)
         self.assertEqual(len(df), 10)
         delta = df.index[1] - df.index[0]
@@ -185,7 +183,7 @@ class TestCSVClientMulti(unittest.TestCase):
         SYMBOL_COUNT = 3
         DATA_LENGTH = 10
         files = csv_files[:SYMBOL_COUNT]
-        START_DATE = datetime.datetime(year=2001, month=4, day=1, tzinfo=datetime.timezone.utc)
+        START_DATE = datetime.datetime(year=2010, month=4, day=1, tzinfo=datetime.timezone.utc)
 
         client = CSVClient(files=files, start_date=START_DATE, logger=logger)
         df = client.get_ohlc(DATA_LENGTH)
@@ -500,8 +498,8 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         for i in range(0, 5):
             df = client.get_ohlc(10)
         results = client.close_long_positions(symbols[1])
-        self.assertEqual(len(results[0][0]), 4)
-        self.assertNotEqual(results[0][0][0], results[0][0][1])
+        self.assertEqual(len(results[0]), 5)
+        self.assertNotEqual(results[0][0], results[0][1])
 
     def test_trade_symbols(self):
         files = csv_files[:3]

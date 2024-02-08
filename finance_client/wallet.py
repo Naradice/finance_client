@@ -13,7 +13,6 @@ class Manager:
     def __new__(cls, storage: BaseConnector, budget, provider="Default", logger=None):
         if provider not in cls.__singleton:
             singleton = super(Manager, cls).__new__(cls)
-            singleton.__locked = False
             dir = os.path.dirname(__file__)
             try:
                 with open(os.path.join(dir, "./settings.json"), "r") as f:
@@ -54,11 +53,6 @@ class Manager:
     @property
     def short_positions(self):
         return self.positions["short"]
-
-    def __wait_lock(self):
-        while self.__locked:
-            sleep(0.3)
-        return True
 
     def __check_order_type(self, order_type: str):
         if type(order_type) == str:
@@ -165,29 +159,21 @@ class Manager:
 
             profit = self.trade_unit * amount * price_diff
             return_budget = self.trade_unit * amount * position.price + profit
-
-            if self.__wait_lock():
-                self.__locked = True
-                # close position
-                if position.id in self.positions[position.order_type]:
-                    if position.amount == amount:
-                        self.positions[position.order_type].pop(position.id)
-                    else:
-                        position.amount = position.amount - amount
-                        self.positions[position.order_type][position.id] = position
-                    self.logger.info(f"closed result:: profit {profit}, return_budget: {return_budget}")
-                    self.positions["budget"] += return_budget
-                    self.__locked = False
-                    return price, position.price, price_diff, profit
+            # close position
+            if position.id in self.positions[position.order_type]:
+                if position.amount == amount:
+                    self.positions[position.order_type].pop(position.id)
                 else:
-                    self.__locked = False
-                    self.logger.info("info: position is already removed.")
-
-                # remove position from listening
-                self.remove_position_from_listening(position)
-
+                    position.amount = position.amount - amount
+                    self.positions[position.order_type][position.id] = position
+                self.logger.info(f"closed result:: profit {profit}, return_budget: {return_budget}")
+                self.budget += return_budget
+                return price, position.price, price_diff, profit
             else:
-                self.logger.debug("lock returned false somehow.")
+                self.logger.info("info: position is already removed.")
+
+            # remove position from listening
+            self.remove_position_from_listening(position)
         else:
             self.logger.warning(f"position amount is invalid: {position.amount}")
 

@@ -202,7 +202,7 @@ class Client(metaclass=ABCMeta):
             self.logger.debug(f"close long position is ordered for {id}")
             if price is None:
                 price = self.get_current_bid(position.symbol)
-                self.logger.debug(f"order close with current ask rate {price} if budget sell is not allowed")
+                self.logger.debug(f"order close with current ask rate {price}")
             result = self._sell_for_settlment(position.symbol, price, amount, position.option, position.result)
             if result is False:
                 return None, False
@@ -210,7 +210,7 @@ class Client(metaclass=ABCMeta):
         elif position.order_type == "short":
             self.logger.debug(f"close short position is ordered for {id}")
             if price is None:
-                self.logger.debug(f"order close with current bid rate {price} if budget sell is not allowed")
+                self.logger.debug(f"order close with current bid rate {price}")
                 price = self.get_current_ask(position.symbol)
             result = self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             if result is False:
@@ -510,17 +510,15 @@ class Client(metaclass=ABCMeta):
         do_add_eco_idc,
         data_freq,
     ):
+        required_length = 0
+        if do_run_process:
+            required_length += self._get_required_length(idc_processes + pre_processes)
+
         if length is None:
             ohlc_df = self._get_ohlc_from_client(
                 length=length, symbols=symbols, frame=frame, columns=columns, index=index, grouped_by_symbol=grouped_by_symbol
             )
-            required_length = 0
-            if do_run_process:
-                required_length += self._get_required_length(idc_processes + pre_processes)
         else:
-            required_length = 0
-            if do_run_process:
-                required_length += self._get_required_length(idc_processes + pre_processes)
             if length < required_length:
                 target_length = required_length
             else:
