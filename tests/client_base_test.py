@@ -105,7 +105,7 @@ class TestClient(Client):
         return super().__len__()
 
 
-class TestCSVClient(unittest.TestCase):
+class TestBaseClient(unittest.TestCase):
     def test_get_rates_wo_plot(self):
         client = TestClient(do_render=False)
         rates = client.get_ohlc(100)

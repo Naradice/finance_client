@@ -1,4 +1,6 @@
 *.csv
+*.json
+*.db
 !finance_client/vantage/resources/digital_currency_list.csv
 !finance_client/vantage/resources/physical_currency_list.csv
 #Python env
@@ -16,9 +18,6 @@ finance_client.egg-info
 .env
 __pycache__/
 /dist
-tests/env.test.json
-finance_client/data_source/*/es_config.json
-finance_client/data_source/gmo/config.json
 *.npz
 *.log
 *.logs

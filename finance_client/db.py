@@ -20,7 +20,10 @@ class BaseStorage:
         for position in positions:
             self.store_position(position)
 
-    def get_position(self, id):
+    def has_position(self, id) -> bool:
+        return (id in self._positions[POSITION_TYPE.long]) or (id in self._positions[POSITION_TYPE.short])
+
+    def get_position(self, id) -> Position:
         if id in self._positions[POSITION_TYPE.long]:
             return self._positions[POSITION_TYPE.long][id]
         elif id in self._positions[POSITION_TYPE.short]:
@@ -48,13 +51,22 @@ class BaseStorage:
                 symbols = [symbols]
             return list(filter(lambda position: position.symbol in symbols, short_positions))
 
-    def get_listening_positions(self):
+    def _get_listening_positions(self):
         listening_positions = {}
         for positions in self._positions.values():
-            for position in positions:
+            for position in positions.values():
                 if position.tp is not None or position.sl is not None:
                     listening_positions[position.id] = position
         return listening_positions
+
+    def delete_position(self, id):
+        if id in self._positions[POSITION_TYPE.long]:
+            self._positions[POSITION_TYPE.long].pop(id)
+            return True
+        elif id in self._positions[POSITION_TYPE.short]:
+            self._positions[POSITION_TYPE.short].pop(id)
+            return True
+        return False
 
     def store_trade_log(self, log: list):
         pass
@@ -79,15 +91,28 @@ class FileStorage(BaseStorage):
             os.makedirs(base_path)
         return file_path
 
-    def __init__(self, provider: str, positions_path: str = None) -> None:
+    def __init__(self, provider: str, positions_path: str = None, save_period: float = 1.0) -> None:
+        """File Handler to store objects. This class doesn't care a bout accesses from multiple instances.
+
+        Args:
+            provider (str): provider id to separate position information
+            positions_path (str, optional): custom position file path. Defaults to None.
+            save_period (float, optional): minutes to periodically save positions. less than 0 save them immedeately when it is updated. Defaults to 1.0.
+        """
         super().__init__(provider)
         self.__position_lock = threading.Lock()
         self.__log_lock = threading.Lock()
         self.positions_path = self._check_path(positions_path, "positions.json")
         self._load_positions()
+
         self.__update_required = False
-        self.save_span = 60.0
-        threading.Thread(target=self._prerodical_update, daemon=True).start()
+        self.save_period = save_period * 60.0
+        self.__running = True
+        if save_period > 0:
+            self.__immediate_save = False
+            threading.Thread(target=self._prerodical_update, daemon=True).start()
+        else:
+            self.__immediate_save = True
 
     def _save_json(self, obj, file_path):
         try:
@@ -109,6 +134,8 @@ class FileStorage(BaseStorage):
             _positions = self._load_json(self.positions_path)
         if _positions is None:
             _positions = {}
+
+        # since we have loaded existing position in init
         provider_positions = {
             POSITION_TYPE.long.name: [position.to_dict() for position in new_positions[POSITION_TYPE.long].values()],
             POSITION_TYPE.short.name: [position.to_dict() for position in new_positions[POSITION_TYPE.short].values()],
@@ -118,14 +145,23 @@ class FileStorage(BaseStorage):
             self._save_json(_positions, self.positions_path)
 
     def _prerodical_update(self):
-        while True:
-            time.sleep(self.save_span)
+        while self.__running:
+            time.sleep(self.save_period)
             if self.__update_required is True:
                 self.__update_positions_file()
                 self.__update_required = False
 
+    def delete_position(self, id):
+        suc = super().delete_position(id)
+        if self.__immediate_save is True:
+            self.__update_positions_file()
+        self.__update_required = True
+        return suc
+
     def store_position(self, position: Position):
         super().store_position(position)
+        if self.__immediate_save is True:
+            self.__update_positions_file()
         self.__update_required = True
 
     def store_positions(self, positions: List[Position]):
@@ -154,16 +190,11 @@ class FileStorage(BaseStorage):
 
                 for _position in long_position_list:
                     position = Position(**_position)
-                    long_positions[position.id] = position
-                    if position.tp is not None or position.sl is not None:
-                        listening_positions[position.id] = position
+                    self._positions[POSITION_TYPE.long][position.id] = position
 
                 for _position in short_position_list:
                     position = Position(**_position)
-                    short_positions[position.id] = position
-                    if position.tp is not None or position.sl is not None:
-                        listening_positions[position.id] = position
-        long_positions, short_positions, listening_positions
+                    self._positions[POSITION_TYPE.short][position.id] = position
 
     def store_trade_log(self, log: list):
         pass
@@ -171,55 +202,175 @@ class FileStorage(BaseStorage):
     def load_trade_logs(self):
         return []
 
+    def close(self):
+        self.__running = False
+        self.__update_positions_file()
+
 
 class SQLiteStorage(BaseStorage):
-    POSITION_TABLE = "position"
+    POSITION_TABLE_NAME = "position"
+    _POSITION_TABLE_KEYS = {
+        "id": "TEXT PRIMARY KEY",
+        "provider": "TEXT",
+        "symbol": "TEXT",
+        "position_type": "INTEGER",
+        "price": "REAL",
+        "tp": "REAL",
+        "sl": "REAL",
+        "time_index": "TEXT",
+        "amount": "REAL",
+        "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    }
 
-    def __table_init(self):
+    def _table_init(self):
         cursor = self.__conn.cursor()
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._POSITION_TABLE_KEYS.items()])
         cursor.execute(
             f"""
-            CREATE TABLE IF NOT EXISTS {self.POSITION_TABLE} (
-                    id TEXT PRIMARY KEY,
-                    symbol_id TEXT,
-                    position_type TEXT,
-                    position_type INTEGER,
-                    price REAL,
-                    tp REAL,
-                    sl REAL,
-                    amount NUMERIC,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS {self.POSITION_TABLE_NAME} (
+                {table_schema}
             )
             """
         )
 
-    def __init__(self, database, agent_id: str) -> None:
+    def __init__(self, database_path, provider: str) -> None:
+        super().__init__(provider)
         import sqlite3
 
-        self.__conn = sqlite3.connect(database)
-        self.__table_init()
-        self.agent_id = agent_id
+        self.__lock = threading.Lock()
+        self.__conn = sqlite3.connect(database_path)
+        self._table_init()
 
-    def _signal_to_str(self, signal: Position, open_at):
-        return (
-            self.agent_id,
-            signal.symbol,
-            signal.id,
-            signal.position_type,
-            signal.position_state,
-            signal.possibility,
-            signal.dev,
-            signal.order_price,
-            signal.tp,
-            signal.sl,
-            signal.amount,
+    def __create_place_holder(self, num: int):
+        place_holders = f"({'?,' * (num -1)}?)"
+        return place_holders
+
+    def __create_basic_query(self, table_schema: dict):
+        keys = ",".join(table_schema.keys())
+        place_holders = self.__create_place_holder(len(table_schema))
+        return keys, place_holders
+
+    def __commit(self, query, params=()):
+        with self.__lock:
+            cursor = self.__conn.cursor()
+            cursor.execute(query, params)
+            self.__conn.commit()
+            cursor.close()
+
+    def __multi_commit(self, query, params_list):
+        with self.__lock:
+            cursor = self.__conn.cursor()
+            cursor.executemany(query, params_list)
+            self.__conn.commit()
+            cursor.close()
+
+    def __fetch(self, query, params=()):
+        with self.__lock:
+            cursor = self.__conn.cursor()
+            cursor.execute(query, params)
+            records = cursor.fetchall()
+            cursor.close()
+        return records
+
+    def __records_to_positions(self, records, keys):
+        positions = []
+        keys = list(keys)
+        for record in records:
+            kwargs = {}
+            for index, value in enumerate(record):
+                kwargs[keys[index]] = value
+            positions.append(Position(**kwargs))
+        return positions
+
+    def store_position(self, position: Position):
+        super().store_position(position)
+        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS)
+        values = (
+            position.id,
+            self.provider,
+            position.symbol,
+            position.position_type.value,
+            position.price,
+            position.tp,
+            position.sl,
+            position.index,
+            position.amount,
+            position.timestamp,
         )
+        query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__commit(query, values)
+
+    def store_positions(self, positions: List[Position]):
+        super().store_positions(positions)
+        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS)
+        values = [
+            (
+                position.id,
+                self.provider,
+                position.symbol,
+                position.position_type.value,
+                position.price,
+                position.tp,
+                position.sl,
+                position.index,
+                position.amount,
+                position.timestamp,
+            )
+            for position in positions
+        ]
+        query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__multi_commit(query, values)
+
+    def has_position(self, id) -> bool:
+        return super().has_position(id)
+
+    def get_position(self, id) -> Position:
+        query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = ? AND provider = ?"
+        records = self.__fetch(query, (id, self.provider))
+        positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
+        if len(positions) == 0:
+            logger.info(f"no record found for position_id: {id}")
+            return None
+        else:
+            return positions[0]
+
+    def get_positions(self, symbols: list = None):
+        query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ?"
+        if symbols is not None and len(symbols) > 0:
+            place_holders = self.__create_place_holder(len(symbols))
+            query = f"{query} AND symbol in {place_holders}"
+            records = self.__fetch(query, (self.provider, *symbols))
+        else:
+            records = self.__fetch(query, (self.provider,))
+        positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
+        if len(positions) == 0:
+            return [], []
+        else:
+            long_positions = []
+            short_positions = []
+            for position in positions:
+                if position.position_type == POSITION_TYPE.long:
+                    long_positions.append(position)
+                else:
+                    short_positions.append(position)
+            return long_positions, short_positions
+
+    def get_long_positions(self, symbols: list = None) -> list:
+        return super().get_long_positions(symbols)
+
+    def get_short_positions(self, symbols: list = None) -> list:
+        return super().get_short_positions(symbols)
+
+    def _get_listening_positions(self):
+        return super()._get_listening_positions()
+
+    def delete_position(self, id):
+        suc = super().delete_position(id)
+        query = f"DELETE FROM {self.POSITION_TABLE_NAME}"
+        cond = "WHERE id = (?) AND provider = (?)"
+        query = f"{query} {cond}"
+        self.__commit(query, (id, self.provider))
+        return suc
 
     def close(self):
         self.__conn.close()
-
-    def __del__(self):
-        try:
-            self.close()
-        except Exception:
-            pass

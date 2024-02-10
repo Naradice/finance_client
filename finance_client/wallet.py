@@ -3,12 +3,12 @@ import os
 from time import sleep
 
 from finance_client import logger as lg
-from finance_client.db import BaseStorage
+from finance_client.db import BaseStorage, FileStorage
 from finance_client.position import POSITION_TYPE, Position
 
 
 class Manager:
-    def __init__(self, storage: BaseStorage, budget, provider="Default", logger=None):
+    def __init__(self, budget, storage: BaseStorage = None, provider="Default", logger=None):
         dir = os.path.dirname(__file__)
         try:
             with open(os.path.join(dir, "./settings.json"), "r") as f:
@@ -28,14 +28,16 @@ class Manager:
         if provider not in providers:
             error_txt = f"provider {provider} is not defined in settings.json. use default settings instead."
             self.logger.error(error_txt)
-            SymbolInfo = providers[provider]
+            SymbolInfo = providers["Default"]
             self.provider = provider
         else:
-            SymbolInfo = providers["Default"]
+            SymbolInfo = providers[provider]
             self.provider = provider
 
         self.trade_unit = SymbolInfo["trade_unit"]
-        self.listening_positions = storage.get_listening_positions()
+        if storage is None:
+            storage = FileStorage(provider, save_period=0)
+        self.listening_positions = storage._get_listening_positions()
         self.storage = storage
         self.logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")
 
@@ -58,14 +60,14 @@ class Manager:
                 symbol=symbol,
                 price=price,
                 amount=amount,
+                time_index=index,
                 tp=tp,
                 sl=sl,
-                index=index,
                 option=option,
                 result=result,
             )
             self.storage.store_position(position)
-            return position
+            return position.id
         else:
             # check if budget has enough amount
             required_budget = self.trade_unit * amount * price
@@ -76,9 +78,9 @@ class Manager:
                     symbol=symbol,
                     price=price,
                     amount=amount,
+                    time_index=index,
                     tp=tp,
                     sl=sl,
-                    index=index,
                     option=option,
                     result=result,
                 )
@@ -89,15 +91,28 @@ class Manager:
                 if tp is not None or sl is not None:
                     self.listening_positions[position.id] = position
                     self.logger.debug("position is stored to listening list")
-                return position
+                return position.id
             else:
                 self.logger.info(f"current budget {self.budget} is less than required {required_budget}")
                 return None
 
-    def close_position(self, position: Position, price: float, amount: float = None):
-        if price is None or position is None:
+    def close_position(self, id, price: float, amount: float = None):
+        """close a position based on the id generated when the positions is opened.
+
+        Args:
+            id (uuid): positions id of finance_client
+            price (float): price to close
+            amount (float, optional): amount to close the position. Defaults to None and close all of the amount the position has
+
+        Returns:
+            float, float, float, float: closed_price, position_price, price_diff, profit
+            (profit = price_diff * amount * trade_unit(pips etc))
+        """
+        if price is None or id is None:
+            self.logger.error(f"either id or price is None: {id}, {price}")
             return None, None, None, None
-        if type(position) == Position and type(position.amount) == float or type(position.amount) == int:
+        position = self.storage.get_position(id)
+        if position is not None:
             if amount is None:
                 amount = position.amount
             if position.amount < amount:
@@ -110,27 +125,19 @@ class Manager:
 
             profit = self.trade_unit * amount * price_diff
             return_budget = self.trade_unit * amount * position.price + profit
-            # close position
-            if position.id in self.positions[position.position_type]:
-                if position.amount == amount:
-                    self.positions[position.position_type].pop(position.id)
-                else:
-                    position.amount = position.amount - amount
-                    self.positions[position.position_type][position.id] = position
-                self.logger.info(f"closed result:: profit {profit}, return_budget: {return_budget}")
-                self.budget += return_budget
-                return price, position.price, price_diff, profit
+            if position.amount == amount:
+                self.storage.delete_position(id)
             else:
-                self.logger.info("info: position is already removed.")
-
-            # remove position from listening
-            self.remove_position_from_listening(position)
+                position.amount -= amount
+                self.storage.store_position(position)
+            self.logger.info(f"closed result:: profit {profit}, budget: {return_budget}")
+            self.budget += return_budget
+            self.remove_position_from_listening(id)
+            return price, position.price, price_diff, profit
         else:
-            self.logger.warning(f"position amount is invalid: {position.amount}")
+            self.remove_position_from_listening(id)
+            self.logger.error("position id is not found")
 
-    def check_order_in_tick(ask: float, bid: float):
-        pass
-
-    def remove_position_from_listening(self, position):
-        if position.id in self.listening_positions:
-            self.listening_positions.pop(position.id)
+    def remove_position_from_listening(self, id):
+        if id in self.listening_positions:
+            self.listening_positions.pop(id)

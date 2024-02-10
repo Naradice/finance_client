@@ -14,6 +14,7 @@ sys.path.append(module_path)
 
 from finance_client import fprocess, logger
 from finance_client.csv.client import CSVClient
+from finance_client.position import ORDER_TYPE
 
 datetime_column = "Time"
 ohlc_columns = ["Open", "High", "Low", "Close"]
@@ -75,17 +76,17 @@ def MACD_backtest():
             if "close" in signal:
                 if "buy" in signal:
                     client.close_position(position=pos)
-                    suc, pos = client.open_trade(True, amount=1, order_type="Market", symbol="forex")
+                    suc, pos = client.open_trade(True, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                     position = 1
                 else:
                     client.close_position(position=pos)
-                    suc, pos = client.open_trade(False, amount=1, order_type="Market", symbol="forex")
+                    suc, pos = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                     position = -1
             elif signal == "buy":
-                suc, pos = client.open_trade(True, amount=1, order_type="Market", symbol="forex")
+                suc, pos = client.open_trade(True, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = 1
             elif signal == "sell":
-                suc, pos = client.open_trade(False, amount=1, order_type="Market", symbol="forex")
+                suc, pos = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = -1
 
         df = client.get_ohlc(30)

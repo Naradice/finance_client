@@ -202,7 +202,7 @@ class Client(metaclass=ABCMeta):
                 sl=None,
                 option=None,
                 result=None,
-                index=self.get_current_datetime(),
+                time_index=self.get_current_datetime(),
                 id=None,
             )
 
@@ -378,25 +378,25 @@ class Client(metaclass=ABCMeta):
             for id, position in positions.items():
                 # start checking stop loss at first.
                 if position.sl is not None:
-                    if position.position_type == POSITION_TYPE.longON_TYPE.long:
+                    if position.position_type == POSITION_TYPE.long:
                         if position.sl >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.sl, index=self._step_index)
+                            result = self.wallet.close_position(position, position.sl)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Long Position is closed to stop loss: {result}")
                                 if self.do_render:
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
-                            self.wallet.remove_position_from_listening(position)
+                            self.wallet.remove_position_from_listening(position.id)
                             continue
                     elif position.position_type == POSITION_TYPE.short:
                         if position.sl <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.sl, index=self._step_index)
+                            result = self.wallet.close_position(position, position.sl)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Short Position is closed to stop loss: {result}")
                                 if self.do_render:
                                     self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
-                            self.wallet.remove_position_from_listening(position)
+                            self.wallet.remove_position_from_listening(position.id)
                             continue
                     else:
                         self.logger.error(f"unkown position_type: {position.position_type}")
@@ -406,25 +406,25 @@ class Client(metaclass=ABCMeta):
                     if position.position_type == POSITION_TYPE.long:
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.tp, index=self._step_index)
+                            result = self.wallet.close_position(position, position.tp)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
                                 if self.do_render:
                                     self.__rendere.add_trade_history_to_latest_tick(-2, position.tp, self.__ohlc_index)
                             else:
-                                self.wallet.remove_position_from_listening(position)
+                                self.wallet.remove_position_from_listening(position.id)
                     elif position.position_type == POSITION_TYPE.short:
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.tp, index=self._step_index)
+                            result = self.wallet.close_position(position, position.tp)
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
                                 if self.do_render:
                                     self.__rendere.add_trade_history_to_latest_tick(-1, position.tp, self.__ohlc_index)
                             else:
-                                self.wallet.remove_position_from_listening(position)
+                                self.wallet.remove_position_from_listening(position.id)
                     else:
                         self.logger.error(f"unkown position_type: {position.position_type}")
 
@@ -869,7 +869,7 @@ class Client(metaclass=ABCMeta):
 
     def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
         self.logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
-        position = self.wallet.open_position(
+        id = self.wallet.open_position(
             position_type=POSITION_TYPE.long,
             symbol=symbol,
             price=boughtRate,
@@ -880,16 +880,14 @@ class Client(metaclass=ABCMeta):
             option=option_info,
             result=result,
         )
-        if position is not None:
+        if id is not None:
             if self.do_render:
                 self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
-            if self.enable_trade_log:
-                self._trading_log(position, boughtRate, amount, True)
-        return position
+        return id
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
         self.logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
-        position = self.wallet.open_position(
+        id = self.wallet.open_position(
             position_type=POSITION_TYPE.short,
             symbol=symbol,
             price=soldRate,
@@ -900,12 +898,12 @@ class Client(metaclass=ABCMeta):
             option=option_info,
             result=result,
         )
-        if position is not None:
+        if id is not None:
             if self.do_render:
                 self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
             if self.enable_trade_log:
-                self._trading_log(position, soldRate, amount, True)
-        return position
+                self._trading_log(id, soldRate, amount, True)
+        return id
 
     def get_ohlc_columns(self, symbol: str = None, out_type="dict", ignore=None) -> dict:
         """returns column names of ohlc data.
