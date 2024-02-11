@@ -1,6 +1,5 @@
 import json
 import os
-from time import sleep
 
 from finance_client import logger as lg
 from finance_client.db import BaseStorage, FileStorage
@@ -96,7 +95,7 @@ class Manager:
                 self.logger.info(f"current budget {self.budget} is less than required {required_budget}")
                 return None
 
-    def close_position(self, id, price: float, amount: float = None):
+    def close_position(self, id, price: float, amount: float = None, position=None):
         """close a position based on the id generated when the positions is opened.
 
         Args:
@@ -111,7 +110,8 @@ class Manager:
         if price is None or id is None:
             self.logger.error(f"either id or price is None: {id}, {price}")
             return None, None, None, None
-        position = self.storage.get_position(id)
+        if position is None:
+            position = self.storage.get_position(id)
         if position is not None:
             if amount is None:
                 amount = position.amount
@@ -137,6 +137,7 @@ class Manager:
         else:
             self.remove_position_from_listening(id)
             self.logger.error("position id is not found")
+            return None, None, None, None
 
     def remove_position_from_listening(self, id):
         if id in self.listening_positions:

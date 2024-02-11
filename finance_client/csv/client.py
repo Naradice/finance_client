@@ -10,6 +10,7 @@ import pandas as pd
 
 import finance_client.frames as Frame
 from finance_client.client_base import Client
+from finance_client.fprocess.fprocess.validation import get_most_frequent_delta
 
 
 class CSVClientBase(Client, metaclass=ABCMeta):
@@ -292,6 +293,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         auto_reset_index=False,
         slip_type="random",
         budget=1000000,
+        storage=None,
         do_render=False,
         seed=1017,
         provider="csv",
@@ -313,6 +315,7 @@ class CSVClientBase(Client, metaclass=ABCMeta):
             observation_length=observation_length,
             provider=provider,
             enable_trade_log=enable_trade_log,
+            storage=storage,
             logger=logger,
         )
         random.seed(seed)
@@ -463,7 +466,13 @@ class CSVClientBase(Client, metaclass=ABCMeta):
         pass
 
     def get_current_datetime(self):
-        return self.data.index[self._step_index - 1]
+        index = self.data.index[self._step_index - 1]
+        if isinstance(index, pd.Timestamp):
+            return index.to_pydatetime()
+        elif isinstance(index, pd.DatetimeIndex):
+            return index.to_pydatetime()
+        else:
+            return str(index)
 
     @abstractmethod
     def reset(self, mode: str = None, retry=0):
@@ -518,6 +527,7 @@ class CSVClient(CSVClientBase):
         auto_reset_index=False,
         slip_type="random",
         budget=1000000,
+        storage=None,
         do_render=False,
         seed=1017,
         enable_trade_log=False,
@@ -570,6 +580,7 @@ class CSVClient(CSVClientBase):
             auto_reset_index=auto_reset_index,
             slip_type=slip_type,
             budget=budget,
+            storage=storage,
             do_render=do_render,
             seed=seed,
             provider="csv",
@@ -618,19 +629,30 @@ class CSVClient(CSVClientBase):
                     data = pd.concat(DFS.values(), axis=1, keys=DFS.keys())
                     is_date_index = True
             elif "parse_dates" in kwargs:
-                try:
-                    data.index = pd.to_datetime(data.index, utc=True)
-                    data.sort_index(ascending=True, inplace=True)
-                    is_date_index = False
-                except Exception:
-                    self.logger.exception("failed to convert index to datetime.")
+
+                def convert_datetime(df, mixed=None):
+                    try:
+                        df.index = pd.to_datetime(df.index, utc=True, format=mixed)
+                        df.sort_index(ascending=True, inplace=True)
+                        return df, True
+                    except Exception:
+                        if mixed is None:
+                            return convert_datetime(df, "ISO8601")
+                        elif mixed == "ISO8601":
+                            return convert_datetime(df, "mixed")
+                        else:
+                            self.logger.exception("failed to convert index to datetime.")
+                            return df, False
+
+                data, is_date_index = convert_datetime(data)
+
         if is_date_index is False:
             if start_date is not None and frame is not None:
                 data.index = self._create_datetime_index(start_date, frame, len(data))
                 is_date_index = True
             else:
                 self.logger.error("Couldn't daterming date column")
-        elif len(data) > 0:
+        if len(data) > 0 and is_date_index is True:
             data = self._initialize_date_index(data, True)
             self._proceed_step_until_date(data, start_date)
         # read csv is called with different columns when get_ohlc is called with different symbols, so marge managing symbols

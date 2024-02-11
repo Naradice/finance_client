@@ -17,7 +17,7 @@ sys.path.append(module_path)
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client import fprocess, logger
+from finance_client import db, fprocess, logger
 from finance_client.csv.client import CSVClient
 from finance_client.position import ORDER_TYPE
 
@@ -491,10 +491,11 @@ class TestCSVClientMultiWOInit(unittest.TestCase):
 
 class TestCCSVClientMultiTrade(unittest.TestCase):
     def test_trade_symbol(self):
+        storage = db.FileStorage(provider="csv_multi_1")
         files = csv_files[:2]
         target_symbols = symbols[:2]
-        client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger)
-        client.open_trade(True, 1, ORDER_TYPE.market, symbols[1])
+        client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger, storage=storage)
+        client.open_trade(True, 1, symbols[1])
 
         for i in range(0, 5):
             df = client.get_ohlc(10)
@@ -503,14 +504,15 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         self.assertNotEqual(results[0][0], results[0][1])
 
     def test_trade_symbols(self):
+        storage = db.FileStorage(provider="csv_multi_2")
         files = csv_files[:3]
         target_symbols = symbols[:3]
-        client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger)
-        client.open_trade(True, 1, ORDER_TYPE.market, symbols[1])
+        client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, logger=logger, storage=storage)
+        client.open_trade(True, 1, symbols[1])
 
         for i in range(0, 5):
             df = client.get_ohlc(10)
-        client.open_trade(True, 1, ORDER_TYPE.market, symbols[2])
+        client.open_trade(True, 1, symbols[2])
         for i in range(0, 5):
             df = client.get_ohlc(10)
         results = client.close_long_positions(symbols[2])

@@ -45,6 +45,7 @@ freq_str = {
     D4: "4D",
     W1: "W1",
     MO1: "MO1",
+    None: None,
 }
 
 

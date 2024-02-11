@@ -79,6 +79,9 @@ class BaseStorage:
 
 
 class FileStorage(BaseStorage):
+    __position_lock = threading.Lock()
+    __log_lock = threading.Lock()
+
     def _check_path(self, file_path, default_file_name: str):
         if file_path is None:
             file_path = os.path.join(os.getcwd(), default_file_name)
@@ -91,7 +94,7 @@ class FileStorage(BaseStorage):
             os.makedirs(base_path)
         return file_path
 
-    def __init__(self, provider: str, positions_path: str = None, save_period: float = 1.0) -> None:
+    def __init__(self, provider: str, positions_path: str = None, save_period: float = 0) -> None:
         """File Handler to store objects. This class doesn't care a bout accesses from multiple instances.
 
         Args:
@@ -100,8 +103,6 @@ class FileStorage(BaseStorage):
             save_period (float, optional): minutes to periodically save positions. less than 0 save them immedeately when it is updated. Defaults to 1.0.
         """
         super().__init__(provider)
-        self.__position_lock = threading.Lock()
-        self.__log_lock = threading.Lock()
         self.positions_path = self._check_path(positions_path, "positions.json")
         self._load_positions()
 
@@ -221,6 +222,7 @@ class SQLiteStorage(BaseStorage):
         "amount": "REAL",
         "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
+    __lock = threading.Lock()
 
     def _table_init(self):
         cursor = self.__conn.cursor()
@@ -237,7 +239,6 @@ class SQLiteStorage(BaseStorage):
         super().__init__(provider)
         import sqlite3
 
-        self.__lock = threading.Lock()
         self.__conn = sqlite3.connect(database_path)
         self._table_init()
 
@@ -334,14 +335,17 @@ class SQLiteStorage(BaseStorage):
         else:
             return positions[0]
 
-    def get_positions(self, symbols: list = None):
+    def get_positions(self, symbols: list = None, position_type: POSITION_TYPE = None):
         query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ?"
+        params = [self.provider]
         if symbols is not None and len(symbols) > 0:
             place_holders = self.__create_place_holder(len(symbols))
             query = f"{query} AND symbol in {place_holders}"
-            records = self.__fetch(query, (self.provider, *symbols))
-        else:
-            records = self.__fetch(query, (self.provider,))
+            params.append(symbols)
+        if position_type is not None:
+            query = f"{query} AND position_type = ?"
+            params.append(position_type.value)
+        records = self.__fetch(query, params)
         positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
         if len(positions) == 0:
             return [], []
@@ -356,18 +360,23 @@ class SQLiteStorage(BaseStorage):
             return long_positions, short_positions
 
     def get_long_positions(self, symbols: list = None) -> list:
-        return super().get_long_positions(symbols)
+        long_positions, _ = self.get_positions(symbols, POSITION_TYPE.long)
+        return long_positions
 
     def get_short_positions(self, symbols: list = None) -> list:
-        return super().get_short_positions(symbols)
+        _, short_positions = self.get_positions(symbols, POSITION_TYPE.short)
+        return short_positions
 
     def _get_listening_positions(self):
-        return super()._get_listening_positions()
+        query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND (tp IS NOT NULL OR sl IS NOT NULL)"
+        records = self.__fetch(query, (self.provider,))
+        positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
+        return positions
 
     def delete_position(self, id):
         suc = super().delete_position(id)
         query = f"DELETE FROM {self.POSITION_TABLE_NAME}"
-        cond = "WHERE id = (?) AND provider = (?)"
+        cond = "WHERE id = ? AND provider = ?"
         query = f"{query} {cond}"
         self.__commit(query, (id, self.provider))
         return suc

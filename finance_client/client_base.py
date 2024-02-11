@@ -61,8 +61,9 @@ class Client(metaclass=ABCMeta):
 
         self.logger = lg if logger is None else logger
         if storage is None:
-            storage = db.FileStorage(provider)
-        self.wallet = wallet.Manager(storage, budget=budget, logger=logger, provider=provider)
+            db_path = os.path.join(os.path.dirname(__file__), "fc.db")
+            storage = db.SQLiteStorage(db_path, provider)
+        self.wallet = wallet.Manager(budget=budget, storage=storage, logger=logger, provider=provider)
 
         if idc_process is None:
             self.idc_process = []
@@ -137,24 +138,7 @@ class Client(metaclass=ABCMeta):
             self.logger.debug(f"{order_type} is not defined/implemented.")
 
     def _trading_log(self, position: Position, price, amount, is_open):
-        index = self.get_current_datetime()
-        log_items = {}
-        if position.position_type == POSITION_TYPE.long:
-            position_type = 1
-        else:
-            position_type = -1
-        log_items["symbol"] = position.symbol
-        log_items["time"] = position.index
-        log_items["price"] = price
-        log_items["amount"] = amount
-        log_items["position_type"] = position_type
-        log_items["is_open"] = is_open
-        log_items["logged_at"] = index
-        file_path = f"{os.getcwd()}/finance_client_trading_log.csv"
-        save_header = not os.path.exists(file_path)
-        pd.DataFrame([log_items.values()], columns=log_items.keys()).to_csv(
-            file_path, mode="a", header=save_header, index_label=None, index=False
-        )
+        pass
 
     def close_position(
         self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None
@@ -176,9 +160,8 @@ class Client(metaclass=ABCMeta):
 
         if id is not None:
             if id in self.__pending_order_results:
-                closed_result = self.__pending_order_results[id]
+                closed_result = self.__pending_order_results.pop(id)
                 self.logger.info("Specified position was already closed.")
-                self.__pending_order_results.pop(id)
                 return closed_result, False
             if position is None:
                 position = self.wallet.storage.get_position(id)
@@ -229,7 +212,9 @@ class Client(metaclass=ABCMeta):
             self.logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
-        price, position.price, price_diff, profit = self.wallet.close_position(position, price, amount=amount)
+        price, position.price, price_diff, profit = self.wallet.close_position(
+            position.id, price, amount=amount, position=position
+        )
         if self.enable_trade_log:
             self._trading_log(position, price, amount, False)
         return price, position.price, price_diff, profit, True
@@ -380,7 +365,9 @@ class Client(metaclass=ABCMeta):
                 if position.sl is not None:
                     if position.position_type == POSITION_TYPE.long:
                         if position.sl >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.sl)
+                            result = self.wallet.close_position(
+                                id=position.id, price=position.sl, amount=position.amount, position=position
+                            )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Long Position is closed to stop loss: {result}")
@@ -390,7 +377,9 @@ class Client(metaclass=ABCMeta):
                             continue
                     elif position.position_type == POSITION_TYPE.short:
                         if position.sl <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.sl)
+                            result = self.wallet.close_position(
+                                id=position.id, price=position.sl, amount=position.amount, position=position
+                            )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Short Position is closed to stop loss: {result}")
@@ -406,7 +395,9 @@ class Client(metaclass=ABCMeta):
                     if position.position_type == POSITION_TYPE.long:
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
-                            result = self.wallet.close_position(position, position.tp)
+                            result = self.wallet.close_position(
+                                id=position.id, price=position.tp, amount=position.amount, position=position
+                            )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
@@ -417,7 +408,9 @@ class Client(metaclass=ABCMeta):
                     elif position.position_type == POSITION_TYPE.short:
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
-                            result = self.wallet.close_position(position, position.tp)
+                            result = self.wallet.close_position(
+                                id=position.id, price=position.tp, amount=position.amount, position=position
+                            )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
                                 self.logger.info(f"Position is closed to take profit: {result}")
@@ -542,7 +535,7 @@ class Client(metaclass=ABCMeta):
                 length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
             )
 
-        if isinstance(ohlc_df.index, pd.DatetimeIndex):
+        if isinstance(ohlc_df.index, pd.DatetimeIndex) and data_freq is not None:
             # drop duplicates
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
             ohlc_df.dropna(thresh=4, inplace=True)
@@ -567,7 +560,7 @@ class Client(metaclass=ABCMeta):
             first_index = ohlc_df.index[0]
             end_index = ohlc_df.index[-1]
             indicaters_df = self.get_economic_idc(economic_keys, first_index, end_index)
-            if isinstance(indicaters_df.index, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+            if isinstance(indicaters_df.index, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)) and data_freq is not None:
                 indicaters_df = indicaters_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
                 if frame < Frame.D1:
                     if indicaters_df.index.tzinfo is None:
@@ -721,7 +714,7 @@ class Client(metaclass=ABCMeta):
 
     @abstractmethod
     def _get_ohlc_from_client(self, length, symbols: list, frame: int, columns: list, index: list, grouped_by_symbol: bool):
-        return {}
+        return pd.DataFrame()
 
     def get_future_rates(self, interval) -> pd.DataFrame:
         pass
@@ -967,7 +960,7 @@ class Client(metaclass=ABCMeta):
 
     def revert_preprocesses(self, data: pd.DataFrame = None):
         if data is None:
-            data = self.get_rates()
+            data = self.get_ohlc()
         data = data.copy()
 
         columns_dict = self.get_ohlc_columns()
@@ -979,7 +972,7 @@ class Client(metaclass=ABCMeta):
                 # df = df.set_index(date_column)
                 columns.remove(date_column)
                 data = data[columns]
-        for ps in self.__preprocesses:
+        for ps in self.pre_process:
             data = ps.revert(data)
         return data
 
