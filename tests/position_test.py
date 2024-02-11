@@ -1,6 +1,5 @@
 import json
 import os
-import random
 import sys
 import time
 import unittest
@@ -8,7 +7,7 @@ import unittest
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 from finance_client import db
-from finance_client.position import ORDER_TYPE, POSITION_TYPE, Position
+from finance_client.position import POSITION_TYPE, Position
 from finance_client.wallet import Manager
 
 

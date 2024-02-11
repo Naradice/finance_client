@@ -23,6 +23,9 @@ class BaseStorage:
         for position in positions:
             self.store_position(position)
 
+    def store_symbol_info(self, symbol, rating=None, date=None, source=None):
+        pass
+
     def has_position(self, id) -> bool:
         return (id in self._positions[POSITION_TYPE.long]) or (id in self._positions[POSITION_TYPE.short])
 
@@ -53,6 +56,12 @@ class BaseStorage:
             if isinstance(symbols, str):
                 symbols = [symbols]
             return list(filter(lambda position: position.symbol in symbols, short_positions))
+
+    def get_symbol_info(self, symbol, source=None):
+        return []
+
+    def get_trade_logs(self):
+        return []
 
     def _get_listening_positions(self):
         listening_positions = {}
@@ -97,9 +106,6 @@ class BaseStorage:
     def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
         pass
 
-    def load_trade_logs(self):
-        return []
-
     def close(self):
         pass
 
@@ -107,6 +113,7 @@ class BaseStorage:
 class FileStorage(BaseStorage):
     __position_lock = threading.Lock()
     __log_lock = threading.Lock()
+    __symbol_loc = threading.Lock()
 
     def _check_path(self, file_path, default_file_name: str):
         if file_path is None:
@@ -120,7 +127,14 @@ class FileStorage(BaseStorage):
             os.makedirs(base_path)
         return file_path
 
-    def __init__(self, provider: str, positions_path: str = None, trade_log_path: str = None, save_period: float = 0) -> None:
+    def __init__(
+        self,
+        provider: str,
+        positions_path: str = None,
+        trade_log_path: str = None,
+        rating_log_path: str = None,
+        save_period: float = 0,
+    ) -> None:
         """File Handler to store objects. This class doesn't care a bout accesses from multiple instances.
 
         Args:
@@ -131,6 +145,7 @@ class FileStorage(BaseStorage):
         super().__init__(provider)
         self.positions_path = self._check_path(positions_path, "positions.json")
         self.trade_log_path = self._check_path(trade_log_path, "finance_trade_log.csv")
+        self.rating_log_path = self._check_path(rating_log_path, "symbols.json")
         self._load_positions()
 
         self.__update_required = False
@@ -182,6 +197,23 @@ class FileStorage(BaseStorage):
             save_header = not os.path.exists(self.trade_log_path)
             df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
 
+    def __update_rating_file(self, rating_info: List[List]):
+        """
+        Args:
+            rating_info (List[List[str, str, str, str]]): List of [symbol, rating_info, date, source]
+        """
+        with self.__symbol_loc:
+            data = self._load_json(self.rating_log_path)
+            if data is None:
+                data = {}
+            for info in rating_info:
+                symbol = info[0]
+                if symbol in data:
+                    data[symbol].append(info[1:])
+                else:
+                    data[symbol] = [info[1:]]
+            self._save_json(data, self.rating_log_path)
+
     def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
         log_item = {}
         log_item["provider"] = self.provider
@@ -211,6 +243,27 @@ class FileStorage(BaseStorage):
                 self.__update_log_file()
                 self.__update_required = False
 
+    def get_symbol_info(self, symbol, source):
+        with self.__symbol_loc:
+            data = self._load_json(self.rating_log_path)
+        if symbol in data:
+            data = data[symbol]
+            df = pd.DataFrame(data, columns=["rating", "date", "source"])
+            output = []
+            source_df = df[df["source"] == source]
+            rating_info = source_df.iloc[-1].values
+            source_rate = [symbol]
+            source_rate.extend(rating_info)
+            output = source_rate
+            return output
+        else:
+            return None
+
+    def get_trade_logs(self):
+        df = pd.read_csv(self.trade_log_path)
+        provider_logs = df[df["provider"] == self.provider]
+        return provider_logs
+
     def delete_position(self, id, price, amount):
         suc, p = super().delete_position(id)
         log_item = self._convert_position_to_log(p, price, amount)
@@ -233,8 +286,18 @@ class FileStorage(BaseStorage):
         super().store_positions(positions)
         self.__log_queue.extend([self._convert_position_to_log(position) for position in positions])
         t = threading.Thread(target=self.__update_positions_file)
+        t.start()
         t = threading.Thread(target=self.__update_log_file)
         t.start()
+
+    def store_symbol_info(self, symbol, rating=None, date=None, source=None):
+        if date is not None and isinstance(date, datetime.datetime):
+            date = date.isoformat()
+        symbol_info = [symbol, rating, date, source]
+        self.__update_rating_file([symbol_info])
+
+    def store_symbols_info(self, symbols_info_list: List[List]):
+        self.__update_rating_file(symbols_info_list)
 
     def update_position(self, position):
         super().store_position(position)
@@ -270,11 +333,6 @@ class FileStorage(BaseStorage):
                     position = Position(**_position)
                     self._positions[POSITION_TYPE.short][position.id] = position
 
-    def load_trade_logs(self):
-        df = pd.read_csv(self.trade_log_path)
-        provider_logs = df[df["provider"] == self.provider]
-        return provider_logs
-
     def close(self):
         self.__running = False
         self.__update_positions_file()
@@ -306,6 +364,21 @@ class SQLiteStorage(BaseStorage):
         "order_type": "INT",
         "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
+    SYMBOL_TABLE_NAME = "symbol"
+    _SYMBOL_TABLE_KEYS = {
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "code": "TEXT",
+    }
+
+    RATING_TABLE_NAME = "rating"
+    _RATING_TABLE_KEYT = {
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "symbol_id": "INTEGER",
+        "ratings": "TEXT",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "source": "TEXT",
+    }
+    # FOREIGN KEY (symbol_id) REFERENCES symbol(id)
     __lock = threading.Lock()
 
     def _table_init(self):
