@@ -1,8 +1,11 @@
+import datetime
 import json
 import os
 import threading
 import time
 from typing import List
+
+import pandas as pd
 
 from finance_client import logger
 from finance_client.position import POSITION_TYPE, Position
@@ -59,16 +62,39 @@ class BaseStorage:
                     listening_positions[position.id] = position
         return listening_positions
 
-    def delete_position(self, id):
+    def delete_position(self, id, price=None, amount=None):
         if id in self._positions[POSITION_TYPE.long]:
-            self._positions[POSITION_TYPE.long].pop(id)
-            return True
+            position = self._positions[POSITION_TYPE.long].pop(id)
+            return True, position
         elif id in self._positions[POSITION_TYPE.short]:
-            self._positions[POSITION_TYPE.short].pop(id)
-            return True
-        return False
+            position = self._positions[POSITION_TYPE.short].pop(id)
+            return True, position
+        return False, None
 
-    def store_trade_log(self, log: list):
+    def update_position(self, position):
+        self.store_position(position)
+
+    def _convert_position_to_log(self, position: Position, closed_price=None, amount=None):
+        if closed_price is None:
+            order_type = 1
+            price = position.price
+            amount = position.amount
+        else:
+            order_type = -1
+            price = closed_price
+            amount = amount
+        log_item = {}
+        log_item["provider"] = self.provider
+        log_item["symbol"] = position.symbol
+        log_item["time"] = position.index
+        log_item["price"] = price
+        log_item["amount"] = amount
+        log_item["position_type"] = position.position_type.value
+        log_item["order_type"] = order_type
+        log_item["logged_at"] = datetime.datetime.utcnow().isoformat()
+        return log_item
+
+    def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
         pass
 
     def load_trade_logs(self):
@@ -94,7 +120,7 @@ class FileStorage(BaseStorage):
             os.makedirs(base_path)
         return file_path
 
-    def __init__(self, provider: str, positions_path: str = None, save_period: float = 0) -> None:
+    def __init__(self, provider: str, positions_path: str = None, trade_log_path: str = None, save_period: float = 0) -> None:
         """File Handler to store objects. This class doesn't care a bout accesses from multiple instances.
 
         Args:
@@ -104,11 +130,13 @@ class FileStorage(BaseStorage):
         """
         super().__init__(provider)
         self.positions_path = self._check_path(positions_path, "positions.json")
+        self.trade_log_path = self._check_path(trade_log_path, "finance_trade_log.csv")
         self._load_positions()
 
         self.__update_required = False
         self.save_period = save_period * 60.0
         self.__running = True
+        self.__log_queue = []
         if save_period > 0:
             self.__immediate_save = False
             threading.Thread(target=self._prerodical_update, daemon=True).start()
@@ -145,30 +173,75 @@ class FileStorage(BaseStorage):
         with self.__position_lock:
             self._save_json(_positions, self.positions_path)
 
+    def __update_log_file(self):
+        with self.__log_lock:
+            logs = self.__log_queue.copy()
+            self.__log_queue = []
+
+            df = pd.DataFrame.from_dict(logs)
+            save_header = not os.path.exists(self.trade_log_path)
+            df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
+
+    def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
+        log_item = {}
+        log_item["provider"] = self.provider
+        log_item["symbol"] = symbol
+        log_item["time"] = time_index
+        log_item["price"] = price
+        log_item["amount"] = amount
+        log_item["position_type"] = position_type.value
+        if is_open is True:
+            log_item["order_type"] = 1
+        else:
+            log_item["order_type"] = -1
+        log_item["logged_at"] = datetime.datetime.utcnow().isoformat()
+        if self.__immediate_save is True:
+            df = pd.DataFrame.from_dict([log_item])
+            save_header = not os.path.exists(self.trade_log_path)
+            df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
+        else:
+            self.__log_queue.append(log_item)
+            self.__update_required = True
+
     def _prerodical_update(self):
         while self.__running:
             time.sleep(self.save_period)
             if self.__update_required is True:
                 self.__update_positions_file()
+                self.__update_log_file()
                 self.__update_required = False
 
-    def delete_position(self, id):
-        suc = super().delete_position(id)
+    def delete_position(self, id, price, amount):
+        suc, p = super().delete_position(id)
+        log_item = self._convert_position_to_log(p, price, amount)
+        self.__log_queue.append(log_item)
         if self.__immediate_save is True:
             self.__update_positions_file()
+            self.__update_log_file()
         self.__update_required = True
         return suc
 
     def store_position(self, position: Position):
         super().store_position(position)
+        self.__log_queue.append(self._convert_position_to_log(position))
         if self.__immediate_save is True:
             self.__update_positions_file()
+            self.__update_log_file()
         self.__update_required = True
 
     def store_positions(self, positions: List[Position]):
         super().store_positions(positions)
+        self.__log_queue.extend([self._convert_position_to_log(position) for position in positions])
         t = threading.Thread(target=self.__update_positions_file)
+        t = threading.Thread(target=self.__update_log_file)
         t.start()
+
+    def update_position(self, position):
+        super().store_position(position)
+        if self.__immediate_save is True:
+            self.__update_positions_file()
+            # save log file separately as position doesn't have closed price
+        self.__update_required = True
 
     def _load_positions(self):
         """
@@ -197,11 +270,10 @@ class FileStorage(BaseStorage):
                     position = Position(**_position)
                     self._positions[POSITION_TYPE.short][position.id] = position
 
-    def store_trade_log(self, log: list):
-        pass
-
     def load_trade_logs(self):
-        return []
+        df = pd.read_csv(self.trade_log_path)
+        provider_logs = df[df["provider"] == self.provider]
+        return provider_logs
 
     def close(self):
         self.__running = False
@@ -222,6 +294,18 @@ class SQLiteStorage(BaseStorage):
         "amount": "REAL",
         "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
+    TRADE_TABLE_NAME = "trade"
+    _TRADE_TABLE_KEYS = {
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "provider": "TEXT",
+        "symbol": "TEXT",
+        "time_index": "TEXT",
+        "price": "REAL",
+        "amount": "REAL",
+        "position_type": "INT",
+        "order_type": "INT",
+        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    }
     __lock = threading.Lock()
 
     def _table_init(self):
@@ -234,6 +318,15 @@ class SQLiteStorage(BaseStorage):
             )
             """
         )
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._TRADE_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.TRADE_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
+        cursor.close()
 
     def __init__(self, database_path, provider: str) -> None:
         super().__init__(provider)
@@ -246,9 +339,9 @@ class SQLiteStorage(BaseStorage):
         place_holders = f"({'?,' * (num -1)}?)"
         return place_holders
 
-    def __create_basic_query(self, table_schema: dict):
-        keys = ",".join(table_schema.keys())
-        place_holders = self.__create_place_holder(len(table_schema))
+    def __create_basic_query(self, table_schema_keys: list):
+        keys = ",".join(table_schema_keys)
+        place_holders = self.__create_place_holder(len(table_schema_keys))
         return keys, place_holders
 
     def __commit(self, query, params=()):
@@ -284,8 +377,7 @@ class SQLiteStorage(BaseStorage):
         return positions
 
     def store_position(self, position: Position):
-        super().store_position(position)
-        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS)
+        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
         values = (
             position.id,
             self.provider,
@@ -300,10 +392,10 @@ class SQLiteStorage(BaseStorage):
         )
         query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__commit(query, values)
+        self.__store_log(position, True)
 
     def store_positions(self, positions: List[Position]):
-        super().store_positions(positions)
-        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS)
+        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
         values = [
             (
                 position.id,
@@ -321,6 +413,25 @@ class SQLiteStorage(BaseStorage):
         ]
         query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__multi_commit(query, values)
+        self.__store_logs(positions, True)
+
+    def update_position(self, position):
+        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        values = (
+            position.id,
+            self.provider,
+            position.symbol,
+            position.position_type.value,
+            position.price,
+            position.tp,
+            position.sl,
+            position.index,
+            position.amount,
+            position.timestamp,
+            position.id,
+        )
+        query = f"UPDATE {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders} WHERE id = ?"
+        self.__commit(query, values)
 
     def has_position(self, id) -> bool:
         return super().has_position(id)
@@ -373,13 +484,56 @@ class SQLiteStorage(BaseStorage):
         positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
         return positions
 
-    def delete_position(self, id):
-        suc = super().delete_position(id)
+    def _convert_position_to_log(self, p: Position, is_open):
+        if is_open is True:
+            order_type = 1
+        else:
+            order_type = -1
+        values = (
+            self.provider,
+            p.symbol,
+            p.index,
+            p.price,
+            p.amount,
+            p.position_type.value,
+            order_type,
+            datetime.datetime.utcnow(),
+        )
+        return values
+
+    def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
+        if is_open is True:
+            order_type = 1
+        else:
+            order_type = -1
+        keys, place_holders = self.__create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        values = (self.provider, symbol, time_index, price, amount, position_type.value, order_type, datetime.datetime.utcnow())
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__commit(query, values)
+
+    def __store_log(self, position: Position, is_open):
+        values = self._convert_position_to_log(position, is_open)
+        keys, place_holders = self.__create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__commit(query, values)
+
+    def __store_logs(self, positions: List[Position], is_open):
+        log_values = [self._convert_position_to_log(p, is_open) for p in positions]
+        keys, place_holders = self.__create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__multi_commit(query, log_values)
+
+    def delete_position(self, id, price=None, amount=None):
+        p = self.get_position(id)
         query = f"DELETE FROM {self.POSITION_TABLE_NAME}"
         cond = "WHERE id = ? AND provider = ?"
         query = f"{query} {cond}"
-        self.__commit(query, (id, self.provider))
-        return suc
+        try:
+            self.__commit(query, (id, self.provider))
+            self._store_log(p.symbol, None, price, amount, p.position_type, False)
+            return False
+        except Exception:
+            return False
 
     def close(self):
         self.__conn.close()

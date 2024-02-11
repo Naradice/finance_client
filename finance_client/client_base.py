@@ -63,6 +63,7 @@ class Client(metaclass=ABCMeta):
         if storage is None:
             db_path = os.path.join(os.path.dirname(__file__), "fc.db")
             storage = db.SQLiteStorage(db_path, provider)
+            # storage = db.FileStorage(provider)
         self.wallet = wallet.Manager(budget=budget, storage=storage, logger=logger, provider=provider)
 
         if idc_process is None:
@@ -1131,3 +1132,9 @@ class Client(metaclass=ABCMeta):
         random.seed(seed)
         np.random.seed(seed)
         self.seed_value = seed
+
+    def close(self):
+        try:
+            self.wallet.storage.close()
+        except Exception:
+            pass

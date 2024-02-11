@@ -126,10 +126,13 @@ class Manager:
             profit = self.trade_unit * amount * price_diff
             return_budget = self.trade_unit * amount * position.price + profit
             if position.amount == amount:
-                self.storage.delete_position(id)
+                self.storage.delete_position(id, price, amount)
             else:
                 position.amount -= amount
-                self.storage.store_position(position)
+                self.storage.update_position(position)
+                self.storage._store_log(
+                    position.symbol, position.index, position.price, position.amount, position.position_type, False
+                )
             self.logger.info(f"closed result:: profit {profit}, budget: {return_budget}")
             self.budget += return_budget
             self.remove_position_from_listening(id)
