@@ -171,10 +171,11 @@ class Client(metaclass=ABCMeta):
                     amount = position.amount
                 else:
                     self.logger.error(f"both amount and position is None: {id}")
+                    return None, None, None, None, False
         else:
             if symbol is None or position_type is None:
                 self.logger.error("Either id or symbol and position_type should be specified.")
-                return None, False
+                return None, None, None, None, False
             if amount is None:
                 amount = 1
             position = Position(
@@ -198,7 +199,7 @@ class Client(metaclass=ABCMeta):
                 self.logger.debug(f"order close with current ask rate {price}")
             result = self._sell_for_settlment(position.symbol, price, amount, position.option, position.result)
             if result is False:
-                return None, False
+                return None, None, None, None, False
             position_plot = -2
         elif position.position_type == POSITION_TYPE.short:
             self.logger.debug(f"close short position is ordered for {id}")
@@ -207,7 +208,7 @@ class Client(metaclass=ABCMeta):
                 price = self.get_current_ask(position.symbol)
             result = self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             if result is False:
-                return None, False
+                return None, None, None, None, False
             position_plot = -1
         else:
             self.logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
@@ -791,7 +792,10 @@ class Client(metaclass=ABCMeta):
         print("Need to implement reset")
 
     def close_client(self):
-        pass
+        try:
+            self.wallet.storage.close()
+        except Exception:
+            pass
 
     @property
     def max(self):
@@ -1132,9 +1136,3 @@ class Client(metaclass=ABCMeta):
         random.seed(seed)
         np.random.seed(seed)
         self.seed_value = seed
-
-    def close(self):
-        try:
-            self.wallet.storage.close()
-        except Exception:
-            pass

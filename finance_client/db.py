@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import sqlite3
 import threading
 import time
 from typing import List
@@ -23,7 +24,7 @@ class BaseStorage:
         for position in positions:
             self.store_position(position)
 
-    def store_symbol_info(self, symbol, rating=None, date=None, source=None):
+    def store_symbol_info(self, symbol, rating=None, date=None, source=None, market=None):
         pass
 
     def has_position(self, id) -> bool:
@@ -57,7 +58,7 @@ class BaseStorage:
                 symbols = [symbols]
             return list(filter(lambda position: position.symbol in symbols, short_positions))
 
-    def get_symbol_info(self, symbol, source=None):
+    def get_symbol_info(self, symbol, source):
         return []
 
     def get_trade_logs(self):
@@ -200,7 +201,7 @@ class FileStorage(BaseStorage):
     def __update_rating_file(self, rating_info: List[List]):
         """
         Args:
-            rating_info (List[List[str, str, str, str]]): List of [symbol, rating_info, date, source]
+            rating_info (List[List[Union[str, str, str, str, str]]]): List of [symbol, rating_info, date, source, str]
         """
         with self.__symbol_loc:
             data = self._load_json(self.rating_log_path)
@@ -248,14 +249,10 @@ class FileStorage(BaseStorage):
             data = self._load_json(self.rating_log_path)
         if symbol in data:
             data = data[symbol]
-            df = pd.DataFrame(data, columns=["rating", "date", "source"])
-            output = []
+            df = pd.DataFrame(data, columns=["rating", "date", "source", "market"])
             source_df = df[df["source"] == source]
-            rating_info = source_df.iloc[-1].values
-            source_rate = [symbol]
-            source_rate.extend(rating_info)
-            output = source_rate
-            return output
+            rating_info = source_df.iloc[-1].values.tolist()
+            return rating_info[:3]
         else:
             return None
 
@@ -290,10 +287,10 @@ class FileStorage(BaseStorage):
         t = threading.Thread(target=self.__update_log_file)
         t.start()
 
-    def store_symbol_info(self, symbol, rating=None, date=None, source=None):
+    def store_symbol_info(self, symbol, rating=None, date=None, source=None, market=None):
         if date is not None and isinstance(date, datetime.datetime):
             date = date.isoformat()
-        symbol_info = [symbol, rating, date, source]
+        symbol_info = [symbol, rating, date, source, market]
         self.__update_rating_file([symbol_info])
 
     def store_symbols_info(self, symbols_info_list: List[List]):
@@ -368,6 +365,8 @@ class SQLiteStorage(BaseStorage):
     _SYMBOL_TABLE_KEYS = {
         "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
         "code": "TEXT",
+        "name": "TEXT",
+        "market": "TEXT",
     }
 
     RATING_TABLE_NAME = "rating"
@@ -375,10 +374,9 @@ class SQLiteStorage(BaseStorage):
         "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
         "symbol_id": "INTEGER",
         "ratings": "TEXT",
-        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "created_at": "DATE DEFAULT CURRENT_DATE",
         "source": "TEXT",
     }
-    # FOREIGN KEY (symbol_id) REFERENCES symbol(id)
     __lock = threading.Lock()
 
     def _table_init(self):
@@ -399,14 +397,39 @@ class SQLiteStorage(BaseStorage):
             )
             """
         )
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._SYMBOL_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.SYMBOL_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._RATING_TABLE_KEYT.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.RATING_TABLE_NAME} (
+                {table_schema},
+                FOREIGN KEY (symbol_id) REFERENCES {self.SYMBOL_TABLE_NAME}(id)
+            )
+            """
+        )
         cursor.close()
 
     def __init__(self, database_path, provider: str) -> None:
         super().__init__(provider)
-        import sqlite3
 
         self.__conn = sqlite3.connect(database_path)
+        self.__database_path = database_path
         self._table_init()
+
+    def _get_cursor(self):
+        try:
+            return self.__conn.cursor()
+        except sqlite3.ProgrammingError:
+            self.__conn = sqlite3.connect(self.__database_path)
+        except Exception as e:
+            raise e
 
     def __create_place_holder(self, num: int):
         place_holders = f"({'?,' * (num -1)}?)"
@@ -419,21 +442,21 @@ class SQLiteStorage(BaseStorage):
 
     def __commit(self, query, params=()):
         with self.__lock:
-            cursor = self.__conn.cursor()
+            cursor = self._get_cursor()
             cursor.execute(query, params)
             self.__conn.commit()
             cursor.close()
 
     def __multi_commit(self, query, params_list):
         with self.__lock:
-            cursor = self.__conn.cursor()
+            cursor = self._get_cursor()
             cursor.executemany(query, params_list)
             self.__conn.commit()
             cursor.close()
 
     def __fetch(self, query, params=()):
         with self.__lock:
-            cursor = self.__conn.cursor()
+            cursor = self._get_cursor()
             cursor.execute(query, params)
             records = cursor.fetchall()
             cursor.close()
@@ -487,6 +510,46 @@ class SQLiteStorage(BaseStorage):
         query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__multi_commit(query, values)
         self.__store_logs(positions, True)
+
+    def __get_symbol_id(self, symbol, name=None, market=None, retry=0):
+        if symbol is not None and isinstance(symbol, (str, int)):
+            get_query = f"SELECT id FROM {self.SYMBOL_TABLE_NAME} WHERE code = ?"
+            ids = self.__fetch(get_query, (str(symbol),))
+            if len(ids) > 0:
+                return ids[0][0]
+            else:
+                keys, place_holders = self.__create_basic_query(list(self._SYMBOL_TABLE_KEYS.keys())[1:])
+                query = f"INSERT INTO {self.SYMBOL_TABLE_NAME} ({keys}) VALUES {place_holders}"
+                values = (symbol, name, market)
+                self.__commit(query, values)
+                ids = self.__fetch(get_query, (str(symbol),))
+                if len(ids) > 0:
+                    return ids[0][0]
+                else:
+                    return None
+
+    def store_symbol_info(self, symbol, rating: str = None, date: datetime.date = None, source=None, market=None):
+        id = self.__get_symbol_id(symbol, name=None, market=market)
+        if id is not None:
+            if date is None:
+                date = datetime.datetime.utcnow().date()
+            key_list = list(self._RATING_TABLE_KEYT.keys())
+            keys, place_holders = self.__create_basic_query(key_list[1:])
+            query = f"""
+            INSERT INTO {self.RATING_TABLE_NAME} ({keys})
+            SELECT ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {self.RATING_TABLE_NAME}
+                WHERE symbol_id = ?
+                AND created_at >= ?
+            );
+            """
+            values = (id, rating, date, source, id, date)
+            self.__commit(query, values)
+
+    def store_symbols_info(self, symbols_info_list: List[List]):
+        for item in symbols_info_list:
+            self.store_symbol_info(*item)
 
     def update_position(self, position):
         keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
@@ -550,6 +613,16 @@ class SQLiteStorage(BaseStorage):
     def get_short_positions(self, symbols: list = None) -> list:
         _, short_positions = self.get_positions(symbols, POSITION_TYPE.short)
         return short_positions
+
+    def get_symbol_info(self, symbol, source):
+        id = self.__get_symbol_id(symbol)
+        if id is not None:
+            query = f"SELECT ratings,MAX(created_at),source FROM {self.RATING_TABLE_NAME} WHERE symbol_id = ? AND source = ?"
+            params = (id, source)
+            result = self.__fetch(query, params)
+            return result[0]
+        else:
+            return []
 
     def _get_listening_positions(self):
         query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND (tp IS NOT NULL OR sl IS NOT NULL)"

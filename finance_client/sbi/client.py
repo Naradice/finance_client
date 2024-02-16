@@ -1,3 +1,4 @@
+import datetime
 import os
 
 import pandas as pd
@@ -13,13 +14,15 @@ except ImportError:
 
 
 class SBIClient(Client):
+    kinds = "sbi"
     ID_KEY = "sbi_id"
     PASS_KEY = "sbi_password"
     TRADE_PASS_KEY = "sbi_trade_password"
+    __db_source_key = "sbi"
 
     def __init__(
         self,
-        symbols: list,
+        symbols: list = None,
         id: str = None,
         password: str = None,
         trade_password: str = None,
@@ -29,6 +32,7 @@ class SBIClient(Client):
         start_index=0,
         frame: int = Frame.D1,
         provider="Default",
+        storage=None,
         do_render=False,
         enable_trade_log=False,
         logger=None,
@@ -64,6 +68,7 @@ class SBIClient(Client):
             provider=provider,
             frame=frame,
             do_render=do_render,
+            storage=storage,
             enable_trade_log=enable_trade_log,
             logger=logger,
         )
@@ -121,7 +126,8 @@ class SBIClient(Client):
 
     # defined by the actual client for dataset or env
     def close_client(self):
-        pass
+        self.rpa_client.driver.quit()
+        super().close_client()
 
     def get_next_tick(self, frame=5):
         print("Need to implement get_next_tick")
@@ -129,8 +135,60 @@ class SBIClient(Client):
     def reset(self, mode=None):
         print("Need to implement reset")
 
+    def __convert_to_store(self, rating_dict: dict):
+        db_items = []
+        date = datetime.datetime.utcnow().date()
+        for symbol, rate_dict in rating_dict.items():
+            rates = [rate_dict[5], rate_dict[4], rate_dict[3], rate_dict[2], rate_dict[1]]
+            rate_str = ",".join([str(value) for value in rates])
+            item = [symbol, rate_str, date, self.__db_source_key]
+            db_items.append(item)
+        return db_items
+
+    def __convert_to_rate(self, record):
+        rate_str = record[0]
+        date_str = record[1]
+        source = record[2]
+
+        if rate_str is None:
+            return None, None, None
+
+        try:
+            date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            self.logger.exception(f"failed to convered date of stored rate: {date_str}")
+            return None, None, None
+
+        rates = rate_str.split(",")
+        rate_dict = {}
+        for index, rank in enumerate(range(len(rates), 0, -1)):
+            rate_dict[rank] = float(rates[index])
+        return rate_dict, date, source
+
     def get_rating(self, symbols):
+        if isinstance(symbols, str):
+            symbols = [symbols]
+        existing_rate = {}
+        today = datetime.datetime.utcnow().date()
+        if self.wallet.storage is not None:
+            __symbols = symbols.copy()
+            symbols = []
+            for symbol in __symbols:
+                record = self.wallet.storage.get_symbol_info(symbol, self.__db_source_key)
+                rate, date, _ = self.__convert_to_rate(record)
+                if date is not None and rate is not None:
+                    if date < today:
+                        symbols.append(symbol)
+                    else:
+                        existing_rate[symbol] = rate
+                else:
+                    symbols.append(symbol)
+
         ratings_dict = self.rpa_client.get_ratings(symbols)
+        if self.wallet.storage is not None:
+            items = self.__convert_to_store(ratings_dict)
+            self.wallet.storage.store_symbols_info(items)
+        ratings_dict.update(existing_rate)
         ratings_df = pd.DataFrame.from_dict(ratings_dict)
         del ratings_dict
         reviwer_number = ratings_df.sum()

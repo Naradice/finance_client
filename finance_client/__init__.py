@@ -3,6 +3,7 @@ from .client_base import Client
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
 from .mt5.client import MT5Client
+from .sbi.client import SBIClient
 from .vantage.client import VantageClient
 from .yfinance.client import YahooClient
 
@@ -11,6 +12,8 @@ available_clients = {
     MT5Client.kinds: MT5Client,
     VantageClient.kinds: VantageClient,
     CoinCheckClient.kinds: CoinCheckClient,
+    SBIClient.kinds: SBIClient,
+    YahooClient.kinds: YahooClient,
 }
 
 
