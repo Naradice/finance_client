@@ -4,12 +4,132 @@ import os
 import sqlite3
 import threading
 import time
+from abc import ABCMeta, abstractclassmethod
 from typing import List
 
 import pandas as pd
 
 from finance_client import logger
 from finance_client.position import POSITION_TYPE, Position
+
+
+def _check_path(file_path, default_file_name: str):
+    if file_path is None:
+        file_path = os.path.join(os.getcwd(), default_file_name)
+    else:
+        extension = default_file_name.split(".")[-1]
+        if extension not in file_path:
+            raise ValueError(f"only {extension} is supported. specified {file_path}")
+    base_path = os.path.dirname(file_path)
+    if os.path.exists(base_path) is False:
+        os.makedirs(base_path)
+    return file_path
+
+
+class LogStorage(metaclass=ABCMeta):
+    @abstractclassmethod
+    def _convert_position_to_log(self, provider, p: Position, is_open):
+        return {}
+
+    @abstractclassmethod
+    def store_log(self, symbol, p: Position, is_open):
+        pass
+
+    @abstractclassmethod
+    def store_logs(self, items):
+        pass
+
+    @abstractclassmethod
+    def get(self):
+        return []
+
+
+class LogCSVStorage(LogStorage):
+    __log_lock = threading.Lock()
+
+    def __init__(self, trade_log_path: str = None) -> None:
+        super().__init__()
+        self.trade_log_path = _check_path(trade_log_path, "finance_trade_log.csv")
+
+    def _convert_position_to_log(self, provider, p: Position, is_open):
+        log_item = {}
+        log_item["provider"] = provider
+        log_item["symbol"] = p.symbol
+        log_item["time"] = p.index
+        log_item["price"] = p.price
+        log_item["amount"] = p.amount
+        log_item["position_type"] = p.position_type.value
+        if is_open is True:
+            log_item["order_type"] = 1
+        else:
+            log_item["order_type"] = -1
+        log_item["logged_at"] = datetime.datetime.utcnow().isoformat()
+        return log_item
+
+    def store_log(self, provider, position: Position, is_open):
+        log_item = self._convert_position_to_log(provider, position, is_open)
+        df = pd.DataFrame.from_dict([log_item])
+        save_header = not os.path.exists(self.trade_log_path)
+        df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
+
+    def store_logs(self, items):
+        if len(items) > 0:
+            if isinstance(items[0], dict) is False:
+                log_items = []
+                for item in items:
+                    log_item = self._convert_position_to_log(*item)
+                    log_items.append(log_item)
+            else:
+                log_items = items
+            df = pd.DataFrame.from_dict(log_items)
+            save_header = not os.path.exists(self.trade_log_path)
+            df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
+
+    def get(self, provider):
+        df = pd.read_csv(self.trade_log_path)
+        provider_logs = df[df["provider"] == self.provider]
+        return provider_logs
+
+
+class LogSQLiteStorage(LogStorage):
+    TRADE_TABLE_NAME = "trade"
+    _TRADE_TABLE_KEYS = {
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "provider": "TEXT",
+        "symbol": "TEXT",
+        "time_index": "TEXT",
+        "price": "REAL",
+        "amount": "REAL",
+        "position_type": "INT",
+        "order_type": "INT",
+        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    }
+    
+     def __init__(self, database_path, provider: str) -> None:
+        super().__init__(provider)
+
+        self.__conn = sqlite3.connect(database_path)
+        self.__database_path = database_path
+        self._table_init()
+        
+    def _get_cursor(self):
+        try:
+            return self.__conn.cursor()
+        except sqlite3.ProgrammingError:
+            self.__conn = sqlite3.connect(self.__database_path)
+        except Exception as e:
+            raise e
+
+    def _table_init(self):
+        cursor = self.__conn.cursor()
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._TRADE_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.TRADE_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
 
 
 class BaseStorage:
@@ -113,27 +233,14 @@ class BaseStorage:
 
 class FileStorage(BaseStorage):
     __position_lock = threading.Lock()
-    __log_lock = threading.Lock()
     __symbol_loc = threading.Lock()
-
-    def _check_path(self, file_path, default_file_name: str):
-        if file_path is None:
-            file_path = os.path.join(os.getcwd(), default_file_name)
-        else:
-            extension = default_file_name.split(".")[-1]
-            if extension not in file_path:
-                raise ValueError(f"only {extension} is supported. specified {file_path}")
-        base_path = os.path.dirname(file_path)
-        if os.path.exists(base_path) is False:
-            os.makedirs(base_path)
-        return file_path
 
     def __init__(
         self,
         provider: str,
         positions_path: str = None,
-        trade_log_path: str = None,
         rating_log_path: str = None,
+        trade_log_db: LogStorage = None,
         save_period: float = 0,
     ) -> None:
         """File Handler to store objects. This class doesn't care a bout accesses from multiple instances.
@@ -144,9 +251,11 @@ class FileStorage(BaseStorage):
             save_period (float, optional): minutes to periodically save positions. less than 0 save them immedeately when it is updated. Defaults to 1.0.
         """
         super().__init__(provider)
-        self.positions_path = self._check_path(positions_path, "positions.json")
-        self.trade_log_path = self._check_path(trade_log_path, "finance_trade_log.csv")
-        self.rating_log_path = self._check_path(rating_log_path, "symbols.json")
+        self.positions_path = _check_path(positions_path, "positions.json")
+        self.rating_log_path = _check_path(rating_log_path, "symbols.json")
+        if trade_log_db is None:
+            pass
+        self._trade_log_db = trade_log_db
         self._load_positions()
 
         self.__update_required = False
@@ -189,15 +298,6 @@ class FileStorage(BaseStorage):
         with self.__position_lock:
             self._save_json(_positions, self.positions_path)
 
-    def __update_log_file(self):
-        with self.__log_lock:
-            logs = self.__log_queue.copy()
-            self.__log_queue = []
-
-            df = pd.DataFrame.from_dict(logs)
-            save_header = not os.path.exists(self.trade_log_path)
-            df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
-
     def __update_rating_file(self, rating_info: List[List]):
         """
         Args:
@@ -215,33 +315,25 @@ class FileStorage(BaseStorage):
                     data[symbol] = [info[1:]]
             self._save_json(data, self.rating_log_path)
 
-    def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
-        log_item = {}
-        log_item["provider"] = self.provider
-        log_item["symbol"] = symbol
-        log_item["time"] = time_index
-        log_item["price"] = price
-        log_item["amount"] = amount
-        log_item["position_type"] = position_type.value
-        if is_open is True:
-            log_item["order_type"] = 1
-        else:
-            log_item["order_type"] = -1
-        log_item["logged_at"] = datetime.datetime.utcnow().isoformat()
+    def _store_log(self, position: Position, is_open):
         if self.__immediate_save is True:
-            df = pd.DataFrame.from_dict([log_item])
-            save_header = not os.path.exists(self.trade_log_path)
-            df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
+            self._trade_log_db.store_log(self.provider, position, is_open)
         else:
+            log_item = self._trade_log_db._convert_position_to_log(self.provider, position, is_open)
             self.__log_queue.append(log_item)
             self.__update_required = True
+
+    def __update_trade_log(self):
+        log_items = self.__log_queue.copy()
+        self.__log_queue = []
+        self._trade_log_db.store_logs(log_items)
 
     def _prerodical_update(self):
         while self.__running:
             time.sleep(self.save_period)
             if self.__update_required is True:
                 self.__update_positions_file()
-                self.__update_log_file()
+                self.__update_trade_log()
                 self.__update_required = False
 
     def get_symbol_info(self, symbol, source):
@@ -257,9 +349,7 @@ class FileStorage(BaseStorage):
             return None
 
     def get_trade_logs(self):
-        df = pd.read_csv(self.trade_log_path)
-        provider_logs = df[df["provider"] == self.provider]
-        return provider_logs
+        return self._trade_log_db.get()
 
     def delete_position(self, id, price, amount):
         suc, p = super().delete_position(id)
@@ -333,6 +423,7 @@ class FileStorage(BaseStorage):
     def close(self):
         self.__running = False
         self.__update_positions_file()
+        self.__update_trade_log()
 
 
 class SQLiteStorage(BaseStorage):
@@ -348,18 +439,6 @@ class SQLiteStorage(BaseStorage):
         "time_index": "TEXT",
         "amount": "REAL",
         "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-    }
-    TRADE_TABLE_NAME = "trade"
-    _TRADE_TABLE_KEYS = {
-        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-        "provider": "TEXT",
-        "symbol": "TEXT",
-        "time_index": "TEXT",
-        "price": "REAL",
-        "amount": "REAL",
-        "position_type": "INT",
-        "order_type": "INT",
-        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
     SYMBOL_TABLE_NAME = "symbol"
     _SYMBOL_TABLE_KEYS = {
