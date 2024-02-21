@@ -125,10 +125,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
     def _proceed_step_until_date(self, data, start_date):
         is_date_found = False
         if data is not None and len(data) > 0:
-            if start_date is not None and type(start_date) is datetime.datetime:
-                # start_date = start_date.astimezone(datetime.timezone.utc)
-                start_date = start_date.replace(tzinfo=datetime.timezone.utc)
-                # TODO: update tz handling.
+            if start_date is not None and isinstance(start_date, datetime.datetime):
+                start_date = start_date.replace(tzinfo=data.index.tzinfo)
                 remaining_length = len(data.index[data.index >= start_date])
                 if remaining_length > 0:
                     start_index = len(data.index) - remaining_length
