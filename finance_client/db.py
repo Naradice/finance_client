@@ -105,7 +105,7 @@ class LogSQLiteStorage(LogStorage):
         "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
     
-     def __init__(self, database_path, provider: str) -> None:
+    def __init__(self, database_path, provider: str) -> None:
         super().__init__(provider)
 
         self.__conn = sqlite3.connect(database_path)

@@ -22,7 +22,6 @@ class Rendere:
         self.__indicater_process_info = {
             fprocess.BBANDProcess.kinds: {
                 "function": self.overlap_bolinger_band,
-                "columns": ("MV", "Width"),
                 "option": ("alpha",),
             }
         }
@@ -400,6 +399,8 @@ class Rendere:
                 ax.plot([x[index] + p_id, x[index] + p_id - 0.1], [val[open], val[open]], color=color)
                 ax.plot([x[index] + p_id, x[index] + p_id + 0.1], [val[close], val[close]], color=color)
                 p_id += 1
+        # ax.set_xticks(x)
+        # ax.set_xticklabels([date.strftime('%y-%m-%dT%H:%M') for date in ohlc.index], rotation=45)
 
     def __plot__xy(self, index, content):
         ax = self.__get_ax(index)
@@ -458,3 +459,4 @@ class Rendere:
 
     def close(self):
         plt.close()
+        self.__is_shown = True
