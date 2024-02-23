@@ -455,3 +455,6 @@ class Rendere:
             except Exception as e:
                 print("skipped save as ", e)
         plt.show()
+
+    def close(self):
+        plt.close()
