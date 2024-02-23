@@ -1,4 +1,4 @@
-# from finance_client.render.graph import Rendere
+import datetime
 import math
 from copy import copy
 
@@ -295,10 +295,9 @@ class Rendere:
         else:
             print(f"{index} is not registered.")
 
-    def overlap_bolinger_band(self, data, index, columns, alpha=2, std_column=None):
+    def overlap_bolinger_band(self, x, data, index, columns, alpha=2, std_column=None):
         mean_column, _, _, width_column = columns
         ax = self.__get_ax(index)
-        x = numpy.arange(0, len(data))
         std = data[width_column] / alpha
         y1 = data[mean_column] + std
         y2 = data[mean_column] - std
@@ -344,7 +343,15 @@ class Rendere:
             prediction = content["predictions"]
             do_plot_prediction = True
 
-        x = numpy.arange(0, len(ohlc))
+        try:
+            deltas = ohlc.index[1:] - ohlc.index[:-1]
+            delta = (deltas[deltas > datetime.timedelta(seconds=0)]).min()
+            tip_size = delta / 3
+            x = ohlc.index
+        except Exception:
+            x = numpy.arange(0, len(ohlc))
+            delta = 1
+            tip_size = delta / 10
 
         ax = self.__get_ax(index)
         ax.clear()
@@ -353,15 +360,15 @@ class Rendere:
         if "indicaters" in content:
             for idc_plot_info in content["indicaters"]:
                 func, columns, option = idc_plot_info
-                func(ohlc, index, columns, *option)
+                func(x, ohlc, index, columns, *option)
         index = 0
         for idx, val in ohlc.iterrows():
             color = "#2CA453"
             if val[open] > val[close]:
                 color = "#F04730"
             ax.plot([x[index], x[index]], [val[low], val[high]], color=color)
-            ax.plot([x[index], x[index] - 0.1], [val[open], val[open]], color=color)
-            ax.plot([x[index], x[index] + 0.1], [val[close], val[close]], color=color)
+            ax.plot([x[index], x[index] - tip_size], [val[open], val[open]], color=color)
+            ax.plot([x[index], x[index] + tip_size], [val[close], val[close]], color=color)
             index += 1
 
         index = 0
@@ -395,9 +402,9 @@ class Rendere:
                 color = "#b4f4b2"
                 if val[open] > val[close]:
                     color = "#ff9395"
-                ax.plot([x[index] + p_id, x[index] + p_id], [val[low], val[high]], color=color)
-                ax.plot([x[index] + p_id, x[index] + p_id - 0.1], [val[open], val[open]], color=color)
-                ax.plot([x[index] + p_id, x[index] + p_id + 0.1], [val[close], val[close]], color=color)
+                ax.plot([x[index] + p_id * delta, x[index] + p_id * delta], [val[low], val[high]], color=color)
+                ax.plot([x[index] + p_id * delta, x[index] + p_id * delta - tip_size], [val[open], val[open]], color=color)
+                ax.plot([x[index] + p_id * delta, x[index] + p_id * delta + tip_size], [val[close], val[close]], color=color)
                 p_id += 1
         # ax.set_xticks(x)
         # ax.set_xticklabels([date.strftime('%y-%m-%dT%H:%M') for date in ohlc.index], rotation=45)
