@@ -272,7 +272,19 @@ class Rendere:
         return idx
 
     def add_trade_histories_to_ohlc(self, positions: list, prices: list, index: int):
-        pass
+        if index in self.__data:
+            if len(positions) != len(prices):
+                print("position and price should have the same length")
+                return None
+            histories = []
+            for i in range(len(positions)):
+                if positions[i] == 0:
+                    histories.append([])
+                else:
+                    histories.append([[positions[i], prices[i]]])
+            self.__data[index]["trade_history"] = histories
+        else:
+            print(f"{index} is not registered.")
 
     def add_trade_history_to_latest_tick(self, position: int, price: float, index: int):
         if index in self.__data:
