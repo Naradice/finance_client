@@ -104,14 +104,14 @@ class LogSQLiteStorage(LogStorage):
         "order_type": "INT",
         "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
-    
+
     def __init__(self, database_path, provider: str) -> None:
         super().__init__(provider)
 
         self.__conn = sqlite3.connect(database_path)
         self.__database_path = database_path
         self._table_init()
-        
+
     def _get_cursor(self):
         try:
             return self.__conn.cursor()
@@ -455,6 +455,18 @@ class SQLiteStorage(BaseStorage):
         "ratings": "TEXT",
         "created_at": "DATE DEFAULT CURRENT_DATE",
         "source": "TEXT",
+    }
+    TRADE_TABLE_NAME = "trade"
+    _TRADE_TABLE_KEYS = {
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "provider": "TEXT",
+        "symbol": "TEXT",
+        "time_index": "TEXT",
+        "price": "REAL",
+        "amount": "REAL",
+        "position_type": "INT",
+        "order_type": "INT",
+        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
     __lock = threading.Lock()
 
