@@ -680,7 +680,7 @@ class SQLiteStorage(BaseStorage):
         if symbols is not None and len(symbols) > 0:
             place_holders = self.__create_place_holder(len(symbols))
             query = f"{query} AND symbol in {place_holders}"
-            params.append(symbols)
+            params.extend(symbols)
         if position_type is not None:
             query = f"{query} AND position_type = ?"
             params.append(position_type.value)

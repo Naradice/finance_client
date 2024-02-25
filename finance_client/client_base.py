@@ -228,12 +228,15 @@ class Client(metaclass=ABCMeta):
 
         if symbols is None:
             symbols = []
+        if isinstance(symbols, str):
+            symbols = [symbols]
 
-        positions = self.wallet.storage.get_positions(symbols=symbols)
+        both_positions = self.wallet.storage.get_positions(symbols=symbols)
         results = []
-        for position in positions:
-            result = self.close_position(position=position)
-            results.append(result)
+        for positions in both_positions:
+            for position in positions:
+                result = self.close_position(position=position)
+                results.append(result)
         pending_results = self.__pending_order_results.copy()
         for id, result in pending_results.items():
             results.append((result, False))
@@ -244,6 +247,8 @@ class Client(metaclass=ABCMeta):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
+        if isinstance(symbols, str):
+            symbols = [symbols]
         positions = self.wallet.storage.get_long_positions(symbols=symbols)
         results = []
         for position in positions:
@@ -255,6 +260,8 @@ class Client(metaclass=ABCMeta):
         """close all open_long_position.
         sell_for_settlement is calleds for each position
         """
+        if isinstance(symbols, str):
+            symbols = [symbols]
         positions = self.wallet.storage.get_short_positions(symbols=symbols)
         results = []
         for position in positions:
