@@ -519,6 +519,7 @@ class SQLiteStorage(BaseStorage):
             return self.__conn.cursor()
         except sqlite3.ProgrammingError:
             self.__conn = sqlite3.connect(self.__database_path)
+            return self.__conn.cursor()
         except Exception as e:
             raise e
 
