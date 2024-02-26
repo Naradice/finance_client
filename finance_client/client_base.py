@@ -215,10 +215,8 @@ class Client(metaclass=ABCMeta):
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         price, position.price, price_diff, profit = self.wallet.close_position(
-            position.id, price, amount=amount, position=position
+            position.id, price, amount=amount, position=position, index=self.get_current_datetime()
         )
-        if self.enable_trade_log:
-            self._trading_log(position, price, amount, False)
         return price, position.price, price_diff, profit, True
 
     def close_all_positions(self, symbols: list = None):
@@ -375,7 +373,11 @@ class Client(metaclass=ABCMeta):
                     if position.position_type == POSITION_TYPE.long:
                         if position.sl >= tick[low_column]:
                             result = self.wallet.close_position(
-                                id=position.id, price=position.sl, amount=position.amount, position=position
+                                id=position.id,
+                                price=position.sl,
+                                amount=position.amount,
+                                position=position,
+                                index=self.get_current_datetime(),
                             )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
@@ -387,7 +389,11 @@ class Client(metaclass=ABCMeta):
                     elif position.position_type == POSITION_TYPE.short:
                         if position.sl <= tick[high_column]:
                             result = self.wallet.close_position(
-                                id=position.id, price=position.sl, amount=position.amount, position=position
+                                id=position.id,
+                                price=position.sl,
+                                amount=position.amount,
+                                position=position,
+                                index=self.get_current_datetime(),
                             )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
@@ -405,7 +411,11 @@ class Client(metaclass=ABCMeta):
                         self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
                         if position.tp <= tick[high_column]:
                             result = self.wallet.close_position(
-                                id=position.id, price=position.tp, amount=position.amount, position=position
+                                id=position.id,
+                                price=position.tp,
+                                amount=position.amount,
+                                position=position,
+                                index=self.get_current_datetime(),
                             )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result
@@ -418,7 +428,11 @@ class Client(metaclass=ABCMeta):
                         self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
                         if position.tp >= tick[low_column]:
                             result = self.wallet.close_position(
-                                id=position.id, price=position.tp, amount=position.amount, position=position
+                                id=position.id,
+                                price=position.tp,
+                                amount=position.amount,
+                                position=position,
+                                index=self.get_current_datetime(),
                             )
                             if result is not None:
                                 self.__pending_order_results[position.id] = result

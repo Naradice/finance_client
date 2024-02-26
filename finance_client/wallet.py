@@ -95,7 +95,7 @@ class Manager:
                 self.logger.info(f"current budget {self.budget} is less than required {required_budget}")
                 return None
 
-    def close_position(self, id, price: float, amount: float = None, position=None):
+    def close_position(self, id, price: float, amount: float = None, position=None, index=None):
         """close a position based on the id generated when the positions is opened.
 
         Args:
@@ -126,12 +126,13 @@ class Manager:
             profit = self.trade_unit * amount * price_diff
             return_budget = self.trade_unit * amount * position.price + profit
             if position.amount == amount:
-                self.storage.delete_position(id, price, amount)
+                self.storage.delete_position(id, price, amount, index)
             else:
                 position.amount -= amount
                 self.storage.update_position(position)
                 self.storage._store_log(
-                    position.symbol, position.index, position.price, position.amount, position.position_type, False
+                    Position(position.position_type, position.symbol, price, position.amount, position.tp, position.sl, index),
+                    False,
                 )
             self.logger.info(f"closed result:: profit {profit}, budget: {return_budget}")
             self.budget += return_budget
