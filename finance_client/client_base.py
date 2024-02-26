@@ -1092,7 +1092,7 @@ class Client(metaclass=ABCMeta):
         long_positions, short_positions = self.wallet.storage.get_positions()
         ask_symbols = []
         if len(long_positions) > 0:
-            for id, position in long_positions.items():
+            for position in long_positions:
                 symbol = position.symbol
                 ask_symbols.append(symbol)
                 if symbol in portfolio["long"]:
@@ -1102,7 +1102,7 @@ class Client(metaclass=ABCMeta):
 
         bid_symbols = []
         if len(short_positions) > 0:
-            for id, position in short_positions.items():
+            for position in short_positions:
                 symbol = position.symbol
                 bid_symbols.append(symbol)
                 if symbol in portfolio["short"]:
