@@ -47,7 +47,11 @@ def overlap_bolinger_band(ax, data_df, width_column, mean_column, x=None, alpha=
 def plot_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00"):
     if x is None:
         x = data_df.index
-    ax.bar(x, data_df[macd_column], 0.5, color=color)
+    try:
+        width = (x[1:] - x[:-1]).min() / 3
+    except Exception:
+        width = 0.05
+    ax.bar(x, data_df[macd_column], width, color=color)
     ax.plot(x, data_df[signal_column], color=color)
 
 
