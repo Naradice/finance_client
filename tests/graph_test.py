@@ -10,7 +10,7 @@ import pandas as pd
 
 from finance_client import fprocess
 from finance_client.csv.client import CSVClient
-from finance_client.render.graph import Rendere
+from finance_client.graph import Rendere
 
 csv_file = "L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv"
 

@@ -282,8 +282,9 @@ class FileStorage(BaseStorage):
         self.positions_path = _check_path(positions_path, "positions.json")
         self.rating_log_path = _check_path(rating_log_path, "symbols.json")
         if trade_log_db is None:
-            pass
-        self._trade_log_db = trade_log_db
+            self._trade_log_db = LogCSVStorage()
+        else:
+            self._trade_log_db = trade_log_db
         self._load_positions()
 
         self.__update_required = False
@@ -431,7 +432,7 @@ class FileStorage(BaseStorage):
         short_positions = {}
         listening_positions = {}
         if os.path.exists(self.positions_path):
-            with self.__log_lock:
+            with self.__position_lock:
                 positions_dict = self._load_json(self.positions_path)
             if positions_dict is None:
                 return long_positions, short_positions, listening_positions

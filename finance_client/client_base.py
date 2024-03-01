@@ -11,10 +11,10 @@ import pandas as pd
 
 from . import db
 from . import frames as Frame
+from . import graph
 from . import logger as lg
 from . import wallet
 from .position import ORDER_TYPE, POSITION_TYPE, Position
-from .render import graph
 
 try:
     from .fprocess import fprocess

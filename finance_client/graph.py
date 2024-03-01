@@ -8,9 +8,9 @@ import numpy
 import pandas as pd
 
 try:
-    from ..fprocess import fprocess
+    from .fprocess import fprocess
 except ImportError:
-    from .. import fprocess
+    from . import fprocess
 
 
 def plot_candle(ax, ohlc_df, ohlc_columns, x=None, tip_size=None, bull="#2CA453", bear="#F04730"):
@@ -29,6 +29,60 @@ def plot_candle(ax, ohlc_df, ohlc_columns, x=None, tip_size=None, bull="#2CA453"
         ax.plot([x[index], x[index] - tip_size], [val[c_open], val[c_open]], color=color)
         ax.plot([x[index], x[index] + tip_size], [val[c_close], val[c_close]], color=color)
         index += 1
+
+
+def overlap_bolinger_band(ax, data_df, width_column, mean_column, x=None, alpha=2, color="#4daf4a"):
+    if x is None:
+        x = data_df.index
+    std = data_df[width_column] / alpha
+    y1 = data_df[mean_column] + std
+    y2 = data_df[mean_column] - std
+    ax.plot(x, data_df[mean_column], color=color)
+    ax.fill_between(x, y1, y2, alpha=0.4)
+    y1 = data_df[mean_column] + std * 2
+    y2 = data_df[mean_column] - std * 2
+    ax.fill_between(x, y1, y2, color=color, alpha=0.2)
+
+
+def plot_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00"):
+    if x is None:
+        x = data_df.index
+    ax.bar(x, data_df[macd_column], 0.5, color=color)
+    ax.plot(x, data_df[signal_column], color=color)
+
+
+def plot_renko(ax, data_df, renko_column, x=None, color="#a65628"):
+    if x is None:
+        x = data_df.index
+    ax.bar(x, 1, 1, data_df[renko_column] - 1, color=color)
+
+
+def adjust_ylim(ax, data_df, adjust_column):
+    min_value = data_df[adjust_column].min()
+    max_value = data_df[adjust_column].max()
+    margin = (max_value - min_value) * 0.3
+    ax.set_ylim(min_value - margin, max_value)
+
+
+def overlap_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00", adjust_column=None):
+    ax2 = ax.twinx()
+    plot_macd(ax2, data_df, macd_column, signal_column, x, color)
+
+    if adjust_column is not None:
+        adjust_ylim(ax, data_df, adjust_column)
+    min_value = data_df[macd_column].min()
+    max_value = data_df[macd_column].max() / 0.2
+    ax2.set_ylim(min_value, max_value)
+
+
+def overlap_renko(ax, data_df, renko_column, x=None, color="#a65628", adjust_column=None):
+    ax2 = ax.twinx()
+    plot_renko(ax2, data_df, renko_column, x, color)
+    if adjust_column is not None:
+        adjust_ylim(ax, data_df, adjust_column)
+    min_value = data_df[renko_column].min()
+    max_value = data_df[renko_column].max() / 0.5
+    ax2.set_ylim(min_value, max_value)
 
 
 def get_color(index):
@@ -328,48 +382,23 @@ class Rendere:
         else:
             print(f"{index} is not registered.")
 
-    def overlap_bolinger_band(self, x, data, index, columns, color_index=0, alpha=2, std_column=None):
+    def overlap_bolinger_band(self, x, data, index, columns, color_index=0, alpha=2):
         mean_column, _, _, width_column = columns
         ax = self.__get_ax(index)
         color = get_color(color_index)
-        std = data[width_column] / alpha
-        y1 = data[mean_column] + std
-        y2 = data[mean_column] - std
-        ax.plot(x, data[mean_column], color=color)
-        ax.fill_between(x, y1, y2, alpha=0.4)
-        y1 = data[mean_column] + std * 2
-        y2 = data[mean_column] - std * 2
-        ax.fill_between(x, y1, y2, color=color, alpha=0.2)
+        overlap_bolinger_band(ax, data, width_column, mean_column, x, alpha, color)
 
     def overlap_macd(self, x, data, index, columns, color_index=0, column="Close"):
         s_ema, l_ema, macd, sig = columns
         ax = self.__get_ax(index)
         color = get_color(color_index)
-        min_value = data[column].min()
-        max_value = data[column].max()
-        margin = (max_value - min_value) * 0.3
-
-        # ax.plot(x, data[s_ema], color="blue", alpha=0.5)
-        # ax.plot(x, data[l_ema], color="red", alpha=0.5)
-
-        ax.set_ylim(min_value - margin, max_value)
-        ax2 = ax.twinx()
-        ax2.bar(x, data[macd], 0.5, color=color)
-        ax2.plot(x, data[sig], color=color)
-        min_value = data[macd].min()
-        max_value = data[macd].max() / 0.2
-        ax2.set_ylim(min_value, max_value)
+        overlap_macd(ax, data, macd, sig, x, color, column)
 
     def overlap_renko(self, x, data, index, columns, color_index):
         ax = self.__get_ax(index)
         renko_b, renko_v = columns
         color = get_color(color_index)
-
-        ax2 = ax.twinx()
-        ax2.bar(data.index, 1, 1, data[renko_v] - 1, color=color)
-        min_value = data[renko_v].min()
-        max_value = data[renko_v].max() / 0.5
-        ax2.set_ylim(min_value, max_value)
+        overlap_renko(ax, data, renko_v, x, color)
 
     def overlap_indicater(self, data, time_column, index, columns: list = None, chart_type: str = "line"):
         pass
