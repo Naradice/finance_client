@@ -58,7 +58,11 @@ def plot_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00"):
 def plot_renko(ax, data_df, renko_column, x=None, color="#a65628"):
     if x is None:
         x = data_df.index
-    ax.bar(x, 1, 1, data_df[renko_column] - 1, color=color)
+    try:
+        width = (x[1:] - x[:-1]).min()
+    except Exception:
+        width = 1
+    ax.bar(x, 1, width, data_df[renko_column] - 1, color=color)
 
 
 def adjust_ylim(ax, data_df, adjust_column):
