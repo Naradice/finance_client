@@ -6,6 +6,11 @@ from time import sleep
 
 import dotenv
 
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
+
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
@@ -13,8 +18,6 @@ sys.path.append(module_path)
 import finance_client.vantage.client as vclient
 import finance_client.vantage.target as target
 from finance_client.coincheck.client import CoinCheckClient
-
-dotenv.load_dotenv(".env")
 
 
 class TestCCClient(unittest.TestCase):

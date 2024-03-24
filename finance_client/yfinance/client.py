@@ -8,7 +8,8 @@ from .. import frames as Frame
 from ..csv.client import CSVClient
 
 try:
-    from ..fprocess.fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
+    from ..fprocess.fprocess.csvrw import (get_file_path, read_csv,
+                                           write_df_to_csv)
 except ImportError:
     from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
@@ -66,7 +67,7 @@ class YahooClient(CSVClient):
 
     def __init__(
         self,
-        symbols=[],
+        symbols=None,
         auto_step_index=False,
         frame: int = Frame.MIN5,
         adjust_close: bool = False,
@@ -74,9 +75,10 @@ class YahooClient(CSVClient):
         seed=1017,
         slip_type="random",
         do_render=False,
-        idc_processes=[],
-        post_process=[],
+        idc_processes=None,
+        pre_process=None,
         enable_trade_log=False,
+        storage=None,
         budget=1000000,
         logger=None,
     ):
@@ -110,16 +112,17 @@ class YahooClient(CSVClient):
         self.__frame_delta = datetime.timedelta(minutes=frame)
         self.debug = False
 
-        if type(symbols) == list:
-            self.symbols = symbols
-        elif type(symbols) == str:
-            symbols = [symbols]
-            self.symbols = symbols
-        else:
-            # TODO: initialize logger
-            raise TypeError("symbol must be str or list.")
+        if symbols is not None:
+            if type(symbols) == list:
+                self.symbols = symbols
+            elif type(symbols) == str:
+                symbols = [symbols]
+                self.symbols = symbols
+            else:
+                # TODO: initialize logger
+                raise TypeError("symbol must be str or list.")
 
-        self.__get_rates(self.symbols)
+            self.__get_rates(self.symbols)
         super().__init__(
             auto_step_index=auto_step_index,
             file_name_generator=self._file_path_generator,
@@ -131,7 +134,10 @@ class YahooClient(CSVClient):
             start_index=start_index,
             do_render=do_render,
             seed=seed,
+            idc_process=idc_processes,
+            pre_process=pre_process,
             slip_type=slip_type,
+            storage=storage,
             enable_trade_log=enable_trade_log,
             budget=budget,
             logger=logger,

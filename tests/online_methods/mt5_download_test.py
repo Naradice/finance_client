@@ -4,12 +4,15 @@ import unittest
 
 import dotenv
 
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
+
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 from finance_client import MT5Client
-
-dotenv.load_dotenv("../.env")
 
 
 class TestMT5ClientDL(unittest.TestCase):

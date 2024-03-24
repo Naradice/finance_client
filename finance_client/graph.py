@@ -1,15 +1,102 @@
-# from finance_client.render.graph import Rendere
+import datetime
 import math
 from copy import copy
 
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy
 import pandas as pd
 
 try:
-    from ..fprocess import fprocess
+    from .fprocess import fprocess
 except ImportError:
-    from .. import fprocess
+    from . import fprocess
+
+
+def plot_candle(ax, ohlc_df, ohlc_columns, x=None, tip_size=None, bull="#2CA453", bear="#F04730"):
+    if x is None:
+        x = ohlc_df.index
+    if tip_size is None:
+        tip_size = (x[1:] - x[:-1]).min() / 3
+
+    c_open, c_high, c_low, c_close = ohlc_columns
+    index = 0
+    for idx, val in ohlc_df.iterrows():
+        color = bull
+        if val[c_open] > val[c_close]:
+            color = bear
+        ax.plot([x[index], x[index]], [val[c_low], val[c_high]], color=color)
+        ax.plot([x[index], x[index] - tip_size], [val[c_open], val[c_open]], color=color)
+        ax.plot([x[index], x[index] + tip_size], [val[c_close], val[c_close]], color=color)
+        index += 1
+
+
+def overlap_bolinger_band(ax, data_df, width_column, mean_column, x=None, alpha=2, color="#4daf4a"):
+    if x is None:
+        x = data_df.index
+    std = data_df[width_column] / alpha
+    y1 = data_df[mean_column] + std
+    y2 = data_df[mean_column] - std
+    ax.plot(x, data_df[mean_column], color=color)
+    ax.fill_between(x, y1, y2, alpha=0.4)
+    y1 = data_df[mean_column] + std * 2
+    y2 = data_df[mean_column] - std * 2
+    ax.fill_between(x, y1, y2, color=color, alpha=0.2)
+
+
+def plot_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00"):
+    if x is None:
+        x = data_df.index
+    try:
+        width = (x[1:] - x[:-1]).min() / 3
+    except Exception:
+        width = 0.05
+    ax.bar(x, data_df[macd_column], width, color=color)
+    ax.plot(x, data_df[signal_column], color=color)
+
+
+def plot_renko(ax, data_df, renko_column, x=None, color="#a65628"):
+    if x is None:
+        x = data_df.index
+    try:
+        width = (x[1:] - x[:-1]).min()
+    except Exception:
+        width = 1
+    ax.bar(x, 1, width, data_df[renko_column] - 1, color=color)
+
+
+def adjust_ylim(ax, data_df, adjust_column):
+    min_value = data_df[adjust_column].min()
+    max_value = data_df[adjust_column].max()
+    margin = (max_value - min_value) * 0.3
+    ax.set_ylim(min_value - margin, max_value)
+
+
+def overlap_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00", adjust_column=None):
+    ax2 = ax.twinx()
+    plot_macd(ax2, data_df, macd_column, signal_column, x, color)
+
+    if adjust_column is not None:
+        adjust_ylim(ax, data_df, adjust_column)
+    min_value = data_df[macd_column].min()
+    max_value = data_df[macd_column].max() / 0.2
+    ax2.set_ylim(min_value, max_value)
+
+
+def overlap_renko(ax, data_df, renko_column, x=None, color="#a65628", adjust_column=None):
+    ax2 = ax.twinx()
+    plot_renko(ax2, data_df, renko_column, x, color)
+    if adjust_column is not None:
+        adjust_ylim(ax, data_df, adjust_column)
+    min_value = data_df[renko_column].min()
+    max_value = data_df[renko_column].max() / 0.5
+    ax2.set_ylim(min_value, max_value)
+
+
+def get_color(index):
+    colors = list(mcolors.TABLEAU_COLORS.values())
+    _index = index % len(colors)
+    return colors[_index]
 
 
 class Rendere:
@@ -22,9 +109,16 @@ class Rendere:
         self.__indicater_process_info = {
             fprocess.BBANDProcess.kinds: {
                 "function": self.overlap_bolinger_band,
-                "columns": ("MV", "Width"),
                 "option": ("alpha",),
-            }
+            },
+            fprocess.MACDProcess.kinds: {
+                "function": self.overlap_macd,
+                "option": ("column",),
+            },
+            fprocess.RenkoProcess.kinds: {
+                "function": self.overlap_renko,
+                "option": [],
+            },
         }
 
     def add_subplot(self):
@@ -272,7 +366,19 @@ class Rendere:
         return idx
 
     def add_trade_histories_to_ohlc(self, positions: list, prices: list, index: int):
-        pass
+        if index in self.__data:
+            if len(positions) != len(prices):
+                print("position and price should have the same length")
+                return None
+            histories = []
+            for i in range(len(positions)):
+                if positions[i] == 0:
+                    histories.append([])
+                else:
+                    histories.append([[positions[i], prices[i]]])
+            self.__data[index]["trade_history"] = histories
+        else:
+            print(f"{index} is not registered.")
 
     def add_trade_history_to_latest_tick(self, position: int, price: float, index: int):
         if index in self.__data:
@@ -284,18 +390,23 @@ class Rendere:
         else:
             print(f"{index} is not registered.")
 
-    def overlap_bolinger_band(self, data, index, columns, alpha=2, std_column=None):
+    def overlap_bolinger_band(self, x, data, index, columns, color_index=0, alpha=2):
         mean_column, _, _, width_column = columns
         ax = self.__get_ax(index)
-        x = numpy.arange(0, len(data))
-        std = data[width_column] / alpha
-        y1 = data[mean_column] + std
-        y2 = data[mean_column] - std
-        ax.plot(x, data[mean_column])
-        ax.fill_between(x, y1, y2, alpha=0.4)
-        y1 = data[mean_column] + std * 2
-        y2 = data[mean_column] - std * 2
-        ax.fill_between(x, y1, y2, alpha=0.2)
+        color = get_color(color_index)
+        overlap_bolinger_band(ax, data, width_column, mean_column, x, alpha, color)
+
+    def overlap_macd(self, x, data, index, columns, color_index=0, column="Close"):
+        s_ema, l_ema, macd, sig = columns
+        ax = self.__get_ax(index)
+        color = get_color(color_index)
+        overlap_macd(ax, data, macd, sig, x, color, column)
+
+    def overlap_renko(self, x, data, index, columns, color_index):
+        ax = self.__get_ax(index)
+        renko_b, renko_v = columns
+        color = get_color(color_index)
+        overlap_renko(ax, data, renko_v, x, color)
 
     def overlap_indicater(self, data, time_column, index, columns: list = None, chart_type: str = "line"):
         pass
@@ -321,10 +432,10 @@ class Rendere:
 
     def __plot_candle(self, index, content):
         ohlc = content["data"]
-        open = content["columns"][0]
-        high = content["columns"][1]
-        low = content["columns"][2]
-        close = content["columns"][3]
+        c_open = content["columns"][0]
+        c_high = content["columns"][1]
+        c_low = content["columns"][2]
+        c_close = content["columns"][3]
         title = content["title"]
         # symbols = content["symbols"]
 
@@ -333,25 +444,25 @@ class Rendere:
             prediction = content["predictions"]
             do_plot_prediction = True
 
-        x = numpy.arange(0, len(ohlc))
+        try:
+            deltas = ohlc.index[1:] - ohlc.index[:-1]
+            delta = (deltas[deltas > datetime.timedelta(seconds=0)]).min()
+            tip_size = delta / 3
+            x = ohlc.index
+        except Exception:
+            x = numpy.arange(0, len(ohlc))
+            delta = 1
+            tip_size = delta / 10
 
         ax = self.__get_ax(index)
         ax.clear()
         ax.set_title(title)
 
         if "indicaters" in content:
-            for idc_plot_info in content["indicaters"]:
+            for c_index, idc_plot_info in enumerate(content["indicaters"]):
                 func, columns, option = idc_plot_info
-                func(ohlc, index, columns, *option)
-        index = 0
-        for idx, val in ohlc.iterrows():
-            color = "#2CA453"
-            if val[open] > val[close]:
-                color = "#F04730"
-            ax.plot([x[index], x[index]], [val[low], val[high]], color=color)
-            ax.plot([x[index], x[index] - 0.1], [val[open], val[open]], color=color)
-            ax.plot([x[index], x[index] + 0.1], [val[close], val[close]], color=color)
-            index += 1
+                func(x, ohlc, index, columns, c_index, *option)
+        plot_candle(ax, ohlc, content["columns"], x, tip_size)
 
         index = 0
         if index in self.__data and "trade_history" in self.__data[index]:
@@ -382,12 +493,14 @@ class Rendere:
             index = index - 1
             for idx, val in prediction.iterrows():
                 color = "#b4f4b2"
-                if val[open] > val[close]:
+                if val[c_open] > val[c_close]:
                     color = "#ff9395"
-                ax.plot([x[index] + p_id, x[index] + p_id], [val[low], val[high]], color=color)
-                ax.plot([x[index] + p_id, x[index] + p_id - 0.1], [val[open], val[open]], color=color)
-                ax.plot([x[index] + p_id, x[index] + p_id + 0.1], [val[close], val[close]], color=color)
+                ax.plot([x[index] + p_id * delta, x[index] + p_id * delta], [val[c_low], val[c_high]], color=color)
+                ax.plot([x[index] + p_id * delta, x[index] + p_id * delta - tip_size], [val[c_open], val[c_open]], color=color)
+                ax.plot([x[index] + p_id * delta, x[index] + p_id * delta + tip_size], [val[c_close], val[c_close]], color=color)
                 p_id += 1
+        # ax.set_xticks(x)
+        # ax.set_xticklabels([date.strftime('%y-%m-%dT%H:%M') for date in ohlc.index], rotation=45)
 
     def __plot__xy(self, index, content):
         ax = self.__get_ax(index)
@@ -443,3 +556,7 @@ class Rendere:
             except Exception as e:
                 print("skipped save as ", e)
         plt.show()
+
+    def close(self):
+        plt.close()
+        self.__is_shown = True

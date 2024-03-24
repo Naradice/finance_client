@@ -1,27 +1,22 @@
-import datetime
-import json
 import os
 import sys
+import time
 import unittest
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 
-import time
-
 import pandas as pd
 
 from finance_client import fprocess
 from finance_client.csv.client import CSVClient
-from finance_client.render.graph import Rendere
+from finance_client.graph import Rendere
 
-csv_file = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_d1.csv")
-)
+csv_file = "L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv"
 
 
 class TestRender(unittest.TestCase):
-    def test_plot_ohlc(self):
+    def test_01_plot_ohlc(self):
         r = Rendere()
         for i in range(5):
             r.add_subplot()
@@ -36,20 +31,20 @@ class TestRender(unittest.TestCase):
         r.plot()
         time.sleep(5)
 
-    def test_plot_ohlc_from_csv_client(self):
+    def test_02_plot_ohlc_from_csv_client(self):
         r = Rendere()
-        columns = ["high", "low", "open", "close"]
+        columns = ["open", "high", "low", "close"]
         client = CSVClient(files=csv_file, columns=columns, date_column="time", start_index=30)
         df = client.get_ohlc(30)
         r.register_ohlc(["symbol"], df, ohlc_columns=columns)
         r.plot()
-        time.sleep(10)
+        time.sleep(5)
 
-    def test_plot_bband_from_client_out(self):
+    def test_03_plot_bband_from_client_out(self):
         r = Rendere()
         bban = fprocess.BBANDProcess(target_column="close", window=14)
-        columns = ["high", "low", "open", "close"]
-        client = CSVClient(files=csv_file, columns=columns, date_column="time", idc_process=[bban], start_index=30)
+        columns = ["open", "high", "low", "close"]
+        client = CSVClient(files=csv_file, columns=columns, date_column="time", idc_process=[bban], start_index=100)
         df = client.get_ohlc(30)
         index = r.register_ohlc_with_indicaters(["symbol"], df, [bban], ohlc_columns=columns)
         r.plot()

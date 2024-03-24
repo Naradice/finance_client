@@ -1,17 +1,14 @@
-import datetime
-import json
 import os
 import random
 import sys
 import time
 import unittest
 
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(module_path)
 import pandas as pd
 
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(module_path)
 import finance_client.frames as Frame
-from finance_client import fprocess
 from finance_client.client_base import Client
 
 
@@ -24,7 +21,6 @@ class TestClient(Client):
         pre_processes: list = [],
         frame: int = Frame.MIN5,
         provider="Default",
-        logger_name=None,
         logger=None,
     ):
         super().__init__(
@@ -36,7 +32,6 @@ class TestClient(Client):
             pre_process=pre_processes,
             frame=frame,
             do_render=do_render,
-            logger_name=logger_name,
             logger=logger,
         )
         self.data = pd.DataFrame.from_dict(
@@ -110,7 +105,7 @@ class TestClient(Client):
         return super().__len__()
 
 
-class TestCSVClient(unittest.TestCase):
+class TestBaseClient(unittest.TestCase):
     def test_get_rates_wo_plot(self):
         client = TestClient(do_render=False)
         rates = client.get_ohlc(100)

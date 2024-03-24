@@ -90,7 +90,6 @@ class MT5Client(Client):
             observation_length=observation_length,
             provider=server,
             do_render=do_render,
-            logger_name=__name__,
             enable_trade_log=enable_trade_log,
             logger=logger,
         )
@@ -458,38 +457,37 @@ class MT5Client(Client):
         if existing_rate_df is None:
             interval = MAX_LENGTH
         else:
-            delta = datetime.datetime.now() - existing_rate_df["time"].iloc[-1]
+            delta = datetime.datetime.utcnow() - existing_rate_df["time"].iloc[-1]
             total_seconds = delta.total_seconds()
             if (total_seconds / (60 * 60 * 24 * 7)) >= 1:
                 total_seconds = total_seconds * 5 / 7  # remove sat,sun
             interval = int((total_seconds / 60) / self.frame)
-            if interval <= 0:
-                interval = 10  # to be safe
+
+        if interval > 0:
+            start_index = 0
             if interval > MAX_LENGTH:
                 interval = MAX_LENGTH
                 self.logger.warn("data may have vacant")
 
-        start_index = 0
-        rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
-        new_rates = rates
+            rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
+            new_rates = rates
 
-        while new_rates is not None:
-            interval = len(new_rates)
-            start_index += interval
-            new_rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
-            if new_rates is not None:
-                rates = numpy.concatenate([new_rates, rates])
-            else:
-                break
-        rate_df = pd.DataFrame(rates)
-        if len(rate_df) > 0:
+            while new_rates is not None:
+                interval = len(new_rates)
+                start_index += interval
+                new_rates = mt5.copy_rates_from_pos(symbol, frame, start_index, interval)
+                if new_rates is not None:
+                    rates = numpy.concatenate([new_rates, rates])
+                else:
+                    break
+            rate_df = pd.DataFrame(rates)
             rate_df["time"] = pd.to_datetime(rate_df["time"], unit="s")
 
             if existing_rate_df is not None:
                 rate_df = pd.concat([existing_rate_df, rate_df])
 
             rate_df = rate_df.sort_values("time")
-            rate_df = rate_df.drop_duplicates()
+            rate_df = rate_df.drop_duplicates(keep="last", subset="time")
 
             write_df_to_csv(
                 rate_df,
@@ -497,9 +495,10 @@ class MT5Client(Client):
                 file_name,
                 panda_option={"mode": "w", "index": False, "header": True},
             )
+            rate_df.set_index("time", inplace=True)
             return rate_df
         else:
-            self.logger.error(f"no new data found for {symbol}")
+            self.logger.info(f"no new data found for {symbol}")
             return existing_rate_df
 
     def __download(self, length, symbol, frame, index=None):
@@ -563,10 +562,10 @@ class MT5Client(Client):
                         self.logger.debug(f"auto index: fixed to {current_time}")
                         self.__next_time = df_rates["time"].iloc[1]
 
-        if self.auto_index and _length:
-            return df_rates.iloc[:length]
-        else:
-            return df_rates
+            df_rates.set_index("time", inplace=True)
+            if self.auto_index and _length is not None:
+                return df_rates.iloc[:length]
+        return df_rates
 
     def __get_ohlc(self, length, symbols, frame, columns=None, index=None, grouped_by_symbol=True):
         if frame is None:

@@ -8,11 +8,9 @@ from time import sleep
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
-import dotenv
 
+from finance_client.position import ORDER_TYPE
 from finance_client.yfinance.client import YahooClient
-
-dotenv.load_dotenv("../.env")
 
 
 class TestYFClient(unittest.TestCase):
@@ -25,13 +23,12 @@ class TestYFClient(unittest.TestCase):
         self.assertEqual(len(rates.Close), length)
 
     def test_orders(self):
-        id = self.client.open_trade(True, 1, "Market", "1812.T", 1000)
+        id = self.client.open_trade(True, 1, ORDER_TYPE.market, "1812.T", 1000)
         sleep(10)
         self.client.close_all_positions()
 
     def test_get_rates_with_indicater(self):
-        from finance_client.fprocess.idcprocess import (BBANDProcess, MACDProcess,
-                                                     RangeTrendProcess)
+        from finance_client.fprocess.fprocess.idcprocess import BBANDProcess, MACDProcess, RangeTrendProcess
 
         macd_p = MACDProcess(short_window=12, long_window=26, signal_window=9, target_column="Close")
         macd_column = macd_p.columns["MACD"]
@@ -50,8 +47,8 @@ class TestYFClient(unittest.TestCase):
         self.assertEqual(len(df["1928.T"]), 10)
         print(df.columns)
 
-        client.open_trade(True, 1, "Market", "1801.T", 1000)
-        client.open_trade(True, 1, "Market", "1928.T", 1000)
+        client.open_trade(True, 1, ORDER_TYPE.market, "1801.T", 1000)
+        client.open_trade(True, 1, ORDER_TYPE.market, "1928.T", 1000)
         for i in range(0, 5):
             client.get_ohlc(5)
         results = client.close_all_positions()

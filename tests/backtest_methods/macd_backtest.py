@@ -1,34 +1,20 @@
-import datetime
-import json
 import os
 import sys
-import unittest
 
+import dotenv
+import pandas as pd
+
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from logging import config, getLogger
-
-import pandas as pd
-
-import finance_client.frames as Frame
+from finance_client import fprocess, logger
 from finance_client.csv.client import CSVClient
-from finance_client.fprocess import fprocess
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = os.path.abspath(f'./{log_file_base_name}_csvclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log')
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config.copy())
-logger = getLogger("finance_client.test")
+from finance_client.position import ORDER_TYPE
 
 datetime_column = "Time"
 ohlc_columns = ["Open", "High", "Low", "Close"]
@@ -89,18 +75,18 @@ def MACD_backtest():
         if signal is not None:
             if "close" in signal:
                 if "buy" in signal:
-                    client.close_position(position=pos)
-                    suc, pos = client.open_trade(True, amount=1, order_type="Market", symbol="forex")
+                    client.close_position(id=id)
+                    suc, id = client.open_trade(True, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                     position = 1
                 else:
-                    client.close_position(position=pos)
-                    suc, pos = client.open_trade(False, amount=1, order_type="Market", symbol="forex")
+                    client.close_position(id=id)
+                    suc, id = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                     position = -1
             elif signal == "buy":
-                suc, pos = client.open_trade(True, amount=1, order_type="Market", symbol="forex")
+                suc, id = client.open_trade(True, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = 1
             elif signal == "sell":
-                suc, pos = client.open_trade(False, amount=1, order_type="Market", symbol="forex")
+                suc, id = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = -1
 
         df = client.get_ohlc(30)

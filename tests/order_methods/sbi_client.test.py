@@ -1,5 +1,3 @@
-import datetime
-import json
 import os
 import sys
 import unittest
@@ -8,27 +6,12 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from logging import config, getLogger
-
 import dotenv
 
 import finance_client.frames as Frame
 from finance_client.sbi.client import SBIClient
 
 dotenv.load_dotenv("../.env")
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_sbiclienttest_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
 
 id = os.environ[SBIClient.ID_KEY]
 pswd = os.environ[SBIClient.PASS_KEY]
@@ -56,7 +39,7 @@ class TestSBIClient(unittest.TestCase):
     """
 
     def test_buy(self):
-        self.client.market_buy("4042", None, amount=1, tp=None, sl=None, option_info=None)
+        self.client.open_trade(True, symbol="4042", amount=1, tp=None, sl=None, option_info=None)
 
 
 if __name__ == "__main__":

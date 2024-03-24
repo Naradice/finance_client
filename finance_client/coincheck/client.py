@@ -111,7 +111,6 @@ class CoinCheckClient(Client):
             observation_length=observation_length,
             do_render=do_render,
             enable_trade_log=enable_trade_log,
-            logger_name="ccheck",
             logger=logger,
         )
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
@@ -265,9 +264,7 @@ class CoinCheckClient(Client):
         self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
     ):
         try:
-            write_df_to_csv(
-                self.data, self.provider, f"CC_BTC_{self.frame}.csv"
-            )
+            write_df_to_csv(self.data, self.provider, f"CC_BTC_{self.frame}.csv")
         except Exception as e:
             self.logger.error(e)
         if length is None:

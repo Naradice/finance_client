@@ -5,33 +5,20 @@ import sys
 import unittest
 from time import sleep
 
+import dotenv
 import numpy
+import pandas as pd
 
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception as e:
+    raise e
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.append(module_path)
 
-from logging import config, getLogger
-
-import dotenv
-
 import finance_client.frames as Frame
-from finance_client import fprocess
+from finance_client import fprocess, logger
 from finance_client.mt5 import MT5Client
-
-dotenv.load_dotenv("../.env")
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_mt5clienttest_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
 
 id = int(os.environ["mt5_id"])
 simulation = True
@@ -64,21 +51,18 @@ class TestMT5Client(unittest.TestCase):
         columns = self.client.get_ohlc_columns()
         close_column = columns["Close"]
         self.assertEqual(len(data[self.symbol[0]][close_column]), 100)
-        time_column = columns["Time"]
-        self.assertEqual(time_column in data[self.symbol[0]].columns, True)
-        time_sr = data[self.symbol[0]][time_column]
-        first = time_sr.iloc[0]
-        last = time_sr.iloc[-1]
+        self.assertTrue(isinstance(data.index, pd.DatetimeIndex))
+        first = data.index[0]
+        last = data.index[1]
         self.assertGreater(last, first)  # last > first
 
     def test_get_rate_with_indicaters(self):
         columns = self.client.get_ohlc_columns()
         close_column = columns["Close"]
         macd_p = fprocess.MACDProcess(target_column=close_column)
-        macd_column = macd_p.columns["MACD"]
         data = self.client.get_ohlc(100, idc_processes=[macd_p])
-        self.assertEqual(macd_column in data[self.symbol[0]].columns, True)
-        self.assertEqual(len(data[self.symbol[0]][macd_column]), 100)
+        self.assertEqual(macd_p.KEY_MACD in data[self.symbol[0]].columns, True)
+        self.assertEqual(len(data[self.symbol[0]][macd_p.KEY_MACD]), 100)
 
     def test_get_all_rates(self):
         rates = self.client.get_ohlc()
@@ -93,7 +77,7 @@ class TestMT5Client(unittest.TestCase):
             password=os.environ["mt5_password"],
             server=os.environ["mt5_server"],
             symbols=self.symbol,
-            auto_index=True,
+            auto_index=False,
             back_test=True,
             frame=Frame.MIN5,
             logger=logger,
@@ -104,10 +88,10 @@ class TestMT5Client(unittest.TestCase):
         while count < 6:
             data = client.get_ohlc(30)
             if next_time is not None:
-                current_time = data[self.symbol[0]]["time"].iloc[0]
+                current_time = data[self.symbol[0]].index[0]
                 self.assertEqual(current_time, next_time)
-            next_time = data[self.symbol[0]]["time"].iloc[1]
-            sleep(60)
+            next_time = data[self.symbol[0]].index[0]
+            sleep(30)
             count += 1
 
     def test_auto_index_1min(self):
@@ -128,10 +112,10 @@ class TestMT5Client(unittest.TestCase):
         while count < 3:
             data = client.get_ohlc(30)
             if next_time is not None:
-                current_time = data[self.symbol[0]]["time"].iloc[0]
+                current_time = data[self.symbol[0]].index[0]
                 self.assertEqual(current_time, next_time)
-            next_time = data[self.symbol[0]]["time"].iloc[1]
-            sleep(120)
+            next_time = data[self.symbol[0]].index[1]
+            sleep(60)
             count += 1
 
     def test_auto_index_H2(self):
@@ -153,9 +137,9 @@ class TestMT5Client(unittest.TestCase):
         while count < 12 * 7:
             data = client.get_ohlc(30)
             if next_time is not None:
-                current_time = data[self.symbol[0]]["time"].iloc[0]
+                current_time = data[self.symbol[0]].index[0]
                 self.assertEqual(current_time, next_time)
-            next_time = data[self.symbol[0]]["time"].iloc[1]
+            next_time = data[self.symbol[0]].index[1]
             sleep(1)
             count += 1
 

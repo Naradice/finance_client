@@ -10,7 +10,7 @@ sys.path.append(module_path)
 
 from finance_client.fprocess.fprocess import validation
 
-csv_file = os.path.abspath("L:/data/csv/USDJPY_forex_min30.csv")
+csv_file = os.path.abspath("L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
 df = pd.read_csv(csv_file, parse_dates=True, index_col=0)
 OPEN_WEEKDAY = 0
 CLOSE_WEEKDAY = 4

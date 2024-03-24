@@ -8,36 +8,26 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
-from logging import config, getLogger
-
 import dotenv
 import pandas as pd
 
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
+
 import finance_client as fc
+from finance_client import logger
 from finance_client.fprocess.fprocess.indicaters import technical
 
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_idcprocess_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
-dotenv.load_dotenv(".env")
-
-file_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../finance_client/data_source/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv")
-)
+file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv"))
 
 
 class TestIndicaters(unittest.TestCase):
     ohlc_columns = ["open", "high", "low", "close"]
-    client = fc.CSVClient(files=file_path, columns=["open", "high", "low", "close"], date_column="time", logger=logger)
+    client = fc.CSVClient(
+        files=file_path, columns=["open", "high", "low", "close"], date_column="time", start_index=1000, logger=logger
+    )
 
     def __init__(self, methodName: str = ...) -> None:
         self.window = 4

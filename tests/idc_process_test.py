@@ -1,31 +1,22 @@
 import datetime
-import json
 import os
 import sys
 import unittest
-from logging import config, getLogger
 
+import dotenv
 import pandas as pd
+
+try:
+    dotenv.load_dotenv("tests/.env")
+except Exception:
+    pass
 
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import fprocess
+from finance_client import fprocess, logger
 from finance_client.csv.client import CSVClient
-
-try:
-    with open(os.path.join(module_path, "finance_client/settings.json"), "r") as f:
-        settings = json.load(f)
-except Exception as e:
-    print(f"fail to load settings file: {e}")
-    raise e
-logger_config = settings["log"]
-log_file_base_name = logger_config["handlers"]["fileHandler"]["filename"]
-log_path = f'./{log_file_base_name}_indicaters_{datetime.datetime.utcnow().strftime("%Y%m%d%H")}.log'
-logger_config["handlers"]["fileHandler"]["filename"] = log_path
-config.dictConfig(logger_config)
-logger = getLogger("finance_client.test")
 
 file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
 ohlc_columns = ["open", "high", "low", "close"]
@@ -33,9 +24,7 @@ date_column = "time"
 
 
 class TestIndicaters(unittest.TestCase):
-    client = CSVClient(
-        files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, auto_step_index=False, start_index=200
-    )
+    client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, auto_step_index=False, start_index=500)
 
     def test_cci_process(self):
         ohlc = self.client.get_ohlc(110)
@@ -110,7 +99,7 @@ class TestIndicaters(unittest.TestCase):
             out_ex.append(out_ex[i - 1] * (1 - alpha) + input[i] * alpha)
 
     def test_renko_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, start_index=200)
         prc = fprocess.RenkoProcess(window=120, ohlc_column=ohlc_columns)
         column = prc.KEY_BRICK_NUM
         start_time = datetime.datetime.now()
@@ -121,7 +110,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(len(data[column]), 300)
 
     def test_slope_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, start_index=200)
         prc = fprocess.SlopeProcess(window=5, target_column=ohlc_columns[3])
         slp_column = prc.KEY_SLOPE
         start_time = datetime.datetime.now()
@@ -132,7 +121,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(len(data[slp_column]), 100)
 
     def test_macdslope_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, start_index=200)
         macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         macd_column = macd.KEY_MACD
         signal_column = macd.KEY_SIGNAL
@@ -151,7 +140,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertNotEqual(data[slp_column].iloc[-1], data[s_slp_column].iloc[-1])
 
     def test_range_process(self):
-        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, logger=logger, start_index=200)
+        client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, start_index=200)
         slope_window = 4
         range_p = fprocess.RangeTrendProcess(slope_window=slope_window)
         bband_p = fprocess.BBANDProcess(alpha=2, target_column=ohlc_columns[3], window=14)
