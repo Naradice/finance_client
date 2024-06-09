@@ -2,6 +2,7 @@ from . import frames as Frame
 from .client_base import Client
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
+from .fprocess import fprocess
 from .mt5.client import MT5Client
 from .sbi.client import SBIClient
 from .vantage.client import VantageClient

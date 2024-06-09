@@ -390,8 +390,8 @@ class CSVClientBase(Client, metaclass=ABCMeta):
                     except Exception as e:
                         raise Exception(f"files is specified, but can't be casted to list: {e}")
                 # store files to be able to reproduce the client by params
+                files = [os.path.abspath(file) for file in files]
                 self.files = files
-                files = [os.path.abspath(file) for file in self.files]
             self._initialize_file_name_func(files)
             self.data, __symbols = self._read_csv(self.files, symbols, columns, date_column, skiprows, start_date, frame)
             self.symbols = list(__symbols)
