@@ -107,7 +107,7 @@ class Client(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): you can specify position or position.id to close the position
         """
-        if order_type == ORDER_TYPE.market:
+        if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             self.logger.debug("budget order is requested.")
             if is_buy:
                 if price is None:
@@ -136,7 +136,7 @@ class Client(metaclass=ABCMeta):
                     self.logger.error(f"Order is failed as {result}")
                     return False, result
         else:
-            self.logger.debug(f"{order_type} is not defined/implemented.")
+            self.logger.error(f"{order_type} is not defined/implemented.")
             return False, None
 
     def _trading_log(self, position: Position, price, amount, is_open):
