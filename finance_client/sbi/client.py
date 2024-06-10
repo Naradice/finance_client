@@ -139,10 +139,11 @@ class SBIClient(Client):
         db_items = []
         date = datetime.datetime.utcnow().date()
         for symbol, rate_dict in rating_dict.items():
-            rates = [rate_dict[5], rate_dict[4], rate_dict[3], rate_dict[2], rate_dict[1]]
-            rate_str = ",".join([str(value) for value in rates])
-            item = [symbol, rate_str, date, self.__db_source_key]
-            db_items.append(item)
+            if len(rate_dict) > 0:
+                rates = [rate_dict[5], rate_dict[4], rate_dict[3], rate_dict[2], rate_dict[1]]
+                rate_str = ",".join([str(value) for value in rates])
+                item = [symbol, rate_str, date, self.__db_source_key]
+                db_items.append(item)
         return db_items
 
     def __convert_to_rate(self, record):

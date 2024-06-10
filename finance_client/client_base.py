@@ -137,6 +137,7 @@ class Client(metaclass=ABCMeta):
                     return False, result
         else:
             self.logger.debug(f"{order_type} is not defined/implemented.")
+            return False, None
 
     def _trading_log(self, position: Position, price, amount, is_open):
         pass
