@@ -350,7 +350,7 @@ class MT5Client(Client):
             return True, result
 
     def _buy_for_settlement(self, symbol, price, amount, option, result):
-        if self.__ignore_order is False:
+        if self.__ignore_order is False and result is not None:
             rate = price
             order = result.order
             result = self.__post_market_order(
@@ -419,7 +419,7 @@ class MT5Client(Client):
         print("NOT IMPLEMENTED")
 
     def _sell_for_settlment(self, symbol, price, amount, option, result):
-        if self.__ignore_order is False:
+        if self.__ignore_order is False and result is not None:
             position = result.order
             result = self.__post_market_order(
                 symbol=symbol,
