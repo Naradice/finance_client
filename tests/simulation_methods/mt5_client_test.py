@@ -10,14 +10,15 @@ import numpy
 import pandas as pd
 
 try:
-    dotenv.load_dotenv("tests/.env")
+    dotenv.load_dotenv(os.path.join(os.path.dirname(__file__), "../.env"))
 except Exception as e:
     raise e
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 sys.path.append(module_path)
 
-import finance_client.frames as Frame
-from finance_client import fprocess, logger
+from finance_client import fprocess
+from finance_client import frames as Frame
+from finance_client import logger
 from finance_client.mt5 import MT5Client
 
 id = int(os.environ["mt5_id"])

@@ -79,6 +79,7 @@ class MT5Client(Client):
         back_test=False,
         do_render=False,
         budget=1000000,
+        storage=None,
         enable_trade_log=False,
         logger=None,
         seed=1017,
@@ -92,6 +93,7 @@ class MT5Client(Client):
             do_render=do_render,
             enable_trade_log=enable_trade_log,
             logger=logger,
+            storage=storage,
         )
         self.back_test = back_test
         self.debug = False
@@ -347,21 +349,33 @@ class MT5Client(Client):
                 sl=sl,
                 tp=tp,
             )
-            return True, result
+            if result.order == 0:
+                self.logger.error(f"order failed due to {result.comment}")
+                return False, result
+            else:
+                return True, result.order
+
+        return False, None
 
     def _buy_for_settlement(self, symbol, price, amount, option, result):
-        if self.__ignore_order is False and result is not None:
-            rate = price
-            order = result.order
-            result = self.__post_market_order(
-                symbol=symbol,
-                _type=mt5.ORDER_TYPE_BUY,
-                vol=amount * 0.1,
-                price=rate,
-                dev=20,
-                position=order,
-            )
-            return result
+        if self.__ignore_order is False:
+            if result is not None:
+                rate = price
+                if hasattr(result, "order"):
+                    order = result.order
+                else:
+                    order = result
+                result = self.__post_market_order(
+                    symbol=symbol,
+                    _type=mt5.ORDER_TYPE_BUY,
+                    vol=amount * 0.1,
+                    price=rate,
+                    dev=20,
+                    position=order,
+                )
+                return result
+            else:
+                return False
 
     # symbol, ask_rate, amount, option_info
     def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
@@ -386,50 +400,34 @@ class MT5Client(Client):
                 sl=sl,
                 tp=tp,
             )
-            return True, result
-
-    def buy_order(self, symbol, value, tp=None, sl=None):
-        if self.__ignore_order is False:
-            result = self.__post_order(
-                symbol=symbol,
-                _type=mt5.ORDER_TYPE_BUY_LIMIT,
-                vol=0.1,
-                price=value,
-                dev=20,
-                sl=sl,
-                tp=tp,
-            )
-            return result
-
-    def sell_order(self, symbol, value, tp=None, sl=None):
-        if self.__ignore_order is False:
-            result = self.__post_order(
-                symbol=symbol,
-                _type=mt5.ORDER_TYPE_SELL_LIMIT,
-                vol=0.1,
-                price=value,
-                dev=20,
-                sl=sl,
-                tp=tp,
-            )
-            self.orders["bid"].append(result)
-            return result
+            if result.order == 0:
+                self.logger.error(f"order failed due to {result.comment}")
+                return False, result
+            else:
+                return True, result.order
+        return False, None
 
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
 
     def _sell_for_settlment(self, symbol, price, amount, option, result):
-        if self.__ignore_order is False and result is not None:
-            position = result.order
-            result = self.__post_market_order(
-                symbol=symbol,
-                _type=mt5.ORDER_TYPE_SELL,
-                vol=amount * 0.1,
-                price=price,
-                dev=20,
-                position=position,
-            )
-            return result
+        if self.__ignore_order is False:
+            if result is not None:
+                if hasattr(result, "order"):
+                    order = result.order
+                else:
+                    order = result
+                result = self.__post_market_order(
+                    symbol=symbol,
+                    _type=mt5.ORDER_TYPE_SELL,
+                    vol=amount * 0.1,
+                    price=price,
+                    dev=20,
+                    position=order,
+                )
+                return result
+            else:
+                return False
 
     def __generate_file_name(self, symbol, frame):
         if frame in self.AVAILABLE_FRAMES_STR:

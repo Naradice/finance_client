@@ -468,6 +468,8 @@ class SQLiteStorage(BaseStorage):
         "time_index": "TEXT",
         "amount": "REAL",
         "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "result": "TEXT",
+        "option": "TEXT",
     }
     SYMBOL_TABLE_NAME = "symbol"
     _SYMBOL_TABLE_KEYS = {
@@ -591,6 +593,8 @@ class SQLiteStorage(BaseStorage):
             position.index,
             position.amount,
             position.timestamp,
+            position.result,
+            position.option,
         )
         query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__commit(query, values)
@@ -610,6 +614,8 @@ class SQLiteStorage(BaseStorage):
                 position.index,
                 position.amount,
                 position.timestamp,
+                position.result,
+                position.option,
             )
             for position in positions
         ]
@@ -671,6 +677,8 @@ class SQLiteStorage(BaseStorage):
             position.amount,
             position.timestamp,
             position.id,
+            position.result,
+            position.option,
         )
         query = f"UPDATE {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders} WHERE id = ?"
         self.__commit(query, values)
@@ -734,7 +742,10 @@ class SQLiteStorage(BaseStorage):
         query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND (tp IS NOT NULL OR sl IS NOT NULL)"
         records = self.__fetch(query, (self.provider,))
         positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
-        return positions
+        positions_dict = {}
+        for position in positions:
+            positions_dict[position.id] = position
+        return positions_dict
 
     def _convert_position_to_log(self, p: Position, is_open):
         if is_open is True:

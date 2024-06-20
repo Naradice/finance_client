@@ -61,7 +61,7 @@ class Client(metaclass=ABCMeta):
 
         self.logger = lg if logger is None else logger
         if storage is None:
-            db_path = os.path.join(os.path.dirname(__file__), "fc.db")
+            db_path = os.path.join(os.getcwd(), "finance_client.db")
             storage = db.SQLiteStorage(db_path, provider)
             # storage = db.FileStorage(provider)
         self.wallet = wallet.Manager(budget=budget, storage=storage, logger=logger, provider=provider)

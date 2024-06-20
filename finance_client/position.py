@@ -55,9 +55,17 @@ class Position:
         self.option = option
         if option == "null":
             self.option = None
-        self.result = result
-        if result == "null":
+        if result == "null" or result is None:
             self.result = None
+        else:
+            if "provider" in kwargs:
+                provider = kwargs["provider"]
+                if isinstance(provider, str):
+                    provider = provider.lower()
+                    if "mt5" in provider:
+                        self.result = int(result)
+            else:
+                self.result = result
         self.symbol = symbol
         if time_index is None:
             self.index = time_index
