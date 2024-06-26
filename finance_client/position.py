@@ -64,6 +64,11 @@ class Position:
                     provider = provider.lower()
                     if "mt5" in provider:
                         self.result = int(result)
+                    else:
+                        try:
+                            self.result = int(result)
+                        except Exception:
+                            self.result = result
             else:
                 self.result = result
         self.symbol = symbol
