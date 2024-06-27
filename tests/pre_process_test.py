@@ -87,6 +87,36 @@ class TestPreProcess(unittest.TestCase):
         self.assertEqual(len(standalized_ds), 6)
         self.assertEqual(standalized_ds["input"].iloc[-1], new_data["expect"])
 
+    def test_clip(self):
+        cp = fprocess.ClipPreProcess(lower=-1.0, upper=1.0)
+        srs = pd.Series([0.1, -0.2, 1.1, 0.5, -3.0])
+        exp_srs = pd.Series([0.1, -0.2, 1.0, 0.5, -1.0])
+
+        processed_srs = cp.run(srs)
+        self.assertEqual(len(processed_srs), 5)
+        for index in range(1, len(processed_srs)):
+            self.assertEqual(processed_srs.iloc[index], exp_srs.iloc[index])
+
+        df = pd.DataFrame.from_dict({"a": [0.1, -0.2, 1.1, 0.5, -3.0], "b": [1.1, -1.2, 0.1, 1.5, 0.0]})
+        exp_df = pd.DataFrame.from_dict({"a": [0.1, -0.2, 1.0, 0.5, -1.0], "b": [1.0, -1.0, 0.1, 1.0, 0.0]})
+        processed_df = cp.run(df)
+
+        self.assertEqual(len(processed_df), 5)
+        for column in processed_df:
+            for index, value in enumerate(processed_df[column]):
+                self.assertEqual(value, exp_df[column].iloc[index])
+
+        cp = fprocess.ClipPreProcess(lower=-1.0, upper=1.0, columns=["a"])
+
+        df = pd.DataFrame.from_dict({"a": [0.1, -0.2, 1.1, 0.5, -3.0], "b": [1.1, -1.2, 0.1, 1.5, 0.0]})
+        exp_df = pd.DataFrame.from_dict({"a": [0.1, -0.2, 1.0, 0.5, -1.0], "b": [1.1, -1.2, 0.1, 1.5, 0.0]})
+
+        processed_df = cp.run(df)
+        self.assertEqual(len(processed_df), 5)
+        for column in processed_df:
+            for index, value in enumerate(processed_df[column]):
+                self.assertEqual(value, exp_df[column].iloc[index])
+
 
 if __name__ == "__main__":
     unittest.main()
