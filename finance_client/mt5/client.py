@@ -83,6 +83,8 @@ class MT5Client(Client):
         enable_trade_log=False,
         logger=None,
         seed=1017,
+        idc_process=None,
+        std_processes=None,
     ):
         super().__init__(
             budget=budget,
@@ -94,6 +96,8 @@ class MT5Client(Client):
             enable_trade_log=enable_trade_log,
             logger=logger,
             storage=storage,
+            idc_process=idc_process,
+            pre_process=std_processes,
         )
         self.back_test = back_test
         self.debug = False
@@ -252,22 +256,26 @@ class MT5Client(Client):
         else:
             return info.ask
 
-    def get_current_ask(self, symbols=[]):
-        if len(symbols) == 0:
-            symbols = self.symbols
+    def get_current_ask(self, symbols=None):
+        if symbols is None or len(symbols) == 0:
+            symbols = self.symbols.copy()
         if isinstance(symbols, str):
             symbols = [symbols]
         if self.back_test:
-            df = pd.DataFrame()
-            for symbol in symbols:
-                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
-                symbol_tick.index = [symbol]
-                df = pd.concat(df, symbol_tick)
-            open_column = self.get_ohlc_columns()["Open"]
-            high_column = self.get_ohlc_columns()["High"]
+            if len(symbols) == 1:
+                df = self.__download(length=1, symbol=symbols[0], frame=self.mt5_frame, index=self.sim_index - 1)
+            else:
+                df = pd.DataFrame()
+                for symbol in symbols:
+                    symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
+                    symbol_tick.index = [symbol]
+                    df = pd.concat(df, symbol_tick)
+            ohlc_columns = self.get_ohlc_columns()
+            open_column = ohlc_columns["Open"]
+            high_column = ohlc_columns["High"]
 
             ask_srs = random.uniform(df[open_column].iloc[0], df[high_column].iloc[0])
-            # ask_srs = next_data[open_column].iloc[0] + next_data["spread"].iloc[0]*self.point
+            return ask_srs
         else:
             ask_values = {}
             for symbol in symbols:
@@ -285,22 +293,25 @@ class MT5Client(Client):
         else:
             return info.bid
 
-    def get_current_bid(self, symbols=[]):
-        if len(symbols) == 0:
-            symbols = self.symbols
+    def get_current_bid(self, symbols=None):
+        if symbols is None or len(symbols) == 0:
+            symbols = self.symbols.copy()
         if isinstance(symbols, str):
             symbols = [symbols]
         if self.back_test:
-            df = pd.DataFrame()
-            for symbol in symbols:
-                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
-                symbol_tick.index = [symbol]
-                df = pd.concat(df, symbol_tick)
-            open_column = self.get_ohlc_columns()["Open"]
-            low_column = self.get_ohlc_columns()["Low"]
-
+            if len(symbols) == 1:
+                df = self.__download(length=1, symbol=symbols[0], frame=self.mt5_frame, index=self.sim_index - 1)
+            else:
+                df = pd.DataFrame()
+                for symbol in symbols:
+                    symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
+                    symbol_tick.index = [symbol]
+                    df = pd.concat(df, symbol_tick)
+            ohlc_columns = self.get_ohlc_columns()
+            open_column = ohlc_columns["Open"]
+            low_column = ohlc_columns["Low"]
             bid_srs = random.uniform(df[low_column].iloc[0], df[open_column].iloc[0])
-            # bid_srs = next_data[open_column].iloc[0] - next_data["spread"].iloc[0]*self.point
+            return bid_srs
         else:
             bid_values = {}
             for symbol in symbols:
@@ -310,9 +321,9 @@ class MT5Client(Client):
             bid_srs = bid_srs[symbols[0]]
         return bid_srs
 
-    def get_current_spread(self, symbols=[]):
-        if len(symbols) == 0:
-            symbols = self.symbols
+    def get_current_spread(self, symbols=None):
+        if symbols is None or len(symbols) == 0:
+            symbols = self.symbols.copy()
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
@@ -354,8 +365,8 @@ class MT5Client(Client):
                 return False, result
             else:
                 return True, result.order
-
-        return False, None
+        else:
+            return True, numpy.random.randint(100, 100000)
 
     def _buy_for_settlement(self, symbol, price, amount, option, result):
         if self.__ignore_order is False:
@@ -376,6 +387,8 @@ class MT5Client(Client):
                 return result
             else:
                 return False
+        else:
+            return True
 
     # symbol, ask_rate, amount, option_info
     def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
@@ -405,7 +418,8 @@ class MT5Client(Client):
                 return False, result
             else:
                 return True, result.order
-        return False, None
+        else:
+            return True, numpy.random.randint(100, 100000)
 
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
@@ -428,6 +442,8 @@ class MT5Client(Client):
                 return result
             else:
                 return False
+        else:
+            return True
 
     def __generate_file_name(self, symbol, frame):
         if frame in self.AVAILABLE_FRAMES_STR:

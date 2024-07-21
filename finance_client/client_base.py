@@ -114,6 +114,7 @@ class Client(metaclass=ABCMeta):
                     ask_rate = self.get_current_ask(symbol)
                 else:
                     ask_rate = price
+                self.logger.debug(f"order price: {ask_rate}")
                 suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
                 if suc:
                     return True, self.__open_long_position(
@@ -127,6 +128,7 @@ class Client(metaclass=ABCMeta):
                     bid_rate = self.get_current_bid(symbol)
                 else:
                     bid_rate = price
+                self.logger.debug(f"order price: {bid_rate}")
                 suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
                 if suc:
                     return True, self.__open_short_position(
@@ -676,9 +678,15 @@ class Client(metaclass=ABCMeta):
             frame = self.frame
 
         if idc_processes is None:
-            idc_processes = []
+            if self.idc_process is not None and len(self.idc_process) > 0:
+                idc_processes = self.idc_process
+            else:
+                idc_processes = []
         if pre_processes is None:
-            pre_processes = []
+            if self.pre_process is not None and len(self.pre_process) > 0:
+                pre_processes = self.pre_process
+            else:
+                pre_processes = []
         if economic_keys is None:
             economic_keys = self.eco_keys
 
@@ -1125,7 +1133,7 @@ class Client(metaclass=ABCMeta):
                 else:
                     portfolio["short"][symbol] = [position]
 
-        bid_rates = self.get_current_bid(ask_symbols)
+        bid_rates = self.get_current_bid(list(set(ask_symbols)))
         if isinstance(bid_rates, pd.Series):
             get_bid_rate = lambda symbol: bid_rates[symbol]
         else:
@@ -1138,7 +1146,7 @@ class Client(metaclass=ABCMeta):
                 profit_rate = bid_rate / position.price
                 ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
 
-        ask_rates = self.get_current_ask(bid_symbols)
+        ask_rates = self.get_current_ask(list(set(bid_symbols)))
         if isinstance(ask_rates, pd.Series):
             get_ask_rate = lambda symbol: ask_rates[symbol]
         else:

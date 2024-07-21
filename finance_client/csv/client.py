@@ -592,7 +592,8 @@ class CSVClient(CSVClientBase):
                 self.data.dropna(thresh=len(self.data.columns), inplace=True)
                 self.frame = out_frame
         if self.data is not None and len(self.data) > 0:
-            self.data = self.run_processes(self.data, self.symbols, self.idc_process, self.pre_process, True)
+            self.data = self.run_processes(self.data, self.symbols, [], pre_process, True)
+            self.pre_process = []
 
     def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
         DFS = {}
@@ -801,74 +802,109 @@ class CSVClient(CSVClientBase):
     def get_current_ask(self, symbols=[]):
         last_10_ticks = self.data.iloc[: self._step_index].ffill()
         tick = last_10_ticks.iloc[-1]
-        open_column = self.ohlc_columns["Open"]
-        high_column = self.ohlc_columns["High"]
-        if type(tick.index) is pd.MultiIndex:
-            if type(symbols) is str:
-                if symbols in self.symbols:
-                    open_value = tick[symbols][open_column]
-                    high_value = tick[symbols][open_column]
-                else:
-                    return None
-            elif type(symbols) is list:
-                if len(symbols) > 0:
-                    target_symbols = set(self.symbols) & set(symbols)
-                    target_symbols = list(target_symbols)
-                else:
-                    target_symbols = self.symbols
+        open_column = None
+        high_column = None
 
-                if len(target_symbols) == 1:
-                    open_value = tick[target_symbols[0]][open_column]
-                    high_value = tick[target_symbols[0]][open_column]
+        if "Open" in self.ohlc_columns and "High" in self.ohlc_columns:
+            open_column = self.ohlc_columns["Open"]
+            high_column = self.ohlc_columns["High"]
+        elif "Close" in self.ohlc_columns:
+            open_column = self.ohlc_columns["Close"]
+            high_column = self.ohlc_columns["Close"]
+        elif "Open" in self.ohlc_columns:
+            open_column = self.ohlc_columns["Open"]
+            high_column = self.ohlc_columns["Open"]
+        if open_column is not None:
+            if type(tick.index) is pd.MultiIndex:
+                if type(symbols) is str:
+                    if symbols in self.symbols:
+                        open_value = tick[symbols][open_column]
+                        high_value = tick[symbols][high_column]
+                    else:
+                        return None
+                elif type(symbols) is list:
+                    if len(symbols) > 0:
+                        target_symbols = set(self.symbols) & set(symbols)
+                        target_symbols = list(target_symbols)
+                    else:
+                        target_symbols = self.symbols
+
+                    if len(target_symbols) == 1:
+                        open_value = tick[target_symbols[0]][open_column]
+                        high_value = tick[target_symbols[0]][high_column]
+                    else:
+                        open_value = tick[[(__symbol, open_column) for __symbol in target_symbols]]
+                        open_value.index = target_symbols
+                        high_value = tick[[(__symbol, high_column) for __symbol in target_symbols]]
+                        high_value.index = target_symbols
                 else:
-                    open_value = tick[[(__symbol, open_column) for __symbol in target_symbols]]
-                    open_value.index = target_symbols
-                    high_value = tick[[(__symbol, high_column) for __symbol in target_symbols]]
-                    high_value.index = target_symbols
+                    err_msg = f"Unknown type is specified as symbols: {type(symbols)}"
+                    self.logger.error(err_msg)
+                    raise Exception(err_msg)
             else:
-                err_msg = f"Unknown type is specified as symbols: {type(symbols)}"
-                self.logger.error(err_msg)
-                raise Exception(err_msg)
+                open_value = tick[open_column]
+                high_value = tick[high_column]
         else:
-            open_value = tick[open_column]
-            high_value = tick[open_column]
+            if isinstance(tick, pd.DataFrame):
+                column = random.choice(tick.columns)
+            elif isinstance(tick, pd.Series):
+                column = tick.name
+            open_value = tick[column]
+            high_value = tick[column]
         return self._get_current_ask(open_value, high_value)
 
     def get_current_bid(self, symbols=[]):
         last_10_ticks = self.data.iloc[: self._step_index].ffill()
         tick = last_10_ticks.iloc[-1]
-        open_column = self.ohlc_columns["Open"]
-        low_column = self.ohlc_columns["Low"]
+        open_column = None
+        low_column = None
 
-        if type(tick.index) is pd.MultiIndex:
-            if type(symbols) is str:
-                if symbols in self.symbols:
-                    open_value = tick[symbols][open_column]
-                    low_value = tick[symbols][open_column]
-                else:
-                    return None
-            elif type(symbols) is list:
-                if len(symbols) > 0:
-                    target_symbols = set(self.symbols) & set(symbols)
-                    target_symbols = list(target_symbols)
-                else:
-                    target_symbols = self.symbols
+        if "Open" in self.ohlc_columns and "Low" in self.ohlc_columns:
+            open_column = self.ohlc_columns["Open"]
+            low_column = self.ohlc_columns["Low"]
+        elif "Close" in self.ohlc_columns:
+            open_column = self.ohlc_columns["Close"]
+            low_column = self.ohlc_columns["Close"]
+        elif "Open" in self.ohlc_columns:
+            open_column = self.ohlc_columns["Open"]
+            low_column = self.ohlc_columns["Open"]
+        if open_column is not None:
+            if type(tick.index) is pd.MultiIndex:
+                if type(symbols) is str:
+                    if symbols in self.symbols:
+                        open_value = tick[symbols][open_column]
+                        low_value = tick[symbols][low_column]
+                    else:
+                        return None
+                elif type(symbols) is list:
+                    if len(symbols) > 0:
+                        target_symbols = set(self.symbols) & set(symbols)
+                        target_symbols = list(target_symbols)
+                    else:
+                        target_symbols = self.symbols
 
-                if len(target_symbols) == 1:
-                    open_value = tick[target_symbols[0]][open_column]
-                    low_value = tick[target_symbols[0]][open_column]
+                    if len(target_symbols) == 1:
+                        open_value = tick[target_symbols[0]][open_column]
+                        low_value = tick[target_symbols[0]][low_column]
+                    else:
+                        open_value = tick[[(__symbol, open_column) for __symbol in target_symbols]]
+                        open_value.index = target_symbols
+                        low_value = tick[[(__symbol, low_column) for __symbol in target_symbols]]
+                        low_value.index = target_symbols
                 else:
-                    open_value = tick[[(__symbol, open_column) for __symbol in target_symbols]]
-                    open_value.index = target_symbols
-                    low_value = tick[[(__symbol, low_column) for __symbol in target_symbols]]
-                    low_value.index = target_symbols
+                    err_msg = f"Unknown type is specified as symbols: {type(symbols)}"
+                    self.logger.error(err_msg)
+                    raise Exception(err_msg)
             else:
-                err_msg = f"Unknown type is specified as symbols: {type(symbols)}"
-                self.logger.error(err_msg)
-                raise Exception(err_msg)
+                open_value = tick[open_column]
+                low_value = tick[low_column]
         else:
-            open_value = tick[open_column]
-            low_value = tick[open_column]
+            if isinstance(tick, pd.DataFrame):
+                column = random.choice(tick.columns)
+            elif isinstance(tick, pd.Series):
+                column = tick.name
+            open_value = tick[column]
+            low_value = tick[column]
 
         return self._get_current_bid(open_value, low_value)
 
