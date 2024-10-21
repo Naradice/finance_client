@@ -471,7 +471,7 @@ class MT5Client(Client):
         if existing_rate_df is None:
             interval = MAX_LENGTH
         else:
-            delta = datetime.datetime.utcnow() - existing_rate_df["time"].iloc[-1]
+            delta = datetime.datetime.now(datetime.UTC) - existing_rate_df["time"].iloc[-1]
             total_seconds = delta.total_seconds()
             if (total_seconds / (60 * 60 * 24 * 7)) >= 1:
                 total_seconds = total_seconds * 5 / 7  # remove sat,sun

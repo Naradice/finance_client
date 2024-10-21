@@ -89,7 +89,7 @@ class Position:
         if sl == "null":
             self.sl = None
         if timestamp is None:
-            self.timestamp = datetime.datetime.utcnow()
+            self.timestamp = datetime.datetime.now(datetime.UTC)
         else:
             if isinstance(timestamp, datetime.datetime):
                 self.timestamp = timestamp
