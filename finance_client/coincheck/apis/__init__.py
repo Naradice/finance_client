@@ -1,18 +1,18 @@
-from finance_client.coincheck.apis.servicebase import *
-from finance_client.coincheck.apis.account import Account
-from finance_client.coincheck.apis.bankaccount import BankAccount
-from finance_client.coincheck.apis.borrow import Borrow
-from finance_client.coincheck.apis.deposit import Deposit
-from finance_client.coincheck.apis.leverage import Leverage
-from finance_client.coincheck.apis.orderbook import OrderBook
-from finance_client.coincheck.apis.send import Send
-from finance_client.coincheck.apis.servicebase import ServiceBase
-from finance_client.coincheck.apis.ticker import Ticker
-from finance_client.coincheck.apis.trade import Trade
-from finance_client.coincheck.apis.transfer import Transfer
-from finance_client.coincheck.apis.withdraw import Withdraw
-from finance_client.coincheck.apis.ws import TradeHistory, Orders
-from finance_client.coincheck.apis.order import *
+from .account import Account
+from .bankaccount import BankAccount
+from .borrow import Borrow
+from .deposit import Deposit
+from .leverage import Leverage
+from .order import *
+from .orderbook import OrderBook
+from .send import Send
+from .servicebase import *
+from .servicebase import ServiceBase
+from .ticker import Ticker
+from .trade import Trade
+from .transfer import Transfer
+from .withdraw import Withdraw
+from .ws import Orders, TradeHistory
 
 AVAILABLE_PAIRS = ["btc_jpy" "etc_jpy" "mona_jpy" "plt_jpy" "lsk_jpy" "omg_jpy"]
-##TODO: make classes one file
+# TODO: make classes one file

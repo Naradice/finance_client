@@ -21,51 +21,5 @@
         "csv":{
             "trade_unit":1
         }
-    },
-    "log":{
-        "version": 1,
-        "disable_existing_loggers": false,
-        "formatters": {
-            "simple": {
-                "format": "%(asctime)s %(name)s:%(lineno)s %(funcName)s [%(levelname)s]: %(message)s"
-            }
-        },
-
-        "handlers": {
-            "consoleHandler": {
-                "class": "logging.StreamHandler",
-                "level": "DEBUG",
-                "formatter": "simple",
-                "stream": "ext://sys.stdout"
-            },
-            "fileHandler": {
-                "class": "logging.FileHandler",
-                "level": "WARN",
-                "formatter": "simple",
-                "filename": "finance_client"
-            }
-        },
-
-        "loggers": {
-            "finance_client.csv.client": {
-                "level": "WARN",
-                "handlers": ["consoleHandler", "fileHandler"],
-                "propagate": false
-            },
-            "finance_client.market": {
-                "level": "WARN",
-                "handlers": ["consoleHandler", "fileHandler"],
-                "propagate": false
-            },
-            "finance_client.test": {
-                "level": "DEBUG",
-                "handlers": ["consoleHandler", "fileHandler"],
-                "propagate": true  
-            }
-        },
-    
-        "root": {
-            "level": "DEBUG"
-        }
     }
 }
