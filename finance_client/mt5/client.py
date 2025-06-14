@@ -455,7 +455,7 @@ class MT5Client(Client):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _pending_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+    def _pending_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         if self.__ignore_order is False:
             suc = self.__check_params(False, price, tp, sl)
             if suc is False:
