@@ -289,11 +289,13 @@ class Client(metaclass=ABCMeta):
         """
         data_cp = data.copy()
 
-        for process in idc_processes:
-            data_cp = process(data_cp, symbols, grouped_by_symbol)
+        if idc_processes is not None:
+            for process in idc_processes:
+                data_cp = process(data_cp, symbols, grouped_by_symbol)
 
-        for process in pre_processes:
-            data_cp = process(data_cp, symbols, grouped_by_symbol)
+        if pre_processes is not None:
+            for process in pre_processes:
+                data_cp = process(data_cp, symbols, grouped_by_symbol)
         return data_cp
 
     def get_economic_idc(self, keys, start, end):
@@ -761,7 +763,7 @@ class Client(metaclass=ABCMeta):
 
     # Override if provider has datetime index
     def get_current_datetime(self):
-        return Frame.get_frame_time(datetime.datetime.utcnow(), self.frame)
+        return Frame.get_frame_time(datetime.datetime.now(datetime.UTC), self.frame)
 
     def get_params(self) -> dict:
         print("Need to implement get_params")

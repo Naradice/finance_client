@@ -28,7 +28,7 @@ def __init_logger():
         log_folder = os.path.join(os.path.dirname(__file__), "logs")
         if os.path.exists(log_folder) is False:
             os.makedirs(log_folder)
-        log_file_path = f'{log_folder}/finance_client_{datetime.datetime.utcnow().strftime("%Y%m%d")}.log'
+        log_file_path = f'{log_folder}/finance_client_{datetime.datetime.now(datetime.UTC).strftime("%Y%m%d")}.log'
         logger_config["handlers"]["fileHandler"]["filename"] = log_file_path
         config.dictConfig(logger_config)
 

@@ -175,7 +175,7 @@ class YahooClient(CSVClient):
             else:
                 existing_rate_df = None
 
-        end = datetime.datetime.utcnow().date()
+        end = datetime.datetime.now(datetime.UTC).date()
         delta = None
         kwargs = {"group_by": "ticker"}
         isDataRemaining = False
