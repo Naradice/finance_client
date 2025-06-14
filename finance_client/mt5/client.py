@@ -7,6 +7,7 @@ import MetaTrader5 as mt5
 import numpy
 import pandas as pd
 
+from .. import enum
 from .. import frames as Frame
 from ..client_base import Client
 
@@ -76,6 +77,7 @@ class MT5Client(Client):
         frame=5,
         observation_length=None,
         symbols=["USDJPY"],
+        volume_unit=0.01,
         back_test=False,
         do_render=False,
         budget=1000000,
@@ -127,6 +129,7 @@ class MT5Client(Client):
 
         self.symbols = symbols
         self.frame = frame
+        self.volume_unit = volume_unit
         try:
             self.mt5_frame = self.AVAILABLE_FRAMES[frame]
         except Exception as e:
@@ -184,66 +187,75 @@ class MT5Client(Client):
         data_folder = get_datafolder_path()
         os.path.join(data_folder, self.__get_provider_string())
 
-    def __post_market_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
+    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, position=None, order=None):
         request = {
-            "action": mt5.TRADE_ACTION_DEAL,
+            "action": action,
             "symbol": symbol,
             "volume": vol,
             "price": price,
             "deviation": dev,
             "magic": 100000000,
-            "comment": "python script open",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type": _type,
-            "type_filling": mt5.ORDER_FILLING_IOC,  # depends on broker
-        }
-        if sl is not None:
-            request.update(
-                {
-                    "sl": sl,
-                }
-            )
-        if tp is not None:
-            request.update(
-                {
-                    "tp": tp,
-                }
-            )
-        if position is not None:
-            request.update({"position": position})
-
-        result = mt5.order_send(request)
-        self.logger.debug(f"market order result: {result}")
-        return result
-
-    def __post_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
-        request = {
-            "action": mt5.TRADE_ACTION_PENDING,
-            "symbol": symbol,
-            "volume": vol,
-            "price": price,
-            "deviation": dev,
-            "magic": 100000000,
-            "comment": "python script open",
             "type_time": mt5.ORDER_TIME_GTC,
             "type": _type,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
         if sl is not None:
-            request.update(
-                {
-                    "sl": sl,
-                }
-            )
+            request["sl"] = sl
         if tp is not None:
-            request.update(
-                {
-                    "tp": tp,
-                }
-            )
+            request["tp"] = tp
         if position is not None:
-            request.update({"position": position})
+            request["position"] = position
+        if order is not None:
+            request["order"] = order
+        return request
 
+    def __check_trade_result(self, result):
+        self.logger.debug(f"order result: {result}")
+        if result is None:
+            self.logger.error(f"order failed. result is None.")
+            return enum.TRADE_ERROR
+        if result.order == 0:
+            # order failed
+            self.logger.error(f"order failed due to {result.comment}")
+            retcode = result.retcode
+            if retcode in [mt5.TRADE_RETCODE_REQUOTE, mt5.TRADE_RETCODE_PRICE_CHANGED]:
+                # if client changed order price, it may be accepted
+                return enum.TRADE_PRICE_CHANGED
+            if retcode in [mt5.TRADE_RETCODE_TOO_MANY_REQUESTS]:
+                # if client try again, it may be accepted
+                return enum.TRADE_TOO_MANY_REQUESTS
+            if retcode in [mt5.TRADE_RETCODE_REJECT, mt5.TRADE_RETCODE_TIMEOUT, mt5.TRADE_RETCODE_CONNECTION]:
+                # if client try again later, it may be accepted
+                return enum.TRADE_CONTEXT_BUSY
+            if retcode in [mt5.TRADE_RETCODE_NO_MONEY]:
+                return enum.TRADE_NO_MONEY
+        else:
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                # success
+                self.logger.info(f"order success {result.comment}")
+                return enum.TRADE_DONE
+            elif result.retcode == mt5.TRADE_RETCODE_DONE_PARTIAL:
+                self.logger.warning(f"order partially done {result.comment}")
+                return enum.TRADE_PARTIAL_DONE
+            else:
+                # unkown state
+                self.logger.error(f"order failed due to unkown reason: {result.comment}")
+                return enum.TRADE_ERROR
+
+    def __request_order(self, request):
+        result = mt5.order_send(request)
+        retcode = self.__check_trade_result(result)
+        if retcode in [enum.TRADE_DONE, enum.TRADE_PARTIAL_DONE]:
+            return True, result
+        elif retcode == enum.TRADE_CONTEXT_BUSY:
+            sleep(1)
+            return self.__request_order(request)
+        else:
+            return False, result
+
+    def __post_pending_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
+        request = self.__generate_common_request(symbol, _type, vol, price, dev, sl, tp, position)
+        request["action"] = mt5.TRADE_ACTION_PENDING
         result = mt5.order_send(request)
         self.logger.debug(f"order result: {result}")
         return result
@@ -340,106 +352,152 @@ class MT5Client(Client):
             spread_srs = spread_srs[symbols[0]]
         return spread_srs
 
-    def _market_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
-        rate = price
-        if self.__ignore_order is False:
+    def __check_params(self, buy_order: bool, rate: float, tp=None, sl=None):
+        if buy_order:
+            pass
+        else:
             if tp is not None:
                 if rate <= tp:
-                    self.logger.warning("tp should be lower than value")
-                    return None
-                else:
-                    offset = rate - tp
-                    if sl is None:
-                        sl = rate + offset
-            result = self.__post_market_order(
+                    self.logger.error("tp should be lower than price for sell order")
+                    return False
+            if sl is not None:
+                if rate >= sl:
+                    self.logger.error("sl should be higer than price for sell order")
+                    return False
+        return True
+
+    def _market_sell(self, symbol, price, amount, tp=None, sl=None, **kwargs):
+        if self.__ignore_order is False:
+            suc = self.__check_params(False, price, tp, sl)
+            if suc is False:
+                return False, None
+            request = self.__generate_common_request(
+                action=mt5.TRADE_ACTION_DEAL,
                 symbol=symbol,
                 _type=mt5.ORDER_TYPE_SELL,
-                vol=amount * 0.1,
-                price=rate,
+                vol=amount * self.volume_unit,
+                price=price,
                 dev=20,
                 sl=sl,
                 tp=tp,
             )
-            if result.order == 0:
-                self.logger.error(f"order failed due to {result.comment}")
-                return False, result
-            else:
+            order_suc, result = self.__request_order(request)
+            if order_suc:
                 return True, result.order
+            else:
+                return False, None
+        else:
+            return True, numpy.random.randint(100, 100000)
+
+    def _pending_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+        if self.__ignore_order is False:
+            suc = self.__check_params(False, price, tp, sl)
+            if suc is False:
+                return False, None
+            request = self.__generate_common_request(
+                action=mt5.TRADE_ACTION_PENDING,
+                symbol=symbol,
+                _type=mt5.ORDER_TYPE_SELL_LIMIT,
+                vol=amount * self.volume_unit,
+                price=price,
+                dev=20,
+                sl=sl,
+                tp=tp,
+            )
+            order_suc, result = self.__request_order(request)
+            if order_suc:
+                return True, result.order
+            else:
+                return False, None
         else:
             return True, numpy.random.randint(100, 100000)
 
     def _buy_for_settlement(self, symbol, price, amount, option, result):
         if self.__ignore_order is False:
             if result is not None:
-                rate = price
                 if hasattr(result, "order"):
-                    order = result.order
+                    position_id = result.order
                 else:
-                    order = result
-                result = self.__post_market_order(
+                    position_id = result
+                request = self.__generate_common_request(
+                    action=mt5.TRADE_ACTION_DEAL,
                     symbol=symbol,
                     _type=mt5.ORDER_TYPE_BUY,
-                    vol=amount * 0.1,
-                    price=rate,
+                    vol=amount * self.volume_unit,
+                    price=price,
                     dev=20,
-                    position=order,
+                    position=position_id,
                 )
-                return result
+                order_suc, result = self.__request_order(request=request)
+                if order_suc:
+                    return result
+                else:
+                    return False
             else:
                 return False
         else:
             return True
 
-    # symbol, ask_rate, amount, option_info
     def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
         if self.__ignore_order is False:
-            rate = price
+            suc = self.__check_params(True, price, tp, sl)
+            if suc is False:
+                return False, None
+            request = self.__generate_common_request(
+                action=mt5.TRADE_ACTION_DEAL, symbol=symbol, _type=mt5.ORDER_TYPE_BUY, vol=0.1 * amount, price=price, dev=20, sl=sl, tp=tp
+            )
+            order_suc, result = self.__request_order(request)
+            if order_suc:
+                return True, result.order
+            else:
+                return False, None
+        else:
+            return True, numpy.random.randint(100, 100000)
 
-            if tp is not None:
-                if rate >= tp:
-                    self.logger.warning("tp should be greater than value")
-                    return None
-                else:
-                    offset = tp - rate
-                    if sl is None:
-                        sl = rate - offset
-
-            result = self.__post_market_order(
+    def _pending_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+        if self.__ignore_order is False:
+            suc = self.__check_params(False, price, tp, sl)
+            if suc is False:
+                return False, None
+            request = self.__generate_common_request(
+                action=mt5.TRADE_ACTION_PENDING,
                 symbol=symbol,
-                _type=mt5.ORDER_TYPE_BUY,
-                vol=0.1 * amount,
-                price=rate,
+                _type=mt5.ORDER_TYPE_BUY_LIMIT,
+                vol=amount * self.volume_unit,
+                price=price,
                 dev=20,
                 sl=sl,
                 tp=tp,
             )
-            if result.order == 0:
-                self.logger.error(f"order failed due to {result.comment}")
-                return False, result
-            else:
+            order_suc, result = self.__request_order(request)
+            if order_suc:
                 return True, result.order
+            else:
+                return False, None
         else:
             return True, numpy.random.randint(100, 100000)
-
-    def update_order(self, _type, _id, value, tp, sl):
-        print("NOT IMPLEMENTED")
 
     def _sell_for_settlment(self, symbol, price, amount, option, result):
         if self.__ignore_order is False:
             if result is not None:
                 if hasattr(result, "order"):
-                    order = result.order
+                    position_id = result.order
                 else:
-                    order = result
-                result = self.__post_market_order(
+                    position_id = result
+                request = self.__generate_common_request(
+                    action=mt5.TRADE_ACTION_DEAL,
                     symbol=symbol,
                     _type=mt5.ORDER_TYPE_SELL,
-                    vol=amount * 0.1,
+                    vol=amount * self.volume_unit,
                     price=price,
                     dev=20,
-                    position=order,
+                    position=position_id,
                 )
-                return result
+                order_suc, result = self.__request_order(request=request)
+                if order_suc:
+                    return result
+                else:
+                    return False
             else:
                 return False
         else:
@@ -610,20 +668,57 @@ class MT5Client(Client):
             df = df[symbols[0]]
         return df
 
-    def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True
-    ):
+    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True):
         df_rates = self.__get_ohlc(length, symbols, frame, columns, index, grouped_by_symbol)
         if self.auto_index:
             self.sim_index = self.sim_index - 1
         return df_rates
 
+    def update_order(self, order_id, price, tp=None, sl=None):
+        if self.__ignore_order is False:
+            orders = mt5.orders_get()
+            for order in orders:
+                if order.ticket == order_id:
+                    request = {"action": mt5.TRADE_ACTION_MODIFY, "price": price, "order": order_id}
+                    if tp is not None:
+                        request["tp"] = tp
+                    if sl is not None:
+                        request["sl"] = sl
+                    suc, _ = self.__request_order(request)
+                    return suc
+            return False
+        else:
+            return True
+
     def cancel_order(self, order):
         if self.__ignore_order is False:
-            position = order.order
+            if hasattr(order, "order"):
+                position = order.order
+            else:
+                position = order
             request = {"action": mt5.TRADE_ACTION_REMOVE, "order": position}
-            result = mt5.order_send(request)
-            return result
+            suc, _ = self.__request_order(request)
+            return suc
+        else:
+            self.logger.warning("pending order is not available on backtest and simulator")
+            return True
+
+    def update_position(self, position, tp=None, sl=None):
+        if tp is None and sl is None:
+            self.logger.error("update position require tp or sl")
+            return False
+        if self.__ignore_order is False:
+            if hasattr(position, "order"):
+                position = position.order
+            request = {"action": mt5.TRADE_ACTION_SLTP, "position": position}
+            if tp is not None:
+                request["tp"] = tp
+            if sl is not None:
+                request["sl"] = sl
+            suc, _ = self.__request_order(request)
+            return suc
+        else:
+            return True
 
     def __len__(self):
         if self.frame in self.LAST_IDX:

@@ -55,6 +55,23 @@ def to_str(value: int):
     return str(value)
 
 
+def to_freq_str(mins: int):
+    if mins in freq_str:
+        return freq_str[mins]
+    if mins < 60:
+        return f"{mins}min"
+    if mins < 60 * 24:
+        if mins % 60 == 0:
+            return f"{mins // 60}H"
+    if mins < 60 * 24 * 7:
+        if mins % 60 == 0:
+            if mins % (60 * 24) == 0:
+                return f"{mins // (60*24)}D"
+            else:
+                return f"{mins // 60}H"
+    return f"{mins}min"
+
+
 def get_frame_time(time: datetime, frame):
     frame = int(frame)
     year, month, day, hour, minute = time.year, time.month, time.day, time.hour, time.minute
