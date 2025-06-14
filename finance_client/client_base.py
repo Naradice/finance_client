@@ -144,9 +144,7 @@ class Client(metaclass=ABCMeta):
     def _trading_log(self, position: Position, price, amount, is_open):
         pass
 
-    def close_position(
-        self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None
-    ):
+    def close_position(self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
         _sell_for_settlement or _buy_for_settlement is calleds
@@ -281,9 +279,7 @@ class Client(metaclass=ABCMeta):
             required_length_list.append(process.get_minimum_required_length())
         return max(required_length_list)
 
-    def run_processes(
-        self, data: pd.DataFrame, symbols: list = [], idc_processes=[], pre_processes=[], grouped_by_symbol=False
-    ) -> pd.DataFrame:
+    def run_processes(self, data: pd.DataFrame, symbols: list = [], idc_processes=[], pre_processes=[], grouped_by_symbol=False) -> pd.DataFrame:
         """
         Ex. you can define and provide MACD as process. The results of the process are stored as dataframe[key] = values
         """
@@ -363,7 +359,37 @@ class Client(metaclass=ABCMeta):
         common_args.update(add_params)
         return common_args
 
-    def __check_order_completion(self, ohlc_df: pd.DataFrame, symbols: list):
+    # override if actual client can check if position is closed by tp/sl
+    def _check_position(self, position: Position, **kwargs):
+        low_price = kwargs.get("low_price")
+        high_price = kwargs.get("high_price")
+
+        closed_price = None
+        # start checking stop loss at first.
+        if position.sl is not None:
+            self.logger.debug(f"sl: {position.tp}, high: {high_price}, low: {low_price}")
+            if position.position_type == POSITION_TYPE.long:
+                if position.sl >= low_price:
+                    closed_price = position.sl
+            elif position.position_type == POSITION_TYPE.short:
+                if position.sl <= high_price:
+                    closed_price = position.sl
+            else:
+                self.logger.error(f"unkown position_type: {position.position_type}")
+
+        if position.tp is not None:
+            self.logger.debug(f"tp: {position.tp}, high: {high_price}, low: {low_price}")
+            if position.position_type == POSITION_TYPE.long:
+                if position.tp <= high_price:
+                    closed_price = position.tp
+            elif position.position_type == POSITION_TYPE.short:
+                if position.tp >= low_price:
+                    closed_price = position.tp
+            else:
+                self.logger.error(f"unkown position_type: {position.position_type}")
+        return closed_price
+
+    def __check_position_completion(self, ohlc_df: pd.DataFrame, symbols: list):
         if len(self.wallet.listening_positions) > 0:
             positions = self.wallet.listening_positions.copy()
             self.logger.debug("start checking the tp and sl of positions")
@@ -371,83 +397,27 @@ class Client(metaclass=ABCMeta):
                 self.ohlc_columns = self.get_ohlc_columns()
             high_column = self.ohlc_columns["High"]
             low_column = self.ohlc_columns["Low"]
+            # assume trading data is retrieved every frame
             tick = ohlc_df.iloc[-1]
             for id, position in positions.items():
-                # start checking stop loss at first.
-                if position.sl is not None:
-                    if position.position_type == POSITION_TYPE.long:
-                        if position.sl >= tick[low_column]:
-                            result = self.wallet.close_position(
-                                id=position.id,
-                                price=position.sl,
-                                amount=position.amount,
-                                position=position,
-                                index=self.get_current_datetime(),
-                            )
-                            if result is not None:
-                                self.__pending_order_results[position.id] = result
-                                self.logger.info(f"Long Position is closed to stop loss: {result}")
-                                if self.do_render:
-                                    self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
-                            self.wallet.remove_position_from_listening(position.id)
-                            continue
-                    elif position.position_type == POSITION_TYPE.short:
-                        if position.sl <= tick[high_column]:
-                            result = self.wallet.close_position(
-                                id=position.id,
-                                price=position.sl,
-                                amount=position.amount,
-                                position=position,
-                                index=self.get_current_datetime(),
-                            )
-                            if result is not None:
-                                self.__pending_order_results[position.id] = result
-                                self.logger.info(f"Short Position is closed to stop loss: {result}")
-                                if self.do_render:
-                                    self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
-                            self.wallet.remove_position_from_listening(position.id)
-                            continue
-                    else:
-                        self.logger.error(f"unkown position_type: {position.position_type}")
-                        continue
-
-                if position.tp is not None:
-                    if position.position_type == POSITION_TYPE.long:
-                        self.logger.debug(f"tp: {position.tp}, high: {tick[high_column]}")
-                        if position.tp <= tick[high_column]:
-                            result = self.wallet.close_position(
-                                id=position.id,
-                                price=position.tp,
-                                amount=position.amount,
-                                position=position,
-                                index=self.get_current_datetime(),
-                            )
-                            if result is not None:
-                                self.__pending_order_results[position.id] = result
-                                self.logger.info(f"Position is closed to take profit: {result}")
-                                if self.do_render:
-                                    self.__rendere.add_trade_history_to_latest_tick(-2, position.tp, self.__ohlc_index)
+                closed_price = self._check_position(position, low_price=tick[low_column], high_price=tick[high_column])
+                if closed_price is not None:
+                    result = self.wallet.close_position(
+                        id=position.id,
+                        price=closed_price,
+                        amount=position.amount,
+                        position=position,
+                        index=self.get_current_datetime(),
+                    )
+                    if result is not None:
+                        self.__pending_order_results[position.id] = result
+                        self.logger.info(f"Position is closed by limit: {result}")
+                        if self.do_render:
+                            if position.position_type == POSITION_TYPE.long:
+                                self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             else:
-                                self.wallet.remove_position_from_listening(position.id)
-                    elif position.position_type == POSITION_TYPE.short:
-                        self.logger.debug(f"tp: {position.tp}, low: {tick[low_column]}")
-                        if position.tp >= tick[low_column]:
-                            result = self.wallet.close_position(
-                                id=position.id,
-                                price=position.tp,
-                                amount=position.amount,
-                                position=position,
-                                index=self.get_current_datetime(),
-                            )
-                            if result is not None:
-                                self.__pending_order_results[position.id] = result
-                                self.logger.info(f"Position is closed to take profit: {result}")
-                                if self.do_render:
-                                    self.__rendere.add_trade_history_to_latest_tick(-1, position.tp, self.__ohlc_index)
-                            else:
-                                self.wallet.remove_position_from_listening(position.id)
-                    else:
-                        self.logger.error(f"unkown position_type: {position.position_type}")
+                                self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
+                    self.wallet.remove_position_from_listening(position.id)
 
     def __plot_data(self, symbols: list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
@@ -559,16 +529,14 @@ class Client(metaclass=ABCMeta):
                 target_length = required_length
             else:
                 target_length = length
-            ohlc_df = self._get_ohlc_from_client(
-                length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol
-            )
+            ohlc_df = self._get_ohlc_from_client(length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol)
 
         if isinstance(ohlc_df.index, pd.DatetimeIndex) and data_freq is not None:
             # drop duplicates
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
             ohlc_df.dropna(thresh=len(ohlc_df.columns), inplace=True)
 
-        t = threading.Thread(target=self.__check_order_completion, args=(ohlc_df, symbols), daemon=True)
+        t = threading.Thread(target=self.__check_position_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
 
         if do_run_process:
@@ -627,9 +595,7 @@ class Client(metaclass=ABCMeta):
         if frame is None:
             frame = self.frame
         # data save should be handled by each client
-        ohlc_df = self._get_ohlc_from_client(
-            length=length, symbols=symbols, frame=frame, columns=None, index=None, grouped_by_symbol=True
-        )
+        ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, columns=None, index=None, grouped_by_symbol=True)
         if file_path is not None:
             ohlc_df.to_csv(file_path, index=True)
             self.logger.info(f"file is saved on {file_path}")
@@ -802,9 +768,7 @@ class Client(metaclass=ABCMeta):
             columns = None
 
         indices = self.indices[idx]
-        return self.get_ohlc(
-            self.observation_length, self.symbols, self.frame, columns, indices, self.idc_process, self.pre_process, self.eco_keys
-        )
+        return self.get_ohlc(self.observation_length, self.symbols, self.frame, columns, indices, self.idc_process, self.pre_process, self.eco_keys)
 
     # define wallet client
     def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):

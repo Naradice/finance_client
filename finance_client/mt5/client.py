@@ -10,6 +10,7 @@ import pandas as pd
 from .. import enum
 from .. import frames as Frame
 from ..client_base import Client
+from ..position import Position
 
 try:
     from ..fprocess.fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
@@ -502,6 +503,25 @@ class MT5Client(Client):
                 return False
         else:
             return True
+
+    def _check_position(self, position: Position, **kwargs):
+        position_id = position.result
+        deals = mt5.history_deals_get(position=position_id)
+        if len(deals) > 1:
+            # if the deals has 2 length, it would have closed result
+            for deal in deals:
+                entry_type = deal.entry
+                if entry_type == mt5.DEAL_ENTRY_IN:
+                    continue
+                if entry_type == mt5.DEAL_ENTRY_OUT:
+                    return deal.price
+                self.logger.warning(f"{entry_type} is not handled correctly in finance_client")
+                return deal.price
+        elif len(deals) == 0:
+            self.logger.error("the specified position is not stored in mt5 client.")
+            return None
+        else:
+            return None
 
     def __generate_file_name(self, symbol, frame):
         if frame in self.AVAILABLE_FRAMES_STR:
