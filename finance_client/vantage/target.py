@@ -21,13 +21,13 @@ class __Target:
         self.base_name = name
 
     # TODO: reduce if else
-    def create_client(self, api_key, logger=None):
+    def create_client(self, api_key):
         if self.id == 0:
-            return STOCK(api_key, logger)
+            return STOCK(api_key)
         elif self.id == 1:
-            return FOREX(api_key, logger)
+            return FOREX(api_key)
         elif self.id == 2:
-            return DIGITAL(api_key, logger)
+            return DIGITAL(api_key)
         else:
             raise ValueError(f"{self.base_name} is not supported yet.")
 

@@ -1,16 +1,18 @@
 import datetime
 import json
+import logging
 import os
 import sqlite3
 import threading
 import time
-from abc import ABCMeta, abstractclassmethod
+from abc import ABCMeta, abstractmethod, classmethod
 from typing import List
 
 import pandas as pd
 
-from finance_client import logger
 from finance_client.position import POSITION_TYPE, Position
+
+logger = logging.getLogger(__name__)
 
 
 def _check_path(file_path, default_file_name: str):
@@ -27,19 +29,23 @@ def _check_path(file_path, default_file_name: str):
 
 
 class LogStorage(metaclass=ABCMeta):
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _convert_position_to_log(self, provider, p: Position, is_open):
         return {}
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def store_log(self, symbol, p: Position, is_open):
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def store_logs(self, items):
         pass
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def get(self):
         return []
 

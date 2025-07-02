@@ -10,14 +10,13 @@ sys.path.append(module_path)
 
 import finance_client.frames as Frame
 import finance_client.vantage.target as Target
-from finance_client import logger
 from finance_client.vantage.apis import DIGITAL, FOREX, STOCK
 from finance_client.vantage.client import VantageClient
 
 dotenv.load_dotenv(".env")
-fx = FOREX(os.environ["vantage_api_key"], logger)
-stock = STOCK(os.environ["vantage_api_key"], logger)
-digital = DIGITAL(os.environ["vantage_api_key"], logger)
+fx = FOREX(os.environ["vantage_api_key"])
+stock = STOCK(os.environ["vantage_api_key"])
+digital = DIGITAL(os.environ["vantage_api_key"])
 
 # fx client
 client = VantageClient(os.environ["vantage_api_key"], frame=Frame.D1, symbols=["USDJPY"], start_index=100, auto_step_index=True)
@@ -86,9 +85,7 @@ class TestVantageClient(unittest.TestCase):
         print(df)
 
     def test_fx_get_multi_symbols_rates(self):
-        client = VantageClient(
-            os.environ["vantage_api_key"], frame=Frame.D1, symbols=["USDJPY", "CHFJPY"], start_index=100, auto_step_index=True
-        )
+        client = VantageClient(os.environ["vantage_api_key"], frame=Frame.D1, symbols=["USDJPY", "CHFJPY"], start_index=100, auto_step_index=True)
         df = client.get_ohlc(10)
         self.assertEqual(len(df["USDJPY"]), 10)
         self.assertEqual(len(df["CHFJPY"]), 10)

@@ -1,96 +1,74 @@
-import datetime
+import importlib
+import logging
 import os
-from logging import config, getLogger
 
-logger_config = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {"simple": {"format": "%(asctime)s %(name)s:%(lineno)s %(funcName)s [%(levelname)s]: %(message)s"}},
-    "handlers": {
-        "consoleHandler": {
-            "class": "logging.StreamHandler",
-            "level": "DEBUG",
-            "formatter": "simple",
-            "stream": "ext://sys.stdout",
-        },
-        "fileHandler": {"class": "logging.FileHandler", "level": "WARN", "formatter": "simple", "filename": "finance_client"},
-    },
-    "loggers": {
-        "finance_client": {"level": "WARN", "handlers": ["fileHandler"], "propagate": False},
-        "finance_client.test": {"level": "DEBUG", "handlers": ["consoleHandler", "fileHandler"], "propagate": False},
-    },
-    "root": {"level": "DEBUG"},
-}
+import yaml
 
 
-def __init_logger():
+def apply_partial_config(config_dict, target_loggers: list[str]):
+    """
+    apply logger settings except root
+
+    :param config_dict: dictConfig
+    :param target_loggers: namespace to apply it
+    """
+    formatters = config_dict.get("formatters", {})
+    handlers_conf = config_dict.get("handlers", {})
+    loggers_conf = config_dict.get("loggers", {})
+
+    handler_objs = {}
+    for handler_name, handler_conf in handlers_conf.items():
+        handler_class = _resolve(handler_conf["class"])
+        if handler_class is None:
+            raise ValueError(f"Unknown handler class: {handler_conf['class']}")
+
+        kwargs = {k: v for k, v in handler_conf.items() if k not in ["class", "formatter"]}
+        handler = handler_class(**kwargs)
+
+        formatter_name = handler_conf.get("formatter")
+        if formatter_name:
+            fmt_conf = formatters.get(formatter_name)
+            if fmt_conf:
+                handler.setFormatter(logging.Formatter(fmt_conf["format"]))
+
+        handler_objs[handler_name] = handler
+
+    for logger_name in target_loggers:
+        logger_conf = loggers_conf.get(logger_name)
+        if logger_conf is None:
+            continue
+
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logger_conf["level"])
+
+        for handler_name in logger_conf["handlers"]:
+            handler = handler_objs[handler_name]
+            logger.addHandler(handler)
+
+        logger.propagate = logger_conf.get("propagate", True)
+
+
+def _resolve(class_path: str):
+    parts = class_path.split(".")
+    module_name = ".".join(parts[:-1])
+    class_name = parts[-1]
     try:
-        log_folder = os.path.join(os.path.dirname(__file__), "logs")
-        if os.path.exists(log_folder) is False:
-            os.makedirs(log_folder)
-        log_file_path = f'{log_folder}/finance_client_{datetime.datetime.now(datetime.UTC).strftime("%Y%m%d")}.log'
-        logger_config["handlers"]["fileHandler"]["filename"] = log_file_path
-        config.dictConfig(logger_config)
-
-        if "FC_DEBUG" in os.environ:
-            __DEBUG = bool(os.environ["FC_DEBUG"])
-            print("fc debug mode")
-        else:
-            __DEBUG = False
-
-        if __DEBUG:
-            return getLogger("finance_client.test")
-        else:
-            return getLogger("finance_client")
-    except Exception as e:
-        print(f"fail to set configure file: {e}")
-        raise getLogger("finance_client")
+        module = importlib.import_module(module_name)
+        return getattr(module, class_name)
+    except (ImportError, AttributeError):
+        return None
 
 
-__logger = __init_logger()
-
-
-def info(message: str, **kwargs):
-    try:
-        __logger.info(message, **kwargs)
-    except Exception:
-        print(message)
-
-
-def warning(message: str, **kwargs):
-    try:
-        __logger.warning(message, **kwargs)
-    except Exception:
-        print(message)
-
-
-def warn(message: str, **kwargs):
-    warning(message, **kwargs)
-
-
-def error(message: str, **kwargs):
-    try:
-        __logger.error(message, **kwargs)
-    except Exception:
-        print(message)
-
-
-def exception(message: str, **kwargs):
-    try:
-        __logger.exception(message, **kwargs)
-    except Exception:
-        print(message)
-
-
-def critical(message, **kwargs):
-    try:
-        __logger.critical(message, **kwargs)
-    except Exception:
-        print(message)
-
-
-def debug(message: str, **kwargs):
-    try:
-        __logger.debug(message, **kwargs)
-    except Exception:
-        print(message)
+def setup_logging():
+    if "FC_DEBUG" in os.environ:
+        __DEBUG = bool(os.environ["FC_DEBUG"])
+        print(f"fc debug mode: {__DEBUG}")
+    else:
+        __DEBUG = False
+    if __DEBUG:
+        path = "logging.yaml"
+    else:
+        path = "logging_test.yaml"
+    with open(path) as f:
+        config = yaml.safe_load(f)
+    apply_partial_config(config, target_loggers=list(config["loggers"].keys()))

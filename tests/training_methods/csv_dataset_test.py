@@ -15,7 +15,7 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import fprocess, logger
+from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 
 datetime_column = "time"
@@ -53,16 +53,13 @@ class TestCSVClient(unittest.TestCase):
     def __init__(self, methodName: str = ...) -> None:
         super().__init__(methodName)
         self.length = 30
-        self.single_client = CSVClient(
-            files=csv_file, observation_length=self.length, logger=logger, date_column=datetime_column, start_index=self.length
-        )
+        self.single_client = CSVClient(files=csv_file, observation_length=self.length, date_column=datetime_column, start_index=self.length)
 
         rsi_process = fprocess.RSIProcess(ohlc_column_name=ohlc_columns)
         self.rsi_key = rsi_process.KEY_RSI
         self.single_tec_client = CSVClient(
             files=csv_file,
             observation_length=self.length,
-            logger=logger,
             date_column=datetime_column,
             start_index=self.length,
             idc_process=[rsi_process],
@@ -74,7 +71,6 @@ class TestCSVClient(unittest.TestCase):
         self.single_std_client = CSVClient(
             files=csv_file,
             observation_length=self.length,
-            logger=logger,
             date_column=datetime_column,
             start_index=self.length,
             pre_process=[diff_process, mm_process],

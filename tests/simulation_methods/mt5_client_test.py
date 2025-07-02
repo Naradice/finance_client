@@ -18,7 +18,6 @@ sys.path.append(module_path)
 
 from finance_client import fprocess
 from finance_client import frames as Frame
-from finance_client import logger
 from finance_client.mt5 import MT5Client
 
 id = int(os.environ["mt5_id"])
@@ -35,7 +34,6 @@ class TestMT5Client(unittest.TestCase):
         auto_index=False,
         simulation=simulation,
         frame=Frame.MIN30,
-        logger=logger,
     )
     client.get_ohlc()
 
@@ -81,7 +79,6 @@ class TestMT5Client(unittest.TestCase):
             auto_index=False,
             back_test=True,
             frame=Frame.MIN5,
-            logger=logger,
             seed=1111,
         )
         count = 0
@@ -105,7 +102,6 @@ class TestMT5Client(unittest.TestCase):
             auto_index=True,
             back_test=True,
             frame=Frame.MIN1,
-            logger=logger,
         )
 
         count = 0
@@ -129,7 +125,6 @@ class TestMT5Client(unittest.TestCase):
             auto_index=True,
             back_test=True,
             frame=Frame.H2,
-            logger=logger,
             seed=1111,
         )
 

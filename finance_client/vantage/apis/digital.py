@@ -1,11 +1,15 @@
+import logging
+
 import requests
 
 from .base import API_BASE
 
+logger = logging.getLogger(__name__)
+
 
 class DIGITAL(API_BASE):
-    def __init__(self, api_key, logger=None) -> None:
-        super().__init__(api_key, __name__, logger)
+    def __init__(self, api_key) -> None:
+        super().__init__(api_key)
         self.work_day_in_week = 7
 
     @API_BASE.response_handler
@@ -28,7 +32,7 @@ class DIGITAL(API_BASE):
         interval = self.available_frame[interval]
         correct, size = self.check_outputsize(output_size)
         if correct is False:
-            self.logger.warn("outsize should be either full or compact")
+            logger.warn("outsize should be either full or compact")
         url = f"{self.URL_BASE}/query?function=CRYPTO_INTRADAY&symbol={symbol}&market={market}&interval={interval}&outputsize={size}&apikey={self.api_key}"
         return requests.request("GET", url)
 
@@ -40,7 +44,7 @@ class DIGITAL(API_BASE):
             raise ValueError(f"{market} is supported")
         correct, size = self.check_outputsize(output_size)
         if correct is False:
-            self.logger.warn("outsize should be either full or compact")
+            logger.warn("outsize should be either full or compact")
 
         url = f"{self.URL_BASE}/query?function=DIGITAL_CURRENCY_DAILY&symbol={symbol}&market={market}&outputsize={size}&apikey={self.api_key}"
         return requests.request("GET", url)

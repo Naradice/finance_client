@@ -1,6 +1,7 @@
 from . import frames as Frame
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
+from .logger import setup_logging
 from .vantage.client import VantageClient
 from .yfinance.client import YahooClient
 
@@ -10,6 +11,8 @@ available_clients = {
     CoinCheckClient.kinds: CoinCheckClient,
     YahooClient.kinds: YahooClient,
 }
+
+setup_logging()
 
 
 def client_to_params(client):

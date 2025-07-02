@@ -308,9 +308,7 @@ class Rendere:
         else:
             print("index not in the data")
 
-    def register_ohlc(
-        self, symbols: list, ohlc: pd.DataFrame, index=-1, title="OHLC Candle", ohlc_columns=("Open", "High", "Low", "Close")
-    ):
+    def register_ohlc(self, symbols: list, ohlc: pd.DataFrame, index=-1, title="OHLC Candle", ohlc_columns=("Open", "High", "Low", "Close")):
         """
         register ohlc to plot later
         Args:

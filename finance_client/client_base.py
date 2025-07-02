@@ -1,19 +1,19 @@
 import datetime
+import logging
 import os
 import queue
 import random
 import threading
 import time
 from abc import ABCMeta, abstractmethod
+from typing import Any, Sequence, Union
 
 import numpy as np
 import pandas as pd
 
 from . import db
 from . import frames as Frame
-from . import graph
-from . import logger as lg
-from . import wallet
+from . import graph, wallet
 from .position import ORDER_TYPE, POSITION_TYPE, Position
 
 try:
@@ -21,13 +21,14 @@ try:
 except ImportError:
     from . import fprocess
 
+logger = logging.getLogger(__name__)
 
-class Client(metaclass=ABCMeta):
+
+class ClientBase(metaclass=ABCMeta):
     def __init__(
         self,
         budget=1000000.0,
         provider="Default",
-        symbols=[],
         out_ohlc_columns=("Open", "High", "Low", "Close"),
         idc_process=None,
         pre_process=None,
@@ -38,7 +39,6 @@ class Client(metaclass=ABCMeta):
         do_render=False,
         enable_trade_log=False,
         storage: db.BaseStorage = None,
-        logger=None,
     ):
         self.auto_index = None
         self._step_index = start_index
@@ -47,10 +47,6 @@ class Client(metaclass=ABCMeta):
         self.__pending_order_results = {}
         self.frame = frame
         self.observation_length = observation_length
-        if type(symbols) == str:
-            self.symbols = [symbols]
-        else:
-            self.symbols = symbols
         self.enable_trade_log = enable_trade_log
         if self.do_render:
             self.__rendere = graph.Rendere()
@@ -59,12 +55,11 @@ class Client(metaclass=ABCMeta):
         self.ohlc_columns = None
         self.out_ohlc_columns = out_ohlc_columns
 
-        self.logger = lg if logger is None else logger
         if storage is None:
             db_path = os.path.join(os.getcwd(), "finance_client.db")
             storage = db.SQLiteStorage(db_path, provider)
             # storage = db.FileStorage(provider)
-        self.wallet = wallet.Manager(budget=budget, storage=storage, logger=logger, provider=provider)
+        self.wallet = wallet.Manager(budget=budget, storage=storage, provider=provider)
 
         if idc_process is None:
             self.idc_process = []
@@ -84,7 +79,7 @@ class Client(metaclass=ABCMeta):
 
     def open_trade(
         self,
-        is_buy,
+        is_buy: bool,
         amount: float,
         symbol: str,
         price: float = None,
@@ -108,37 +103,45 @@ class Client(metaclass=ABCMeta):
             Position (Position): you can specify position or position.id to close the position
         """
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
-            self.logger.debug("budget order is requested.")
+            logger.debug("budget order is requested.")
+            if self.do_render and self.__ohlc_index == -1:
+                # self.__ohlc_index is initialized when get_ohlc is called. If ohlc_index == -1, it means position is opened before get_ohlc.
+                try:
+                    self.get_ohlc(symbol)
+                except Exception as e:
+                    # ignore exception as it doesn't relete with the trade
+                    logger.debug(f"failed to get ohlc: {e}")
+                    pass
             if is_buy:
                 if price is None:
                     ask_rate = self.get_current_ask(symbol)
                 else:
                     ask_rate = price
-                self.logger.debug(f"order price: {ask_rate}")
+                logger.debug(f"order price: {ask_rate}")
                 suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
                 if suc:
                     return True, self.__open_long_position(
                         symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result
                     )
                 else:
-                    self.logger.error(f"Order is failed as {result}")
+                    logger.error(f"Order is failed as {result}")
                     return False, result
             else:
                 if price is None:
                     bid_rate = self.get_current_bid(symbol)
                 else:
                     bid_rate = price
-                self.logger.debug(f"order price: {bid_rate}")
+                logger.debug(f"order price: {bid_rate}")
                 suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
                 if suc:
                     return True, self.__open_short_position(
                         symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result
                     )
                 else:
-                    self.logger.error(f"Order is failed as {result}")
+                    logger.error(f"Order is failed as {result}")
                     return False, result
         else:
-            self.logger.error(f"{order_type} is not defined/implemented.")
+            logger.error(f"{order_type} is not defined/implemented.")
             return False, None
 
     def _trading_log(self, position: Position, price, amount, is_open):
@@ -163,7 +166,7 @@ class Client(metaclass=ABCMeta):
         if id is not None:
             if id in self.__pending_order_results:
                 closed_result = self.__pending_order_results.pop(id)
-                self.logger.info("Specified position was already closed.")
+                logger.info("Specified position was already closed.")
                 return closed_result, False
             if position is None:
                 position = self.wallet.storage.get_position(id)
@@ -171,11 +174,11 @@ class Client(metaclass=ABCMeta):
                 if position is not None:
                     amount = position.amount
                 else:
-                    self.logger.error(f"both amount and position is None: {id}")
+                    logger.error(f"both amount and position is None: {id}")
                     return None, None, None, None, False
         else:
             if symbol is None or position_type is None:
-                self.logger.error("Either id or symbol and position_type should be specified.")
+                logger.error("Either id or symbol and position_type should be specified.")
                 return None, None, None, None, False
             if amount is None:
                 amount = 1
@@ -194,25 +197,25 @@ class Client(metaclass=ABCMeta):
 
         position_plot = 0
         if position.position_type == POSITION_TYPE.long:
-            self.logger.debug(f"close long position is ordered for {id}")
+            logger.debug(f"close long position is ordered for {id}")
             if price is None:
                 price = self.get_current_bid(position.symbol)
-                self.logger.debug(f"order close with current ask rate {price}")
+                logger.debug(f"order close with current ask rate {price}")
             result = self._sell_for_settlment(position.symbol, price, amount, position.option, position.result)
             if result is False:
                 return None, None, None, None, False
             position_plot = -2
         elif position.position_type == POSITION_TYPE.short:
-            self.logger.debug(f"close short position is ordered for {id}")
+            logger.debug(f"close short position is ordered for {id}")
             if price is None:
-                self.logger.debug(f"order close with current bid rate {price}")
+                logger.debug(f"order close with current bid rate {price}")
                 price = self.get_current_ask(position.symbol)
             result = self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
             if result is False:
                 return None, None, None, None, False
             position_plot = -1
         else:
-            self.logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
+            logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
         price, position.price, price_diff, profit = self.wallet.close_position(
@@ -316,7 +319,7 @@ class Client(metaclass=ABCMeta):
             Queue: Queue return data by Queue.get() when frame time past
         """
         if data_length <= 0:
-            self.logger.warning("data_length must be greater than 1. change length to 1")
+            logger.warning("data_length must be greater than 1. change length to 1")
             data_length = 1
         if frame is None:
             frame = self.frame
@@ -350,7 +353,7 @@ class Client(metaclass=ABCMeta):
         self.__data_queue = None
 
     def __put_data_to_queue(self, data_length: int, symbols: list, frame: int, idc_processes=[], pre_processes=[]):
-        data = self.get_ohlc(data_length, symbols, frame, idc_processes=idc_processes, pre_processes=pre_processes)
+        data = self.get_ohlc(symbols, data_length, frame, idc_processes=idc_processes, pre_processes=pre_processes)
         self.__data_queue.put(data)
 
     def get_client_params(self):
@@ -367,7 +370,7 @@ class Client(metaclass=ABCMeta):
         closed_price = None
         # start checking stop loss at first.
         if position.sl is not None:
-            self.logger.debug(f"sl: {position.tp}, high: {high_price}, low: {low_price}")
+            logger.debug(f"sl: {position.tp}, high: {high_price}, low: {low_price}")
             if position.position_type == POSITION_TYPE.long:
                 if position.sl >= low_price:
                     closed_price = position.sl
@@ -375,10 +378,10 @@ class Client(metaclass=ABCMeta):
                 if position.sl <= high_price:
                     closed_price = position.sl
             else:
-                self.logger.error(f"unkown position_type: {position.position_type}")
+                logger.error(f"unkown position_type: {position.position_type}")
 
         if position.tp is not None:
-            self.logger.debug(f"tp: {position.tp}, high: {high_price}, low: {low_price}")
+            logger.debug(f"tp: {position.tp}, high: {high_price}, low: {low_price}")
             if position.position_type == POSITION_TYPE.long:
                 if position.tp <= high_price:
                     closed_price = position.tp
@@ -386,13 +389,13 @@ class Client(metaclass=ABCMeta):
                 if position.tp >= low_price:
                     closed_price = position.tp
             else:
-                self.logger.error(f"unkown position_type: {position.position_type}")
+                logger.error(f"unkown position_type: {position.position_type}")
         return closed_price
 
     def __check_position_completion(self, ohlc_df: pd.DataFrame, symbols: list):
         if len(self.wallet.listening_positions) > 0:
             positions = self.wallet.listening_positions.copy()
-            self.logger.debug("start checking the tp and sl of positions")
+            logger.debug("start checking the tp and sl of positions")
             if self.ohlc_columns is None:
                 self.ohlc_columns = self.get_ohlc_columns()
             high_column = self.ohlc_columns["High"]
@@ -411,7 +414,7 @@ class Client(metaclass=ABCMeta):
                     )
                     if result is not None:
                         self.__pending_order_results[position.id] = result
-                        self.logger.info(f"Position is closed by limit: {result}")
+                        logger.info(f"Position is closed by limit: {result}")
                         if self.do_render:
                             if position.position_type == POSITION_TYPE.long:
                                 self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
@@ -421,7 +424,7 @@ class Client(metaclass=ABCMeta):
 
     def __plot_data(self, symbols: list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
-            ohlc_columns = self.get_ohlc_columns()
+            ohlc_columns = self.get_ohlc_columns(symbols)
             args_dict = {"ohlc_columns": (ohlc_columns["Open"], ohlc_columns["High"], ohlc_columns["Low"], ohlc_columns["Close"])}
             result = self.__rendere.register_ohlc(symbols, data_df, **args_dict)
             self.__ohlc_index = result
@@ -529,7 +532,9 @@ class Client(metaclass=ABCMeta):
                 target_length = required_length
             else:
                 target_length = length
-            ohlc_df = self._get_ohlc_from_client(length=target_length, symbols=symbols, frame=frame, index=index, grouped_by_symbol=grouped_by_symbol)
+            ohlc_df = self._get_ohlc_from_client(
+                length=target_length, symbols=symbols, frame=frame, columns=columns, index=index, grouped_by_symbol=grouped_by_symbol
+            )
 
         if isinstance(ohlc_df.index, pd.DatetimeIndex) and data_freq is not None:
             # drop duplicates
@@ -545,7 +550,7 @@ class Client(metaclass=ABCMeta):
                 if self.do_render:
                     self.__plot_data_width_indicaters(symbols, data)
             else:
-                self.logger.error("data length is insufficient to caliculate indicaters.")
+                logger.error("data length is insufficient to caliculate indicaters.")
                 data = ohlc_df
         else:
             data = ohlc_df
@@ -570,12 +575,12 @@ class Client(metaclass=ABCMeta):
         else:
             return data.iloc[-length:]
 
-    def download(self, length: int = None, symbols: list = None, frame: int = None, grouped_by_symbol=True, file_path=None):
+    def download(self, symbols, length: int = None, frame: int = None, grouped_by_symbol=True, file_path=None):
         """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
 
         Args:
+            symbols (list[str]): list of symbols.
             length (int | None): specify data length > 1. If None is specified, return all date.
-            symbols (list[str]): list of symbols. Defaults to [].
             frame (int | None): specify frame to get time series data. If None, default value is used instead.
             grouped_by_symbol (bool): if True, return data is grouped by symbol. Defaults to True.
             file_path (str): file path to save data. If None, file is save on default path. Default path is specified by enviornment variables by data_path, it environment variable is not set, data is saved on os.getcwd()/data_source
@@ -586,31 +591,35 @@ class Client(metaclass=ABCMeta):
 
         """
 
-        if symbols is None:
-            symbols = self.symbols
         if type(symbols) == str:
             symbols = [symbols]
         if len(symbols) == 0:
-            raise ValueError("symbols must be specified by either initial parameter or function parameter.")
+            raise ValueError("symbols must be specified")
         if frame is None:
             frame = self.frame
         # data save should be handled by each client
         ohlc_df = self._get_ohlc_from_client(length=length, symbols=symbols, frame=frame, columns=None, index=None, grouped_by_symbol=True)
         if file_path is not None:
             ohlc_df.to_csv(file_path, index=True)
-            self.logger.info(f"file is saved on {file_path}")
+            logger.info(f"file is saved on {file_path}")
         else:
             default_path = self._get_default_path()
             if default_path is None:
-                self.logger.info("save is not supported by this client.")
+                logger.info("save is not supported by this client.")
             else:
-                self.logger.info(f"file is saved on {default_path}")
+                logger.info(f"file is saved on {default_path}")
         return ohlc_df
 
     def get_ohlc(
         self,
+        symbols: Union[
+            Any,
+            Sequence[Any],
+            slice,
+            np.ndarray,
+            pd.Series,
+        ],
         length: int = None,
-        symbols: list = None,
         frame: int = None,
         columns: list = None,
         index=None,
@@ -618,12 +627,12 @@ class Client(metaclass=ABCMeta):
         pre_processes=None,
         economic_keys=None,
         grouped_by_symbol=True,
-    ) -> pd.DataFrame or np.array:
+    ) -> pd.DataFrame:
         """get ohlc data with specified length
 
         Args:
+            symbols: selector of columns. Typically it passed as df.loc[index, symbols].
             length (int | None): specify data length > 1. If None is specified, return all date.
-            symbols (list[str]): list of symbols. Defaults to [].
             frame (int | None): specify frame to get time series data. If None, default value is used instead.
             index (int or list[int]): specify index copy from. If list has multiple indices, return numpy array as (indices_size, column_size, data_length).
             columns: specify columns. If not specified, return open, high, low, close.
@@ -636,11 +645,11 @@ class Client(metaclass=ABCMeta):
             pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
             Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
-        if length is None and self.observation_length is not None:
-            length = self.observation_length
-
-        if symbols is None:
-            symbols = []
+        if length is None:
+            if self.observation_length is not None:
+                length = self.observation_length
+            else:
+                length = slice(None)
 
         if frame is None:
             frame = self.frame
@@ -665,11 +674,6 @@ class Client(metaclass=ABCMeta):
         do_add_eco_idc = False
         if len(economic_keys) > 0:
             do_add_eco_idc = True
-
-        if type(symbols) == str:
-            symbols = [symbols]
-        if len(symbols) == 0:
-            symbols = self.symbols
 
         data_freq = Frame.freq_str[frame]
 
@@ -720,11 +724,11 @@ class Client(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_current_ask(self, symbols=[]) -> pd.Series:
+    def get_current_ask(self, symbols: list = None) -> pd.Series:
         print("Need to implement get_current_ask on your client")
 
     @abstractmethod
-    def get_current_bid(self, symbols=[]) -> pd.Series:
+    def get_current_bid(self, symbols: list = None) -> pd.Series:
         print("Need to implement get_current_bid on your client")
 
     # Override if provider has datetime index
@@ -759,17 +763,6 @@ class Client(metaclass=ABCMeta):
                 self._indices = [index for index in range(minimum_length, len(self))]
         return self._indices
 
-    def __getitem__(self, batch_idx):
-        if type(batch_idx) is tuple:
-            idx = batch_idx[0]
-            columns = batch_idx[1]
-        else:
-            idx = batch_idx
-            columns = None
-
-        indices = self.indices[idx]
-        return self.get_ohlc(self.observation_length, self.symbols, self.frame, columns, indices, self.idc_process, self.pre_process, self.eco_keys)
-
     # define wallet client
     def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
         return True, None
@@ -778,10 +771,10 @@ class Client(metaclass=ABCMeta):
         return True, None
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        pass
+        return True
 
     def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
-        pass
+        return True
 
     # defined by the actual client for dataset or env if needed
     def reset(self, mode=None):
@@ -862,7 +855,7 @@ class Client(metaclass=ABCMeta):
             return diffs
 
     def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
-        self.logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+        logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         id = self.wallet.open_position(
             position_type=POSITION_TYPE.long,
             symbol=symbol,
@@ -880,7 +873,7 @@ class Client(metaclass=ABCMeta):
         return id
 
     def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
-        self.logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+        logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
         id = self.wallet.open_position(
             position_type=POSITION_TYPE.short,
             symbol=symbol,
@@ -899,7 +892,7 @@ class Client(metaclass=ABCMeta):
                 self._trading_log(id, soldRate, amount, True)
         return id
 
-    def get_ohlc_columns(self, symbol: str = None, out_type="dict", ignore=None) -> dict:
+    def get_ohlc_columns(self, symbol: str = slice(None), out_type="dict", ignore=None) -> dict:
         """returns column names of ohlc data.
 
         Returns:
@@ -911,12 +904,13 @@ class Client(metaclass=ABCMeta):
             self.auto_index = False
             temp_r = self.do_render
             self.do_render = False
-            data = self.get_ohlc(1)
+            is_no_symbol = symbol == slice(None)
+            data = self.get_ohlc(symbol, 1)
             self.auto_index = temp
             self.do_render = temp_r
             columns = data.columns
             if type(columns) == pd.MultiIndex:
-                if symbol is None:
+                if is_no_symbol:
                     if fprocess.ohlc.is_grouped_by_symbol(columns):
                         columns = set(columns.droplevel(0))
                     else:
@@ -1060,7 +1054,7 @@ class Client(metaclass=ABCMeta):
                 rolled_df.sort_index(level=0, axis=1, inplace=True)
             return rolled_df
         else:
-            self.logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
+            logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
             return pd.DataFrame()
 
     def get_budget(self) -> tuple:

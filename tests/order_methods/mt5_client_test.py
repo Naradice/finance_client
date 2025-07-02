@@ -13,7 +13,6 @@ sys.path.append(module_path)
 
 from finance_client import db
 from finance_client import frames as Frame
-from finance_client import logger
 from finance_client.mt5 import MT5Client
 
 id = int(os.environ["mt5_id"])
@@ -40,7 +39,6 @@ class TestMT5Client(unittest.TestCase):
             auto_index=False,
             simulation=simulation,
             frame=Frame.MIN30,
-            logger=logger,
             storage=storage,
         )
 

@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import pandas as pd
 
@@ -13,6 +14,8 @@ except ImportError:
     from ..fprocess.convert import str_to_currencies
     from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
+logger = logging.getLogger(__name__)
+
 
 class VantageClient(CSVClient):
     OHLC_COLUMNS = ["open", "high", "low", "close"]
@@ -22,7 +25,7 @@ class VantageClient(CSVClient):
     kinds = "vantage"
 
     def get_additional_params(self):
-        self.logger.warn("parameters are not saved for vantage as credentials are included.")
+        logger.warning("parameters are not saved for vantage as credentials are included.")
         return {}
 
     def _generate_file_name(self, symbol):
@@ -43,7 +46,6 @@ class VantageClient(CSVClient):
         do_render=False,
         enable_trade_log=False,
         budget=1000000,
-        logger=None,
     ):
         """Get ohlc rate from alpha vantage api
         Args:
@@ -54,7 +56,6 @@ class VantageClient(CSVClient):
             symbols (list of str, optional): list of symbol for fx or stock. Defaults to ['JPYUSD'].
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
             budget (int, optional): budget for the simulation. Defaults to 1000000.
-            logger (logger, optional): you can pass your logger if needed. Defaults to None.
             seed (int, optional): random seed. Defaults to 1017.
 
         Raises:
@@ -99,7 +100,6 @@ class VantageClient(CSVClient):
             slip_type=slip_type,
             enable_trade_log=enable_trade_log,
             budget=budget,
-            logger=logger,
         )
 
     def __convert_response_to_df(self, data_json: dict):
@@ -116,10 +116,10 @@ class VantageClient(CSVClient):
                         time_zone = value
                 columns.remove(meta_data_column)
                 if len(columns) != 1:
-                    self.logger.warn(f"data key has multiple candidates unexpectedly: {columns}")
+                    logger.warn(f"data key has multiple candidates unexpectedly: {columns}")
                 series_column = columns[0]
             else:
-                self.logger.warn("couldn't get meta data info. try to parse the response with UTC")
+                logger.warn("couldn't get meta data info. try to parse the response with UTC")
         else:
             if "Information" in columns:
                 raise Exception(f"You might call premium API: {data_json['Information']}")
@@ -193,9 +193,7 @@ class VantageClient(CSVClient):
 
     def __download(self, symbol):
         file_name = self._generate_file_name(symbol)
-        existing_rate_df = read_csv(
-            self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col": self.TIME_INDEX_NAME}
-        )
+        existing_rate_df = read_csv(self.kinds, file_name, [self.TIME_INDEX_NAME], pandas_option={"index_col": self.TIME_INDEX_NAME})
         MAX_LENGTH = 950  # not accurate
 
         if existing_rate_df is None:

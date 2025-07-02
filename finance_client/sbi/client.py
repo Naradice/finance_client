@@ -1,10 +1,11 @@
 import datetime
+import logging
 import os
 
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client.client_base import Client
+from finance_client.client_base import ClientBase
 from finance_client.yfinance.client import YahooClient
 
 try:
@@ -12,8 +13,10 @@ try:
 except ImportError:
     from .sbi_util.rpa import STOCK
 
+logger = logging.getLogger(__name__)
 
-class SBIClient(Client):
+
+class SBIClient(ClientBase):
     kinds = "sbi"
     ID_KEY = "sbi_id"
     PASS_KEY = "sbi_password"
@@ -35,7 +38,6 @@ class SBIClient(Client):
         storage=None,
         do_render=False,
         enable_trade_log=False,
-        logger=None,
     ):
         if id is None:
             if self.ID_KEY in os.environ:
@@ -58,9 +60,7 @@ class SBIClient(Client):
             raise Exception("Failed to initialize with getting budget.")
         self.client = None
         if use_yfinance:
-            self.client = YahooClient(
-                symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close, start_index=start_index
-            )
+            self.client = YahooClient(symbols, auto_step_index=auto_step_index, frame=frame, adjust_close=adjust_close, start_index=start_index)
         else:
             print("get_rate is not available if you specify use_yfinance=False")
         super().__init__(
@@ -70,15 +70,12 @@ class SBIClient(Client):
             do_render=do_render,
             storage=storage,
             enable_trade_log=enable_trade_log,
-            logger=logger,
         )
 
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True
-    ):
+    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol=True):
         if self.client:
             return self.client._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)
         else:
@@ -90,13 +87,13 @@ class SBIClient(Client):
         else:
             return None
 
-    def get_current_ask(self, symbols=[]) -> float:
+    def get_current_ask(self, symbols: list = None) -> float:
         if self.client:
             return self.client.get_current_ask(symbols)
         else:
             return None
 
-    def get_current_bid(self, symbols=[]) -> float:
+    def get_current_bid(self, symbols: list = None) -> float:
         if self.client:
             return self.client.get_current_bid(symbols)
         else:
@@ -111,7 +108,7 @@ class SBIClient(Client):
 
     def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
         err_msg = "market_sell is not implemented"
-        self.logger.info(err_msg)
+        logger.info(err_msg)
         return False, err_msg
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
@@ -157,7 +154,7 @@ class SBIClient(Client):
         try:
             date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
         except Exception:
-            self.logger.exception(f"failed to convered date of stored rate: {date_str}")
+            logger.exception(f"failed to convered date of stored rate: {date_str}")
             return None, None, None
 
         rates = rate_str.split(",")

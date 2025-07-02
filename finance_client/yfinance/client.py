@@ -8,8 +8,7 @@ from .. import frames as Frame
 from ..csv.client import CSVClient
 
 try:
-    from ..fprocess.fprocess.csvrw import (get_file_path, read_csv,
-                                           write_df_to_csv)
+    from ..fprocess.fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 except ImportError:
     from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
@@ -80,7 +79,6 @@ class YahooClient(CSVClient):
         enable_trade_log=False,
         storage=None,
         budget=1000000,
-        logger=None,
     ):
         """Get ohlc rate from yfinance
         Args:
@@ -89,7 +87,6 @@ class YahooClient(CSVClient):
             frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
             budget (int, optional): budget for the simulation. Defaults to 1000000.
-            logger (logger, optional): you can pass your logger if needed. Defaults to None.
             seed (int, optional): random seed. Defaults to 1017.
 
         Raises:
@@ -140,7 +137,6 @@ class YahooClient(CSVClient):
             storage=storage,
             enable_trade_log=enable_trade_log,
             budget=budget,
-            logger=logger,
         )
 
     def __tz_convert(self, df):
@@ -239,9 +235,7 @@ class YahooClient(CSVClient):
             DFS = {}
             for symbol in symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(
-                    ticks_df, self.kinds, self._create_filename(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
-                )
+                write_df_to_csv(ticks_df, self.kinds, self._create_filename(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
                 DFS[symbol] = ticks_df
                 self.__updated_time[symbol] = datetime.datetime.now()
             if len(DFS) > 1:
@@ -273,9 +267,7 @@ class YahooClient(CSVClient):
         for symbol in symbols:
             if symbol not in self.symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(
-                    ticks_df, self.kinds, self._file_path_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME}
-                )
+                write_df_to_csv(ticks_df, self.kinds, self._file_path_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
                 self.__updated_time[symbol] = datetime.datetime.now()
         return super()._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)
 

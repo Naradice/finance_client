@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import random
 from time import sleep
@@ -9,7 +10,7 @@ import pandas as pd
 
 from .. import enum
 from .. import frames as Frame
-from ..client_base import Client
+from ..client_base import ClientBase
 from ..position import Position
 
 try:
@@ -18,7 +19,7 @@ except ImportError:
     from ..fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 
 
-class MT5Client(Client):
+class MT5Client(ClientBase):
     kinds = "mt5"
 
     AVAILABLE_FRAMES = {
@@ -65,7 +66,7 @@ class MT5Client(Client):
         )
 
     def get_additional_params(self):
-        self.logger.warn("parameters are not saved for mt5 as credentials are included.")
+        self.logger.warning("parameters are not saved for mt5 as credentials are included.")
         return {}
 
     def __init__(
@@ -89,6 +90,8 @@ class MT5Client(Client):
         idc_process=None,
         std_processes=None,
     ):
+        if logger is None:
+            logger = logging.getLogger(__name__)
         super().__init__(
             budget=budget,
             frame=frame,
@@ -269,7 +272,7 @@ class MT5Client(Client):
         else:
             return info.ask
 
-    def get_current_ask(self, symbols=None):
+    def get_current_ask(self, symbols: list = None):
         if symbols is None or len(symbols) == 0:
             symbols = self.symbols.copy()
         if isinstance(symbols, str):
@@ -306,7 +309,7 @@ class MT5Client(Client):
         else:
             return info.bid
 
-    def get_current_bid(self, symbols=None):
+    def get_current_bid(self, symbols: list = None):
         if symbols is None or len(symbols) == 0:
             symbols = self.symbols.copy()
         if isinstance(symbols, str):

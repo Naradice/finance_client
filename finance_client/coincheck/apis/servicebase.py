@@ -3,9 +3,12 @@ import hashlib
 import hmac
 import http.client
 import json
+import logging
 import os
 import time
 import urllib
+
+logger = logging.getLogger(__name__)
 
 
 class ServiceBase:
@@ -43,8 +46,7 @@ class ServiceBase:
         creds_header = self.create_credential_header(url=url, body=body)
         request_headers.update(creds_header)
 
-        if self.DEBUG:
-            self.logger.info(f"Set signature: {creds_header}")
+        logger.debug(f"Set signature: {creds_header}")
 
     def create_credential_header(self, url, body=None):
         nonce = str(round(time.time() * 1000000))
@@ -65,8 +67,7 @@ class ServiceBase:
         self.__setSignature(request_headers, path, body=body)
 
         client = http.client.HTTPSConnection(self.apiBase)
-        if self.DEBUG:
-            self.logger.info("Process request...")
+        logger.debug("Process request...")
         client.request(method, path, body, request_headers)
         res = client.getresponse()
         data = res.read()

@@ -12,7 +12,7 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import fprocess, logger
+from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 from finance_client.position import ORDER_TYPE
 
@@ -63,15 +63,12 @@ def MACD_backtest():
         idc_process=[macd_p],
         start_index=100,
         enable_trade_log=True,
-        logger=logger,
     )
     df = client.get_ohlc(30)
     position = 0
     trend = 0
     while len(df) == 30:
-        signal, trend = macd_cross(
-            position, trend, df, target_column="Close", signal_column_name=macd_p.KEY_SIGNAL, macd_column_name=macd_p.KEY_MACD
-        )
+        signal, trend = macd_cross(position, trend, df, target_column="Close", signal_column_name=macd_p.KEY_SIGNAL, macd_column_name=macd_p.KEY_MACD)
         if signal is not None:
             if "close" in signal:
                 if "buy" in signal:

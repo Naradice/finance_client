@@ -1,10 +1,11 @@
 import datetime
+import logging
 import time
 
 import pandas as pd
 
 import finance_client.frames as Frame
-from finance_client.client_base import Client
+from finance_client.client_base import ClientBase
 
 try:
     from ..fprocess.fprocess.csvrw import write_df_to_csv
@@ -15,8 +16,10 @@ from . import apis
 from .apis.servicebase import ServiceBase
 from .apis.ws import TradeHistory
 
+logger = logging.getLogger(__name__)
 
-class CoinCheckClient(Client):
+
+class CoinCheckClient(ClientBase):
     kinds = "cc"
     provider = "CoinCheck"
 
@@ -71,7 +74,7 @@ class CoinCheckClient(Client):
                 self.next_frame = datetime.datetime(year=year, month=month, day=1, tzinfo=datetime.timezone.utc)
             else:
                 err_txt = f"frame_delta is not defined somehow for {self.frame}"
-                self.logger.error(err_txt)
+                logger.error(err_txt)
                 raise Exception(err_txt)
         else:
             self.next_frame = self.next_frame + self.frame_delta
@@ -88,7 +91,6 @@ class CoinCheckClient(Client):
         observation_length=None,
         do_render=False,
         enable_trade_log=False,
-        logger=None,
     ):
         """CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
         Create order with API. Need to specify the credentials
@@ -101,17 +103,14 @@ class CoinCheckClient(Client):
             frame (int, optional): Frame minutes. finance_client.frames is also available. Defaults to 30.
             initialized_with (Client | None, optional): CoinCheck API don't provide history data. You can specify other Client to initialized ohlc with history data of the client. Defaults to None.
             do_render (bool, optional): If true, plot ohlc data by matplotlib. Defaults to False.
-            logger (_type_, optional): you can pass your logger. Defaults to None and use default logger.
         """
         super().__init__(
             budget,
             "CoinCheck",
-            [],
             frame=frame,
             observation_length=observation_length,
             do_render=do_render,
             enable_trade_log=enable_trade_log,
-            logger=logger,
         )
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
 
@@ -121,9 +120,7 @@ class CoinCheckClient(Client):
         current_time = datetime.datetime.now(tz=datetime.timezone.utc)
         if self.frame < Frame.H1:
             additional_mins = current_time.minute % self.frame
-            delta = datetime.timedelta(
-                minutes=additional_mins, seconds=current_time.second, microseconds=current_time.microsecond
-            )
+            delta = datetime.timedelta(minutes=additional_mins, seconds=current_time.second, microseconds=current_time.microsecond)
             self.current_frame = current_time - delta
             self.frame_delta = datetime.timedelta(minutes=self.frame)
         elif self.frame < Frame.D1:
@@ -148,9 +145,7 @@ class CoinCheckClient(Client):
             self.current_frame = current_time - delta
             self.frame_delta = datetime.timedelta(days=self.frame / (60 * 24))
         else:  # Frame.MO1
-            self.current_frame = datetime.datetime(
-                year=current_time.year, month=current_time.month, day=1, tzinfo=datetime.timezone.utc
-            )
+            self.current_frame = datetime.datetime(year=current_time.year, month=current_time.month, day=1, tzinfo=datetime.timezone.utc)
             self.frame_delta = None
         self.__return_intermidiate_data = return_intermidiate_data
         self.next_frame = self.current_frame
@@ -162,10 +157,8 @@ class CoinCheckClient(Client):
         self.simulation = simulation
 
         if initialized_with is None:
-            self.logger.info(
-                "get_rates returns shortened or filled with 0 data without initialization as Coincheck don't provide historical data API."
-            )
-        elif isinstance(initialized_with, Client):
+            logger.info("get_rates returns shortened or filled with 0 data without initialization as Coincheck don't provide historical data API.")
+        elif isinstance(initialized_with, ClientBase):
             if type(initialized_with.symbols) is list:
                 self.symbols = initialized_with.symbols
             if initialized_with.frame != frame:
@@ -192,7 +185,7 @@ class CoinCheckClient(Client):
                     try:
                         self.data.index = pd.to_datetime(self.data.index, utc=True)
                     except Exception:
-                        self.logger.error("can't convert str to datetime")
+                        logger.error("can't convert str to datetime")
 
             # convert timezone
             if self.data.index[-1].tzinfo != "UTC":
@@ -200,25 +193,23 @@ class CoinCheckClient(Client):
                 try:
                     self.data.index = self.data.index.tz_convert("UTC")
                 except Exception:
-                    self.logger.info("can't convert timezone on initialization")
+                    logger.info("can't convert timezone on initialization")
 
             # fit initialization client to current time frame
             last_frame_time = None
             try:
                 last_frame_time = self.data.index[-1].to_pydatetime()
             except Exception:
-                self.logger.error("can't find time column or index. ignore time.")
+                logger.error("can't find time column or index. ignore time.")
             if last_frame_time is not None:
                 # If last_frame_time equal to currenet_frame, set it as frame_ohlc. Then remove last ohlc
                 if last_frame_time == self.current_frame:
-                    self.logger.info(
-                        "initialize client returned current time frame data. try to merge it with tick data obtained from coincheck."
-                    )
+                    logger.info("initialize client returned current time frame data. try to merge it with tick data obtained from coincheck.")
                     self.frame_ohlcv = self.data.iloc[-1:]  # store last tick df
                     self.data = self.data.drop([self.data.index[-1]])
                 # If last_frame_time is greater than current_time, assuming server time and client time are mismatching. so convert(reduce) server datetime
                 elif last_frame_time > self.current_frame:
-                    self.logger.info(
+                    logger.info(
                         f"initialize client returns {last_frame_time} as last frame. But current frame based on device time is {self.current_frame}. Try to fit server time to device time."
                     )
                     delta = last_frame_time - self.current_frame
@@ -229,7 +220,7 @@ class CoinCheckClient(Client):
                         self.frame_ohlcv = self.data.iloc[-1:]
                         self.data = self.data.drop([self.data.index[-1]])
                     else:
-                        self.logger.error(
+                        logger.error(
                             f"Unexpectedly time isn't fitted. last frame time is {self.data.index[-1]} and current time frame is {self.current_frame}"
                         )
                         exit()  # exit to prevent caliculating indicaters based on bad data
@@ -238,7 +229,7 @@ class CoinCheckClient(Client):
                     delta = self.current_frame - last_frame_time
                     diff_mins = int(delta.total_seconds() / 60)
                     if diff_mins != self.frame:
-                        self.logger.warn(
+                        logger.warn(
                             f"Time difference between initialize client and coincheck server is {diff_mins} mins. try to fit it to local time. If you feel this is strange, please stop this script."
                         )
                         fitting_time = delta - datetime.timedelta(
@@ -246,9 +237,7 @@ class CoinCheckClient(Client):
                         )  # Not sure last tick is actually on time. So put it on 1 frame before
                         self.data.index = self.data.index + fitting_time
                     else:
-                        self.logger.info(
-                            f"initialize client retuened {last_frame_time} for latest frame data. It is working as expected."
-                        )
+                        logger.info(f"initialize client retuened {last_frame_time} for latest frame data. It is working as expected.")
                 if self.frame_ohlcv is not None and "volume" not in self.frame_ohlcv.columns:
                     self.frame_ohlcv["volume"] = 0
 
@@ -260,13 +249,11 @@ class CoinCheckClient(Client):
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True
-    ):
+    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True):
         try:
             write_df_to_csv(self.data, self.provider, f"CC_BTC_{self.frame}.csv")
         except Exception as e:
-            self.logger.error(e)
+            logger.error(e)
         if length is None:
             if index is None:
                 if self.__return_intermidiate_data:
@@ -284,12 +271,12 @@ class CoinCheckClient(Client):
             else:
                 return self.data.iloc[-length:index]
         else:
-            self.logger.error("intervl should be greater than 0.")
+            logger.error("intervl should be greater than 0.")
 
     def get_future_rates(self, interval) -> pd.DataFrame:
-        self.logger.info("This is not available on this client type.")
+        logger.info("This is not available on this client type.")
 
-    def get_current_ask(self, symbols=[]) -> float:
+    def get_current_ask(self, symbols: list = None) -> float:
         tick = self.ticker.get()
         return tick["ask"]
 
@@ -317,11 +304,11 @@ class CoinCheckClient(Client):
 
     def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
         err_meg = "sell is not allowed."
-        self.logger.error(err_meg)
+        logger.error(err_meg)
         return False, err_meg
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
-        self.logger.error("sell is not allowed, so buy settlement is not available.")
+        logger.error("sell is not allowed, so buy settlement is not available.")
 
     def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result_id):
         if self.simulation:
@@ -350,7 +337,7 @@ class CoinCheckClient(Client):
         pass
 
     def get_next_tick(self, frame=5):
-        self.logger.error("get_next_tick is not available for now")
+        logger.error("get_next_tick is not available for now")
 
     def reset(self, mode=None):
         pass
