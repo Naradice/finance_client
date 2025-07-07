@@ -29,6 +29,7 @@ class ClientBase(metaclass=ABCMeta):
         self,
         budget=1000000.0,
         provider="Default",
+        symbols=None,
         out_ohlc_columns=("Open", "High", "Low", "Close"),
         idc_process=None,
         pre_process=None,
@@ -42,6 +43,8 @@ class ClientBase(metaclass=ABCMeta):
     ):
         self.auto_index = None
         self._step_index = start_index
+        if not hasattr(self, "_symbols"):
+            self._symbols = symbols
         self.__data_queue = None
         self.do_render = do_render
         self.__pending_order_results = {}
@@ -763,6 +766,10 @@ class ClientBase(metaclass=ABCMeta):
                 self._indices = [index for index in range(minimum_length, len(self))]
         return self._indices
 
+    @property
+    def symbols(self):
+        return self.get_symbols()
+
     # define wallet client
     def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
         return True, None
@@ -892,6 +899,19 @@ class ClientBase(metaclass=ABCMeta):
                 self._trading_log(id, soldRate, amount, True)
         return id
 
+    def __get_columns_from_data(self, symbol=slice(None)):
+        # disable auto index and rendering option
+        temp = self.auto_index
+        self.auto_index = False
+        temp_r = self.do_render
+        self.do_render = False
+        data = self.get_ohlc(symbol, 1)
+        # revert options
+        self.auto_index = temp
+        self.do_render = temp_r
+
+        return data.columns
+
     def get_ohlc_columns(self, symbol: str = slice(None), out_type="dict", ignore=None) -> dict:
         """returns column names of ohlc data.
 
@@ -900,15 +920,8 @@ class ClientBase(metaclass=ABCMeta):
         """
         if self.ohlc_columns is None:
             self.ohlc_columns = {}
-            temp = self.auto_index
-            self.auto_index = False
-            temp_r = self.do_render
-            self.do_render = False
             is_no_symbol = symbol == slice(None)
-            data = self.get_ohlc(symbol, 1)
-            self.auto_index = temp
-            self.do_render = temp_r
-            columns = data.columns
+            columns = self.__get_columns_from_data(symbol)
             if type(columns) == pd.MultiIndex:
                 if is_no_symbol:
                     if fprocess.ohlc.is_grouped_by_symbol(columns):
@@ -1056,6 +1069,16 @@ class ClientBase(metaclass=ABCMeta):
         else:
             logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
             return pd.DataFrame()
+
+    def get_symbols(self):
+        if self._symbols is None:
+            ohlc = self.get_ohlc(slice(None), length=1)
+            symbols = fprocess.ohlc.get_symbols(ohlc)
+            if symbols is None:
+                self._symbols = []
+            else:
+                self._symbols = list(symbols)
+        return self._symbols
 
     def get_budget(self) -> tuple:
         ask_states, bid_states = self.get_portfolio()

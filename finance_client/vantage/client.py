@@ -36,10 +36,10 @@ class VantageClient(CSVClient):
     def __init__(
         self,
         api_key,
+        symbols,
         auto_step_index=False,
         frame: int = Frame.MIN5,
         finance_target=target.FX,
-        symbols=["JPYUSD"],
         start_index=None,
         seed=1017,
         slip_type="random",
@@ -47,13 +47,14 @@ class VantageClient(CSVClient):
         enable_trade_log=False,
         budget=1000000,
     ):
-        """Get ohlc rate from alpha vantage api
+        """Get ohlc rate from alpha vantage api. No online download.
+
         Args:
             api_key (str): apikey of alpha vantage
+            symbols (list of str): list of symbol for fx or stock.
             auto_step_index (bool, optional): increase step when get_rates is called. Defaults to False.
             finance_target (Target, optional): Target of finance market. Defaults to Target.FX.
             frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
-            symbols (list of str, optional): list of symbol for fx or stock. Defaults to ['JPYUSD'].
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
             budget (int, optional): budget for the simulation. Defaults to 1000000.
             seed (int, optional): random seed. Defaults to 1017.

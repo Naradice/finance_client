@@ -5,7 +5,7 @@ import os
 import sqlite3
 import threading
 import time
-from abc import ABCMeta, abstractmethod, classmethod
+from abc import ABCMeta, abstractmethod
 from typing import List
 
 import pandas as pd

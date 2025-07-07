@@ -15,6 +15,7 @@ def apply_partial_config(config_dict, target_loggers: list[str]):
     formatters = config_dict.get("formatters", {})
     handlers_conf = config_dict.get("handlers", {})
     loggers_conf = config_dict.get("loggers", {})
+    PROJECT_DIR = os.path.dirname(__file__)
 
     handler_objs = {}
     for handler_name, handler_conf in handlers_conf.items():
@@ -22,8 +23,17 @@ def apply_partial_config(config_dict, target_loggers: list[str]):
         if handler_class is None:
             raise ValueError(f"Unknown handler class: {handler_conf['class']}")
 
-        kwargs = {k: v for k, v in handler_conf.items() if k not in ["class", "formatter"]}
+        if "filename" in handler_conf:
+            rel_path = handler_conf["filename"]
+            abs_path = os.path.join(PROJECT_DIR, rel_path)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            handler_conf["filename"] = str(abs_path)
+
+        kwargs = {k: v for k, v in handler_conf.items() if k not in ["class", "formatter", "level"]}
         handler = handler_class(**kwargs)
+        level = handler_conf.get("level")
+        if level:
+            handler.setLevel(level)
 
         formatter_name = handler_conf.get("formatter")
         if formatter_name:
@@ -65,10 +75,11 @@ def setup_logging():
         print(f"fc debug mode: {__DEBUG}")
     else:
         __DEBUG = False
+    BASE_PATH = os.path.dirname(__file__)
     if __DEBUG:
-        path = "logging.yaml"
+        path = os.path.join(BASE_PATH, "logging.yaml")
     else:
-        path = "logging_test.yaml"
+        path = os.path.join(BASE_PATH, "logging_test.yaml")
     with open(path) as f:
         config = yaml.safe_load(f)
     apply_partial_config(config, target_loggers=list(config["loggers"].keys()))

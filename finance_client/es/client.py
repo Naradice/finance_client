@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class ESClient(ClientBase):
     def __init__(self, auto_index=False, frame=5, symbol="USDJPY", post_process=[], budget=1000000, seed=1017):
-        super().__init__(budget=budget, frame=frame, provider="vantage", post_processes=post_process)
+        super().__init__(budget=budget, symbols=symbol, frame=frame, provider="vantage", post_processes=post_process)
         self.debug = False
         self.SYMBOL = symbol
         self.frame = frame

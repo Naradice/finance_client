@@ -65,6 +65,7 @@ class SBIClient(ClientBase):
             print("get_rate is not available if you specify use_yfinance=False")
         super().__init__(
             budget=budget,
+            symbols=symbols,
             provider=provider,
             frame=frame,
             do_render=do_render,

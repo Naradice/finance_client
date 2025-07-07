@@ -175,6 +175,11 @@ class TestBaseClient(unittest.TestCase):
         self.assertEqual(ohlc_dict["Low"], "Low")
         self.assertEqual(ohlc_dict["Close"], "Close")
 
+    def test_get_symbols(self):
+        client = TestClient(do_render=False)
+        symbols = client.get_symbols()
+        self.assertEqual(len(symbols), 0)
+
     def test_trading_simulation(self):
         budget = 100000
         client = TestClient(budget=budget, do_render=True)
@@ -200,6 +205,13 @@ class TestBaseClient(unittest.TestCase):
         self.assertEqual(ohlc_dict["High"], "High")
         self.assertEqual(ohlc_dict["Low"], "Low")
         self.assertEqual(ohlc_dict["Close"], "Close")
+
+    def test_multi_symbols(self):
+        client = TestMultiClient(do_render=False)
+        symbols = client.get_symbols()
+        self.assertEqual(len(symbols), 2)
+        self.assertEqual(symbols[0], "USDJPY")
+        self.assertEqual(symbols[1], "USDAUD")
 
     # Multiindex with 1 symbol
     def test_multi_et_rates_wo_plot(self):
