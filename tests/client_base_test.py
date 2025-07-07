@@ -6,6 +6,7 @@ import unittest
 
 import pandas as pd
 
+os.environ["FC_DEBUG"] = "true"
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 import finance_client.frames as Frame

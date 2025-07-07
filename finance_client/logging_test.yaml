@@ -22,7 +22,7 @@ handlers:
     formatter: simple
 
 loggers:
-  request:
+  finance_client:
     level: DEBUG
     handlers: [console, file]
     propagate: no

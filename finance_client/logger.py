@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import sys
 
 import yaml
 
@@ -28,6 +29,14 @@ def apply_partial_config(config_dict, target_loggers: list[str]):
             abs_path = os.path.join(PROJECT_DIR, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             handler_conf["filename"] = str(abs_path)
+        if "stream" in handler_conf:
+            stream = handler_conf["stream"]
+            if stream == "ext://sys.stdout":
+                handler_conf["stream"] = sys.stdout
+            elif stream == "ext://sys.stderr":
+                handler_conf["stream"] = sys.stderr
+            elif stream:
+                raise ValueError(f"Unsupported stream value: {stream}")
 
         kwargs = {k: v for k, v in handler_conf.items() if k not in ["class", "formatter", "level"]}
         handler = handler_class(**kwargs)
@@ -77,9 +86,9 @@ def setup_logging():
         __DEBUG = False
     BASE_PATH = os.path.dirname(__file__)
     if __DEBUG:
-        path = os.path.join(BASE_PATH, "logging.yaml")
-    else:
         path = os.path.join(BASE_PATH, "logging_test.yaml")
+    else:
+        path = os.path.join(BASE_PATH, "logging.yaml")
     with open(path) as f:
         config = yaml.safe_load(f)
     apply_partial_config(config, target_loggers=list(config["loggers"].keys()))
