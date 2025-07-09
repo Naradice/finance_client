@@ -610,6 +610,7 @@ class ClientBase(metaclass=ABCMeta):
             if default_path is None:
                 logger.info("save is not supported by this client.")
             else:
+                # TODO: handle save logic in base class
                 logger.info(f"file is saved on {default_path}")
         return ohlc_df
 
@@ -899,7 +900,7 @@ class ClientBase(metaclass=ABCMeta):
                 self._trading_log(id, soldRate, amount, True)
         return id
 
-    def __get_columns_from_data(self, symbol=slice(None)):
+    def _get_columns_from_data(self, symbol=slice(None)):
         # disable auto index and rendering option
         temp = self.auto_index
         self.auto_index = False
@@ -921,7 +922,7 @@ class ClientBase(metaclass=ABCMeta):
         if self.ohlc_columns is None:
             self.ohlc_columns = {}
             is_no_symbol = symbol == slice(None)
-            columns = self.__get_columns_from_data(symbol)
+            columns = self._get_columns_from_data(symbol)
             if type(columns) == pd.MultiIndex:
                 if is_no_symbol:
                     if fprocess.ohlc.is_grouped_by_symbol(columns):

@@ -17,9 +17,9 @@ class TestClient(ClientBase):
     def __init__(
         self,
         budget=1000000,
-        indicater_processes: list = [],
+        indicater_processes: list = None,
         do_render=False,
-        pre_processes: list = [],
+        pre_processes: list = None,
         frame: int = Frame.MIN5,
         provider="Default",
     ):
@@ -113,7 +113,7 @@ class TestMultiClient(TestClient):
     ):
         super().__init__(
             budget=budget,
-            provider="UnitTest",
+            provider="Default",
             indicater_processes=None,
             pre_processes=None,
             frame=Frame.MIN5,

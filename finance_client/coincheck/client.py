@@ -229,7 +229,7 @@ class CoinCheckClient(ClientBase):
                     delta = self.current_frame - last_frame_time
                     diff_mins = int(delta.total_seconds() / 60)
                     if diff_mins != self.frame:
-                        logger.warn(
+                        logger.warning(
                             f"Time difference between initialize client and coincheck server is {diff_mins} mins. try to fit it to local time. If you feel this is strange, please stop this script."
                         )
                         fitting_time = delta - datetime.timedelta(

@@ -79,7 +79,7 @@ class API_BASE:
                         invalid_api_message = "Invalid API call"
                         if invalid_api_message in res_j[error_header]:
                             logger.error(f"Invalid API parameters are specified on {get_rates_function.__name__}")
-                            logger.warn(f"Invalid API parameters: {args} and {kwargs}")
+                            logger.warning(f"Invalid API parameters: {args} and {kwargs}")
                             return ValueError(res_j[error_header])
                         else:
                             logger.error(f"Unkown Error Response on {get_rates_function.__name__}")

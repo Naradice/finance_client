@@ -117,10 +117,10 @@ class VantageClient(CSVClient):
                         time_zone = value
                 columns.remove(meta_data_column)
                 if len(columns) != 1:
-                    logger.warn(f"data key has multiple candidates unexpectedly: {columns}")
+                    logger.warning(f"data key has multiple candidates unexpectedly: {columns}")
                 series_column = columns[0]
             else:
-                logger.warn("couldn't get meta data info. try to parse the response with UTC")
+                logger.warning("couldn't get meta data info. try to parse the response with UTC")
         else:
             if "Information" in columns:
                 raise Exception(f"You might call premium API: {data_json['Information']}")
@@ -128,7 +128,7 @@ class VantageClient(CSVClient):
 
         # convert dict to data frame
         data_df = pd.DataFrame(data_json[series_column]).T
-        data_df.index = pd.to_datetime(data_df.index)
+        data_df.index = pd.to_datetime(data_df.index, utc=True)
         data_df = data_df.sort_index(ascending=True)
 
         # apply timezone info obtained from meta_data

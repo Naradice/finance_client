@@ -27,7 +27,7 @@ class STOCK(API_BASE):
         interval = self.available_frame[interval]
         correct, size = self.check_outputsize(output_size)
         if correct is False:
-            logger.warn("outsize should be either full or compact")
+            logger.warning("outsize should be either full or compact")
         url = f"{self.URL_BASE}/query?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval={interval}&outputsize={size}&apikey={self.api_key}"
         return requests.request("GET", url)
 
@@ -37,7 +37,7 @@ class STOCK(API_BASE):
             raise ValueError(f"{symbol} is not supported")
         correct, size = self.check_outputsize(output_size)
         if correct is False:
-            logger.warn("outsize should be either full or compact")
+            logger.warning("outsize should be either full or compact")
 
         url = f"{self.URL_BASE}/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize={size}&apikey={self.api_key}"
         return requests.request("GET", url)

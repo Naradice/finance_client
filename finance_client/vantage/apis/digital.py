@@ -32,7 +32,7 @@ class DIGITAL(API_BASE):
         interval = self.available_frame[interval]
         correct, size = self.check_outputsize(output_size)
         if correct is False:
-            logger.warn("outsize should be either full or compact")
+            logger.warning("outsize should be either full or compact")
         url = f"{self.URL_BASE}/query?function=CRYPTO_INTRADAY&symbol={symbol}&market={market}&interval={interval}&outputsize={size}&apikey={self.api_key}"
         return requests.request("GET", url)
 
@@ -44,7 +44,7 @@ class DIGITAL(API_BASE):
             raise ValueError(f"{market} is supported")
         correct, size = self.check_outputsize(output_size)
         if correct is False:
-            logger.warn("outsize should be either full or compact")
+            logger.warning("outsize should be either full or compact")
 
         url = f"{self.URL_BASE}/query?function=DIGITAL_CURRENCY_DAILY&symbol={symbol}&market={market}&outputsize={size}&apikey={self.api_key}"
         return requests.request("GET", url)
