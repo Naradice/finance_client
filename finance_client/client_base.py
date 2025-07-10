@@ -1,10 +1,8 @@
 import datetime
 import logging
 import os
-import queue
 import random
 import threading
-import time
 from abc import ABCMeta, abstractmethod
 from typing import Any, Sequence, Union
 
@@ -45,7 +43,6 @@ class ClientBase(metaclass=ABCMeta):
         self._step_index = start_index
         if not hasattr(self, "_symbols"):
             self._symbols = symbols
-        self.__data_queue = None
         self.do_render = do_render
         self.__pending_order_results = {}
         self.frame = frame
@@ -311,55 +308,6 @@ class ClientBase(metaclass=ABCMeta):
         if len(data) > 0:
             return pd.concat(data, axis=1)
         return pd.DataFrame()
-
-    def get_data_queue(self, data_length: int, symbols: list = [], frame: int = None):
-        """
-            to get data when frame time past
-            when this function is called multiple times
-        Args:
-            symbols (list): _description_
-            data_length (int, optional): data length of rates. get all rates are not allowed. Defaults to .
-
-        Returns:
-            Queue: Queue return data by Queue.get() when frame time past
-        """
-        if data_length <= 0:
-            logger.warning("data_length must be greater than 1. change length to 1")
-            data_length = 1
-        if frame is None:
-            frame = self.frame
-
-        if self.__data_queue is None:
-            self.__data_queue = queue.Queue()
-        timer_thread = threading.Thread(target=self.__timer, args=(data_length, symbols, frame), daemon=True)
-        timer_thread.start()
-        return self.__data_queue
-
-    def __timer(self, data_length: int, symbols: list, frame: int):
-        next_time = 0
-        frame_seconds = frame * 60
-        sleep_time = 0
-
-        if frame <= 60:
-            base_time = datetime.datetime.now()
-            target_min = datetime.timedelta(minutes=(frame - base_time.minute % frame))
-            target_time = base_time + target_min
-            sleep_time = datetime.datetime.timestamp(target_time) - datetime.datetime.timestamp(base_time) - base_time.second
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        base_time = time.time()
-        while self.__data_queue is not None:
-            t = threading.Thread(target=self.__put_data_to_queue, args=(data_length, symbols, frame), daemon=True)
-            t.start()
-            next_time = ((base_time - time.time()) % frame_seconds) or frame_seconds
-            time.sleep(next_time)
-
-    def stop_quing(self):
-        self.__data_queue = None
-
-    def __put_data_to_queue(self, data_length: int, symbols: list, frame: int, idc_processes=[], pre_processes=[]):
-        data = self.get_ohlc(symbols, data_length, frame, idc_processes=idc_processes, pre_processes=pre_processes)
-        self.__data_queue.put(data)
 
     def get_client_params(self):
         common_args = {"budget": self.wallet.budget, "frame": self.frame, "provider": self.wallet.provider}

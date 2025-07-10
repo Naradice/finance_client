@@ -36,10 +36,10 @@ freq_str = {
     MIN5: "5min",
     MIN10: "10min",
     MIN30: "30min",
-    H1: "1H",
-    H2: "2H",
-    H4: "4H",
-    H8: "8H",
+    H1: "1h",
+    H2: "2h",
+    H4: "4h",
+    H8: "8h",
     D1: "1D",
     D2: "2D",
     D4: "4D",
@@ -62,13 +62,13 @@ def to_freq_str(mins: int):
         return f"{mins}min"
     if mins < 60 * 24:
         if mins % 60 == 0:
-            return f"{mins // 60}H"
+            return f"{mins // 60}h"
     if mins < 60 * 24 * 7:
         if mins % 60 == 0:
             if mins % (60 * 24) == 0:
                 return f"{mins // (60*24)}D"
             else:
-                return f"{mins // 60}H"
+                return f"{mins // 60}h"
     return f"{mins}min"
 
 
