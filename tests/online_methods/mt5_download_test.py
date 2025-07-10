@@ -10,6 +10,7 @@ os.environ["FC_DEBUG"] = "true"
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
+from finance_client import fprocess
 from finance_client.mt5.client import MT5Client
 
 
@@ -58,6 +59,15 @@ class TestMT5Client(unittest.TestCase):
     def test_get_symbols(self):
         symbols = self.client.get_symbols()
         self.assertEqual(len(symbols), 64)
+
+    def test_get_rate_with_indicaters(self):
+        symbols = ["USDJPY", "AUDUSD"]
+        columns = self.client.get_ohlc_columns()
+        close_column = columns["Close"]
+        macd_p = fprocess.MACDProcess(target_column=close_column)
+        data = self.client.get_ohlc(symbols=symbols, length=100, idc_processes=[macd_p])
+        self.assertEqual(macd_p.KEY_MACD in data[symbols[0]].columns, True)
+        self.assertEqual(len(data[symbols[0]][macd_p.KEY_MACD]), 100)
 
 
 if __name__ == "__main__":
