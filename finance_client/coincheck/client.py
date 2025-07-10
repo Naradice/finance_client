@@ -284,7 +284,7 @@ class CoinCheckClient(ClientBase):
         tick = self.ticker.get()
         return tick["bid"]
 
-    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, price, amount, tp, sl, option_info):
         # buy_amount = ask_rate * amount
         # response = apis.create_market_buy_order(amount=buy_amount, stop_loss_rate=sl)
         # api don't return amount, so use pending order instead.

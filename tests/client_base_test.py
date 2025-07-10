@@ -66,10 +66,10 @@ class TestClient(ClientBase):
         max_value = self.data.loc[self.step_index, "Open"]
         return random.randrange(min_value, max_value)
 
-    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, price, amount, tp, sl, option_info):
         return True, None
 
-    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+    def _market_sell(self, symbol, price, amount, tp, sl, option_info):
         return True, None
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):

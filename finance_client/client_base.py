@@ -121,8 +121,9 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     ask_rate = price
                 logger.debug(f"order price: {ask_rate}")
-                suc, result = self._market_buy(symbol, ask_rate, amount, tp, sl, option_info)
+                suc, result = self._market_buy(symbol=symbol, price=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info)
                 if suc:
+                    logger.info(f"open long position: {ask_rate}")
                     return True, self.__open_long_position(
                         symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result
                     )
@@ -135,8 +136,9 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     bid_rate = price
                 logger.debug(f"order price: {bid_rate}")
-                suc, result = self._market_sell(symbol, bid_rate, amount, tp, sl, option_info)
+                suc, result = self._market_sell(symbol=symbol, price=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info)
                 if suc:
+                    logger.info(f"open short position: {bid_rate}")
                     return True, self.__open_short_position(
                         symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result
                     )
@@ -654,6 +656,8 @@ class ClientBase(metaclass=ABCMeta):
                 length = self.observation_length
             else:
                 length = slice(None)
+        if isinstance(symbols, str):
+            symbols = [symbols]
 
         if frame is None:
             frame = self.frame
@@ -772,10 +776,10 @@ class ClientBase(metaclass=ABCMeta):
         return self.get_symbols()
 
     # define wallet client
-    def _market_buy(self, symbol, ask_rate, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, price, amount, tp, sl, option_info):
         return True, None
 
-    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+    def _market_sell(self, symbol, price, amount, tp, sl, option_info):
         return True, None
 
     def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):

@@ -488,7 +488,7 @@ class MT5Client(ClientBase):
         else:
             return True
 
-    def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+    def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None, *args, **kwargs):
         if self.__ignore_order is False:
             suc = self.__check_params(True, price, tp, sl)
             if suc is False:

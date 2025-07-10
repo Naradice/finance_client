@@ -100,14 +100,14 @@ class SBIClient(ClientBase):
         else:
             return None
 
-    def _market_buy(self, symbol, ask_rate=None, amount=1, tp=None, sl=None, option_info=None):
-        suc = self.rpa_client.buy_order(symbol, amount, ask_rate)
+    def _market_buy(self, symbol, price=None, amount=1, tp=None, sl=None, option_info=None):
+        suc = self.rpa_client.buy_order(symbol, amount, price)
         if suc:
             return True, None
         else:
             return False, None
 
-    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+    def _market_sell(self, symbol, price, amount, tp, sl, option_info):
         err_msg = "market_sell is not implemented"
         logger.info(err_msg)
         return False, err_msg
