@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import threading
+import uuid
 from abc import ABCMeta, abstractmethod
 from typing import Any, Sequence, Union
 
@@ -44,7 +45,8 @@ class ClientBase(metaclass=ABCMeta):
         if not hasattr(self, "_symbols"):
             self._symbols = symbols
         self.do_render = do_render
-        self.__pending_order_results = {}
+        self.__closed_position_with_exist = {}
+        self.__open_orders = {}
         self.frame = frame
         self.observation_length = observation_length
         self.enable_trade_log = enable_trade_log
@@ -85,22 +87,24 @@ class ClientBase(metaclass=ABCMeta):
         price: float = None,
         tp=None,
         sl=None,
-        option_info=None,
         order_type: ORDER_TYPE = ORDER_TYPE.market,
+        *args,
+        **kwargs,
     ):
-        """by calling this in your client, order function is called and position is stored
+        """Order to open a position.
 
         Args:
             is_buy (bool): buy order or not
             amount (float): amount of trade unit
-            stop (_type_): _description_
-            order_type (int): Market,
             symbol (str): symbol of currency, stock etc. ex USDJPY.
-            option_info (any, optional): store info you want to position. Defaults to None.
+            price (float): order price. If None is specified, use market price to order.
+            order_type (int): 0: Market, 1: Limit, 2: Stop
+            tp (float, optional): specify take profit price. Default is None
+            sl (float, optional): specify stop loss price. Default is None
 
         Returns:
             Success (bool): True if order is completed
-            Position (Position): you can specify position or position.id to close the position
+            Position (Position): position or id which is required to close the position
         """
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             logger.debug("budget order is requested.")
@@ -118,11 +122,11 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     ask_rate = price
                 logger.debug(f"order price: {ask_rate}")
-                suc, result = self._market_buy(symbol=symbol, price=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info)
+                suc, result = self._market_buy(symbol=symbol, price=ask_rate, amount=amount, tp=tp, sl=sl, *args, **kwargs)
                 if suc:
                     logger.info(f"open long position: {ask_rate}")
                     return True, self.__open_long_position(
-                        symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result
+                        symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
@@ -133,18 +137,40 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     bid_rate = price
                 logger.debug(f"order price: {bid_rate}")
-                suc, result = self._market_sell(symbol=symbol, price=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info)
+                suc, result = self._market_sell(symbol=symbol, price=bid_rate, amount=amount, tp=tp, sl=sl, *args, **kwargs)
                 if suc:
                     logger.info(f"open short position: {bid_rate}")
                     return True, self.__open_short_position(
-                        symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, option_info=option_info, result=result
+                        symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
                     return False, result
         else:
-            logger.error(f"{order_type} is not defined/implemented.")
-            return False, None
+            if price is None:
+                return False, None
+            p = Position(POSITION_TYPE.long if is_buy is True else POSITION_TYPE.short, symbol=symbol, amount=amount, tp=tp, sl=sl)
+            if order_type == ORDER_TYPE.limit or order_type == ORDER_TYPE.limit.value:
+                logger.debug(f"limit order: is_buy {is_buy}")
+                if is_buy:
+                    suc, ticket_id = self._buy_limit(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                else:
+                    suc, ticket_id = self._sell_limit(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                if suc:
+                    self.__open_orders[ticket_id] = p
+                return suc, ticket_id
+            elif order_type == ORDER_TYPE.stop or order_type == ORDER_TYPE.stop.value:
+                logger.debug(f"stop order: is_buy {is_buy}")
+                if is_buy:
+                    suc, ticket_id = self._buy_stop(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                else:
+                    suc, ticket_id = self._sell_stop(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                if suc:
+                    self.__open_orders[ticket_id] = p
+                return suc, ticket_id
+            else:
+                logger.error(f"{order_type} is not defined/implemented.")
+                return False, None
 
     def _trading_log(self, position: Position, price, amount, is_open):
         pass
@@ -152,22 +178,22 @@ class ClientBase(metaclass=ABCMeta):
     def close_position(self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
-        _sell_for_settlement or _buy_for_settlement is calleds
+        _sell_to_close or _buy_to_close is calleds
 
         Args:
-            price (float, optional): price for settlement. If not specified, current value is used.
+            price (float, optional): price for settlement. If not specified, market value is specified.
             position (Position, optional): Position returned by open_trade. Defaults to None.
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
-            symbols (str, optional):
-            position_type (str, optional)
+            symbols (str, optional): key of symbol
+            position_type (str, optional): 1: long, -1: short. if both symbol and position_type is specified, try to order
         """
         if position is not None:
             id = position.id
 
         if id is not None:
-            if id in self.__pending_order_results:
-                closed_result = self.__pending_order_results.pop(id)
+            if id in self.__closed_position_with_exist:
+                closed_result = self.__closed_position_with_exist.pop(id)
                 logger.info("Specified position was already closed.")
                 return closed_result, False
             if position is None:
@@ -203,7 +229,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 price = self.get_current_bid(position.symbol)
                 logger.debug(f"order close with current ask rate {price}")
-            result = self._sell_for_settlment(position.symbol, price, amount, position.option, position.result)
+            result = self._sell_to_close(position.symbol, price, amount, position.option, position.result)
             if result is False:
                 return None, None, None, None, False
             position_plot = -2
@@ -212,7 +238,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.debug(f"order close with current bid rate {price}")
                 price = self.get_current_ask(position.symbol)
-            result = self._buy_for_settlement(position.symbol, price, amount, position.option, position.result)
+            result = self._buy_to_close(position.symbol, price, amount, position.option, position.result)
             if result is False:
                 return None, None, None, None, False
             position_plot = -1
@@ -227,7 +253,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def close_all_positions(self, symbols: list = None):
         """close all open_position.
-        sell_for_settlement or _buy_for_settlement is calleds for each position
+        sell_for_settlement or _buy_to_close is calleds for each position
         """
 
         if symbols is None:
@@ -241,10 +267,10 @@ class ClientBase(metaclass=ABCMeta):
             for position in positions:
                 result = self.close_position(position=position)
                 results.append(result)
-        pending_results = self.__pending_order_results.copy()
+        pending_results = self.__closed_position_with_exist.copy()
         for id, result in pending_results.items():
             results.append((result, False))
-            self.__pending_order_results.pop(id)
+            self.__closed_position_with_exist.pop(id)
         return results
 
     def close_long_positions(self, symbols: list = None):
@@ -345,7 +371,7 @@ class ClientBase(metaclass=ABCMeta):
                 logger.error(f"unkown position_type: {position.position_type}")
         return closed_price
 
-    def __check_position_completion(self, ohlc_df: pd.DataFrame, symbols: list):
+    def __check_pending_positions_completion(self, ohlc_df: pd.DataFrame, symbols: list):
         if len(self.wallet.listening_positions) > 0:
             positions = self.wallet.listening_positions.copy()
             logger.debug("start checking the tp and sl of positions")
@@ -366,7 +392,9 @@ class ClientBase(metaclass=ABCMeta):
                         index=self.get_current_datetime(),
                     )
                     if result is not None:
-                        self.__pending_order_results[position.id] = result
+                        # save the result to decline close order to the position
+                        # TODO: use history data instead of dict
+                        self.__closed_position_with_exist[position.id] = result
                         logger.info(f"Position is closed by limit: {result}")
                         if self.do_render:
                             if position.position_type == POSITION_TYPE.long:
@@ -494,7 +522,7 @@ class ClientBase(metaclass=ABCMeta):
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
             ohlc_df.dropna(thresh=len(ohlc_df.columns), inplace=True)
 
-        t = threading.Thread(target=self.__check_position_completion, args=(ohlc_df, symbols), daemon=True)
+        t = threading.Thread(target=self.__check_pending_positions_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
 
         if do_run_process:
@@ -724,17 +752,38 @@ class ClientBase(metaclass=ABCMeta):
         return self.get_symbols()
 
     # define wallet client
-    def _market_buy(self, symbol, price, amount, tp, sl, option_info):
-        return True, None
+    def _market_buy(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        return True, uuid.uuid4().hex
 
-    def _market_sell(self, symbol, price, amount, tp, sl, option_info):
-        return True, None
+    def _market_sell(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        return True, uuid.uuid4().hex
 
-    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_limit(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        return True, uuid.uuid4().hex
+
+    def _sell_limit(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        return True, uuid.uuid4().hex
+
+    def _buy_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        return True, uuid.uuid4().hex
+
+    def _sell_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        return True, uuid.uuid4().hex
+
+    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
         return True
 
-    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result):
         return True
+
+    def cancel_order(self, id: str):
+        if id in self.__open_orders:
+            self.__open_orders.pop(id)
+            return True
+        return False
+
+    def get_remaining_orders(self):
+        return {}
 
     # defined by the actual client for dataset or env if needed
     def reset(self, mode=None):

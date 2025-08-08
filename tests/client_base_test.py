@@ -72,10 +72,10 @@ class TestClient(ClientBase):
     def _market_sell(self, symbol, price, amount, tp, sl, option_info):
         return True, None
 
-    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
         return True
 
-    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result):
         return True
 
     def get_params(self) -> dict:

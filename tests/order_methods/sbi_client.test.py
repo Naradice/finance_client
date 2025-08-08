@@ -11,7 +11,10 @@ import dotenv
 import finance_client.frames as Frame
 from finance_client.sbi.client import SBIClient
 
-dotenv.load_dotenv("../.env")
+try:
+    dotenv.load_dotenv(os.path.join(os.path.dirname(__file__), "../.env"))
+except Exception as e:
+    raise e
 
 id = os.environ[SBIClient.ID_KEY]
 pswd = os.environ[SBIClient.PASS_KEY]

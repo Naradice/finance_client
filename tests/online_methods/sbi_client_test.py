@@ -5,6 +5,7 @@ import unittest
 
 import dotenv
 
+os.environ["FC_DEBUG"] = "true"
 base_path = os.path.dirname(__file__)
 try:
     dotenv.load_dotenv(f"{base_path}/../.env")
@@ -15,8 +16,9 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import SBIClient, db
+from finance_client import db
 from finance_client.position import ORDER_TYPE
+from finance_client.sbi.client import SBIClient
 
 
 class TestSBIClient(unittest.TestCase):

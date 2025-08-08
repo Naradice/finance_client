@@ -51,7 +51,7 @@ class TestCCClient(unittest.TestCase):
         client = CoinCheckClient(os.environ["cc_ACCESS_ID"], os.environ["cc_ACCESS_SECRET"], frame=1)
         id = client.market_buy("BTCJPY", 2952000, 0.005, None, None, None)
         sleep(120)
-        client._sell_for_settlment("BTCJPY", 2960000, 0.005, None, id)
+        client._sell_to_close("BTCJPY", 2960000, 0.005, None, id)
 
     def test_get_rates(self):
         length = 10

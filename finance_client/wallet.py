@@ -33,6 +33,7 @@ class Manager:
         self.trade_unit = SymbolInfo["trade_unit"]
         if storage is None:
             storage = FileStorage(provider, save_period=0)
+        # initialize positions which have tp or sl
         self.listening_positions = storage._get_listening_positions()
         self.storage = storage
         logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}")

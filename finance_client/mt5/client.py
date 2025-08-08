@@ -278,13 +278,6 @@ class MT5Client(ClientBase):
         else:
             return False, result
 
-    def __post_pending_order(self, symbol, _type, vol, price, dev, sl=None, tp=None, position=None):
-        request = self.__generate_common_request(symbol, _type, vol, price, dev, sl, tp, position)
-        request["action"] = mt5.TRADE_ACTION_PENDING
-        result = mt5.order_send(request)
-        logger.debug(f"order result: {result}")
-        return result
-
     def __get_attr_from_info(self, symbol, attr: str, retry=1):
         info = mt5.symbol_info(symbol)
         if info is None:
@@ -404,7 +397,7 @@ class MT5Client(ClientBase):
                     return False
         return True
 
-    def _market_sell(self, symbol, price, amount, tp=None, sl=None, **kwargs):
+    def _market_sell(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
         suc = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, None
@@ -431,7 +424,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _pending_sell(self, symbol, price, amount, tp=None, sl=None, option_info=None):
+    def _sell_limit(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
         suc = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, None
@@ -458,7 +451,34 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_for_settlement(self, symbol, price, amount, option, result):
+    def _sell_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        suc = self.__check_params(False, price, tp, sl)
+        if suc is False:
+            return False, None
+        point = self.__get_point(symbol)
+        if point is None:
+            return False, None
+
+        if self.__ignore_order is False:
+            request = self.__generate_common_request(
+                action=mt5.TRADE_ACTION_PENDING,
+                symbol=symbol,
+                _type=mt5.ORDER_TYPE_SELL_STOP,
+                vol=amount * point,
+                price=price,
+                dev=20,
+                sl=sl,
+                tp=tp,
+            )
+            order_suc, result = self.__request_order(request)
+            if order_suc:
+                return True, result.order
+            else:
+                return False, None
+        else:
+            return True, numpy.random.randint(100, 100000)
+
+    def _buy_to_close(self, symbol, price, amount, result, *args, **kwargs):
         point = self.__get_point(symbol)
         if point is None:
             return False
@@ -488,7 +508,7 @@ class MT5Client(ClientBase):
         else:
             return True
 
-    def _market_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None, *args, **kwargs):
+    def _market_buy(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
         if self.__ignore_order is False:
             suc = self.__check_params(True, price, tp, sl)
             if suc is False:
@@ -502,10 +522,10 @@ class MT5Client(ClientBase):
             else:
                 return False, None
         else:
-            return True, numpy.random.randint(100, 100000)
+            return True, numpy.random.randint(100, 100000)s
 
-    def _pending_buy(self, symbol, price, amount, tp=None, sl=None, option_info=None):
-        suc = self.__check_params(False, price, tp, sl)
+    def _buy_limit(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
+        suc = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, None
         point = self.__get_point(symbol)
@@ -530,8 +550,42 @@ class MT5Client(ClientBase):
                 return False, None
         else:
             return True, numpy.random.randint(100, 100000)
+    
+    def _buy_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+        suc = self.__check_params(True, price, tp, sl)
+        if suc is False:
+            return False, None
+        point = self.__get_point(symbol)
+        if point is None:
+            return False, None
 
-    def _sell_for_settlment(self, symbol, price, amount, option, result):
+        if self.__ignore_order is False:
+            request = self.__generate_common_request(
+                action=mt5.TRADE_ACTION_PENDING,
+                symbol=symbol,
+                _type=mt5.ORDER_TYPE_BUY_STOP,
+                vol=amount * point,
+                price=price,
+                dev=20,
+                sl=sl,
+                tp=tp,
+            )
+            order_suc, result = self.__request_order(request)
+            if order_suc:
+                return True, result.order
+            else:
+                return False, None
+        else:
+            return True, numpy.random.randint(100, 100000)
+
+    def cancel_order(self, id: str):
+        request = {"action": mt5.TRADE_ACTION_REMOVE, "order": id}
+        suc, result = self.__request_order(request=request)
+        if suc:
+            return super().cancel_order(id)
+        return False
+
+    def _sell_to_close(self, symbol, price, amount, result, *args, **kwargs):
         point = self.__get_point(symbol)
         if point is None:
             return False

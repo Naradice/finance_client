@@ -11,6 +11,8 @@ class POSITION_TYPE(Enum):
 
 class ORDER_TYPE(Enum):
     market = 0
+    limit = 1
+    stop = 2
 
 
 def _value_to_position_type(value: int):

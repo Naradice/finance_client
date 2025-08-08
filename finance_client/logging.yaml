@@ -12,7 +12,7 @@ handlers:
     stream: ext://sys.stdout
   file:
     class: logging.handlers.TimedRotatingFileHandler
-    filename: logs/finance_client.log
+    filename: logs/finance_client
     when: midnight
     interval: 1
     backupCount: 7

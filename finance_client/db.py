@@ -123,6 +123,7 @@ class LogSQLiteStorage(LogStorage):
             return self.__conn.cursor()
         except sqlite3.ProgrammingError:
             self.__conn = sqlite3.connect(self.__database_path)
+            return self._get_cursor()
         except Exception as e:
             raise e
 
@@ -688,9 +689,6 @@ class SQLiteStorage(BaseStorage):
         )
         query = f"UPDATE {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders} WHERE id = ?"
         self.__commit(query, values)
-
-    def has_position(self, id) -> bool:
-        return super().has_position(id)
 
     def get_position(self, id) -> Position:
         query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = ? AND provider = ?"

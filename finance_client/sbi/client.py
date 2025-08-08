@@ -112,10 +112,10 @@ class SBIClient(ClientBase):
         logger.info(err_msg)
         return False, err_msg
 
-    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
         return False
 
-    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result):
         result, err = self.rpa_client.sell_to_close_buy_order(symbol, amount, bid_rate)
         return result
 

@@ -307,10 +307,10 @@ class CoinCheckClient(ClientBase):
         logger.error(err_meg)
         return False, err_meg
 
-    def _buy_for_settlement(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
         logger.error("sell is not allowed, so buy settlement is not available.")
 
-    def _sell_for_settlment(self, symbol, bid_rate, amount, option_info, result_id):
+    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result_id):
         if self.simulation:
             pass
         else:
@@ -327,7 +327,7 @@ class CoinCheckClient(ClientBase):
                     return result
                 else:
                     time.sleep(10)
-                    return self._sell_for_settlment(symbol, bid_rate, amount, option_info, result_id)
+                    return self._sell_to_close(symbol, bid_rate, amount, option_info, result_id)
 
     def get_params(self) -> dict:
         return {}
