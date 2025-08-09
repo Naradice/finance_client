@@ -147,7 +147,7 @@ class MT5Client(ClientBase):
         account_info = mt5.account_info()
         if account_info is None:
             logger.warning("Retreiving account information failed. Please check your internet connection.")
-        logger.info(f"Balance: {account_info}")
+        logger.debug(f"Balance: {account_info}")
 
         if self.back_test:
             if frame is None or frame > Frame.W1:
@@ -187,9 +187,9 @@ class MT5Client(ClientBase):
                 logger.error(f"symbol info is not available for {symbol}")
                 return None
             else:
-                point_for_symbol = symbol_info.point
-                logger.debug(f"detected point for symbol: {point_for_symbol}")
-                return point_for_symbol
+                unit_for_symbol = symbol_info.volume_step
+                logger.debug(f"detected point for symbol: {unit_for_symbol}")
+                return unit_for_symbol
         else:
             return self.point_unit
 
@@ -513,8 +513,9 @@ class MT5Client(ClientBase):
             suc = self.__check_params(True, price, tp, sl)
             if suc is False:
                 return False, None
+            point = self.__get_point(symbol)
             request = self.__generate_common_request(
-                action=mt5.TRADE_ACTION_DEAL, symbol=symbol, _type=mt5.ORDER_TYPE_BUY, vol=0.1 * amount, price=price, dev=20, sl=sl, tp=tp
+                action=mt5.TRADE_ACTION_DEAL, symbol=symbol, _type=mt5.ORDER_TYPE_BUY, vol=point * amount, price=price, dev=20, sl=sl, tp=tp
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -522,7 +523,7 @@ class MT5Client(ClientBase):
             else:
                 return False, None
         else:
-            return True, numpy.random.randint(100, 100000)s
+            return True, numpy.random.randint(100, 100000)
 
     def _buy_limit(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
         suc = self.__check_params(True, price, tp, sl)
@@ -550,7 +551,7 @@ class MT5Client(ClientBase):
                 return False, None
         else:
             return True, numpy.random.randint(100, 100000)
-    
+
     def _buy_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
         suc = self.__check_params(True, price, tp, sl)
         if suc is False:
@@ -828,18 +829,32 @@ class MT5Client(ClientBase):
         else:
             return True
 
-    def cancel_order(self, order):
+    def cancel_order(self, id):
         if self.__ignore_order is False:
-            if hasattr(order, "order"):
-                position = order.order
+            if hasattr(id, "order"):
+                position = id.order
             else:
-                position = order
+                position = id
             request = {"action": mt5.TRADE_ACTION_REMOVE, "order": position}
             suc, _ = self.__request_order(request)
+            if suc:
+                super().cancel_order(id)
             return suc
         else:
+            super().cancel_order(id)
             logger.warning("pending order is not available on backtest and simulator")
             return True
+
+    def get_orders(self):
+        if self.__ignore_order:
+            return super().get_orders()
+        else:
+            mt5_orders = mt5.orders_get()
+            living_orders = []
+            for order in mt5_orders:
+                if order.ticket in self._open_orders:
+                    living_orders.append(order)
+            return living_orders
 
     def update_position(self, position, tp=None, sl=None):
         if tp is None and sl is None:
@@ -863,4 +878,23 @@ class MT5Client(ClientBase):
             return self.LAST_IDX[self.frame]
         else:
             MAX_LENGTH = 12 * 24 * 345
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
             return MAX_LENGTH

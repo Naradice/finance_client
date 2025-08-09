@@ -64,7 +64,7 @@ class Manager:
                 result=result,
             )
             self.storage.store_position(position)
-            return position.id
+            return position
         else:
             # check if budget has enough amount
             required_budget = self.trade_unit * amount * price
@@ -88,7 +88,7 @@ class Manager:
                 if tp is not None or sl is not None:
                     self.listening_positions[position.id] = position
                     logger.debug("position is stored to listening list")
-                return position.id
+                return position
             else:
                 logger.info(f"current budget {self.budget} is less than required {required_budget}")
                 return None

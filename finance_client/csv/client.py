@@ -217,10 +217,10 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         missing_symbols = []
         missing_files = []
         if len(symbols) == 0:
-            target_symbols = self.symbols
+            target_symbols = self._symbols
         else:
             # check any of provided symbols exists in data
-            target_symbols = list(set(self.symbols) & set(symbols))
+            target_symbols = list(set(self._symbols) & set(symbols))
             if len(target_symbols) == 0:
                 # assume file_path is provided instead of symbols
                 for file in symbols:
@@ -230,7 +230,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
                         if self._get_symbol_from_filename is None:
                             self._initialize_file_name_func(symbols)
                         __symbol = self._get_symbol_from_filename(file)
-                        if __symbol in self.symbols:
+                        if __symbol in self._symbols:
                             target_symbols.append(__symbol)
                         else:
                             # filename generate may be different from symbol generator, so store file as is
@@ -251,7 +251,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
 
             else:
                 # some of provided symbols match with handled symbols, so assume all others are symbol names (not filename)
-                missing_symbols = list(set(symbols) - set(self.symbols))
+                missing_symbols = list(set(symbols) - set(self._symbols))
             if len(missing_symbols) > 0:
                 if self.file_name_generator is None:
                     logger.error("can't create file name from symbol as file name generator is not defined.")
@@ -270,11 +270,11 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
 
     def __init__(
         self,
-        files: list = [],
-        columns=[],
+        files: list = None,
+        columns=None,
         date_column=None,
         file_name_generator=None,
-        symbols=[],
+        symbols: list = None,
         frame: int = None,
         out_frame: int = None,
         observation_length=None,
@@ -299,6 +299,10 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         """CSV Client Base
         Need to change codes to use settings file
         """
+        if files is None:
+            files = []
+        if columns is None:
+            columns = []
 
         super().__init__(
             budget=budget,
@@ -366,7 +370,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
 
         self.base_point = 0.01
         self.frame = frame
-        self.symbols = []
+        self._symbols = []
 
         self._auto_reset = auto_reset_index
         _index_update_required = False
@@ -392,7 +396,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
                 self.files = files
             self._initialize_file_name_func(files)
             self.data, __symbols = self._read_csv(self.files, symbols, columns, date_column, skiprows, start_date, frame)
-            self.symbols = list(__symbols)
+            self._symbols = list(__symbols)
             if _index_update_required:
                 self._step_index = len(self) + start_index  # assume negative value is specified
             elif start_random_index:
@@ -503,11 +507,11 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
 class CSVClient(CSVClientBase):
     def __init__(
         self,
-        files: list = [],
-        columns=[],
+        files: list = None,
+        columns: list = None,
         date_column=None,
         file_name_generator=None,
-        symbols=[],
+        symbols: list = None,
         frame: int = None,
         out_frame: int = None,
         observation_length=None,
@@ -588,7 +592,7 @@ class CSVClient(CSVClientBase):
                 self.data.dropna(thresh=len(self.data.columns), inplace=True)
                 self.frame = out_frame
         if self.data is not None and len(self.data) > 0:
-            self.data = self.run_processes(self.data, self.symbols, [], pre_process, True)
+            self.data = self.run_processes(self.data, self._symbols, [], pre_process, True)
             self.pre_process = []
 
     def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
@@ -811,17 +815,17 @@ class CSVClient(CSVClientBase):
         if open_column is not None:
             if type(tick.index) is pd.MultiIndex:
                 if type(symbols) is str:
-                    if symbols in self.symbols:
+                    if symbols in self._symbols:
                         open_value = tick[symbols][open_column]
                         high_value = tick[symbols][high_column]
                     else:
                         return None
                 elif type(symbols) is list:
                     if len(symbols) > 0:
-                        target_symbols = set(self.symbols) & set(symbols)
+                        target_symbols = set(self._symbols) & set(symbols)
                         target_symbols = list(target_symbols)
                     else:
-                        target_symbols = self.symbols
+                        target_symbols = self._symbols
 
                     if len(target_symbols) == 1:
                         open_value = tick[target_symbols[0]][open_column]
@@ -867,17 +871,17 @@ class CSVClient(CSVClientBase):
         if open_column is not None:
             if type(tick.index) is pd.MultiIndex:
                 if type(symbols) is str:
-                    if symbols in self.symbols:
+                    if symbols in self._symbols:
                         open_value = tick[symbols][open_column]
                         low_value = tick[symbols][low_column]
                     else:
                         return None
                 elif type(symbols) is list:
                     if len(symbols) > 0:
-                        target_symbols = set(self.symbols) & set(symbols)
+                        target_symbols = set(self._symbols) & set(symbols)
                         target_symbols = list(target_symbols)
                     else:
-                        target_symbols = self.symbols
+                        target_symbols = self._symbols
 
                     if len(target_symbols) == 1:
                         open_value = tick[target_symbols[0]][open_column]
@@ -968,7 +972,7 @@ class CSVChunkClient(CSVClientBase):
         columns=[],
         date_column=None,
         file_name_generator=None,
-        symbols=[],
+        symbols: list = None,
         frame: int = None,
         out_frame: int = None,
         observation_length=None,
@@ -992,7 +996,7 @@ class CSVChunkClient(CSVClientBase):
             columns (list, optional): column names to read from CSV files. Defaults to [].
             date_column (str, optional): If specified, try to parse time columns. Otherwise search time column. Defaults to None
             file_name_generator (function, optional): function to create file name from symbol. Ex) lambda symbol: f'D:\\warehouse\\stock_D1_{symbol}.csv'
-            symbols (list, optional): symbols (list, optional): symbols name of data. Used to specify columns names.
+            symbols (list, optional): symbols name of data to specify columns names for multi headers csv.
             frame (int, optional): input frame. Specify time series span by minutes. Defaults None and determined by data.
             out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
             observation_length (int, optional): specify data length for __getitem__.
@@ -1036,12 +1040,12 @@ class CSVChunkClient(CSVClientBase):
         # to avoid
         is_date_found = self._proceed_step_until_date(data, start_date)
         while is_date_found is False:
-            dfs = [self.__read_chunk_data(symbol) for symbol in self.symbols]
-            new_data = pd.concat(dfs, axis=1, keys=self.symbols)
+            dfs = [self.__read_chunk_data(symbol) for symbol in self._symbols]
+            new_data = pd.concat(dfs, axis=1, keys=self._symbols)
             data = self._initialize_date_index(new_data, True)
             is_date_found = self._proceed_step_until_date(data, start_date)
         TIMES = {}
-        for symbol in self.symbols:
+        for symbol in self._symbols:
             df = data[symbol].dropna()
             last_time = df.index[-1]
             TIMES[symbol] = (df.index[0], last_time)
@@ -1204,7 +1208,7 @@ class CSVChunkClient(CSVClientBase):
             self._proceed_step_until_date(temp_df, self._args["start_date"])
 
     def __get_rates_by_chunk(self, interval: int = None, symbols: list = [], frame: int = None):
-        target_symbols = list(set(self.symbols) & set(symbols))
+        target_symbols = list(set(self._symbols) & set(symbols))
         if interval is None:
             # todo: update missing columns
             if self.auto_step_index:
@@ -1235,7 +1239,7 @@ class CSVChunkClient(CSVClientBase):
         if len(missing_files) > 0:
             try:
                 missing_DFS, __symbols = self._read_csv(list(set(missing_files)), [], self._args["columns"], self._args["date_column"])
-                self.symbols.extend(list(__symbols))
+                self._symbols.extend(list(__symbols))
             except Exception as e:
                 logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")
             if missing_DFS is not None and len(missing_DFS) > 0:

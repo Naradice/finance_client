@@ -125,3 +125,30 @@ class Position:
             "timestamp": self.timestamp.isoformat(),
             "id": self.id,
         }
+
+
+class Order:
+    def __init__(self, order_type: ORDER_TYPE, position_type: POSITION_TYPE, symbol: str, price: float, amount: float, tp:float, sl:float, id=None):
+        if id is None:
+            self.id = str(uuid.uuid4())
+        else:
+            self.id = id
+        self.order_type = order_type
+        self.position_type = _value_to_position_type(position_type)
+        self.symbol = symbol
+        self.price = price
+        self.amount = amount
+        self.tp = tp
+        self.sl = sl
+
+    def to_dict(self):
+        return {
+            "order_type": self.order_type.value,
+            "position_type": self.position_type.value,
+            "symbol": self.symbol,
+            "price": self.price,
+            "amount": self.amount,
+            "tp": self.tp,
+            "sl": self.sl,
+            "id": self.id,
+        }

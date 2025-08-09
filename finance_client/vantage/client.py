@@ -74,7 +74,7 @@ class VantageClient(CSVClient):
                 symbols = list(symbols)
             except Exception:
                 raise TypeError(f"{type(symbols)} is not supported as symbols")
-        self.symbols = symbols
+        self._symbols = symbols
 
         if finance_target == target.FX or finance_target == target.CRYPTO_CURRENCY:
             self.__currency_trade = True
@@ -85,11 +85,11 @@ class VantageClient(CSVClient):
         self.function_name = finance_target.to_function_name(finance_target, frame)
         self.__updated_times = {}
 
-        self.__get_rates(self.symbols)
+        self.__get_rates(self._symbols)
         super().__init__(
             auto_step_index=auto_step_index,
             file_name_generator=self._generate_file_name,
-            symbols=self.symbols,
+            symbols=self._symbols,
             frame=frame,
             provider="Vantage",
             out_frame=None,
@@ -241,7 +241,7 @@ class VantageClient(CSVClient):
         return pd.DataFrame()
 
     def _update_rates(self, symbols=[]):
-        _symbols = set(symbols) & set(self.symbols)
+        _symbols = set(symbols) & set(self._symbols)
         isUpdated = False
         if len(_symbols) > 0:
             symbols_require_update = []
@@ -257,4 +257,5 @@ class VantageClient(CSVClient):
         return isUpdated
 
     def cancel_order(self, order):
+        pass
         pass

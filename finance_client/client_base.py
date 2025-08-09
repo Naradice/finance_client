@@ -13,7 +13,7 @@ import pandas as pd
 from . import db
 from . import frames as Frame
 from . import graph, wallet
-from .position import ORDER_TYPE, POSITION_TYPE, Position
+from .position import ORDER_TYPE, POSITION_TYPE, Order, Position
 
 try:
     from .fprocess import fprocess
@@ -42,11 +42,14 @@ class ClientBase(metaclass=ABCMeta):
     ):
         self.auto_index = None
         self._step_index = start_index
+
+        if symbols is None:
+            symbols = []
         if not hasattr(self, "_symbols"):
             self._symbols = symbols
         self.do_render = do_render
         self.__closed_position_with_exist = {}
-        self.__open_orders = {}
+        self._open_orders = {}
         self.frame = frame
         self.observation_length = observation_length
         self.enable_trade_log = enable_trade_log
@@ -85,13 +88,13 @@ class ClientBase(metaclass=ABCMeta):
         amount: float,
         symbol: str,
         price: float = None,
-        tp=None,
-        sl=None,
-        order_type: ORDER_TYPE = ORDER_TYPE.market,
+        tp: float = None,
+        sl: float = None,
+        order_type: int = 0,
         *args,
         **kwargs,
     ):
-        """Order to open a position.
+        """open or order a position
 
         Args:
             is_buy (bool): buy order or not
@@ -126,7 +129,7 @@ class ClientBase(metaclass=ABCMeta):
                 if suc:
                     logger.info(f"open long position: {ask_rate}")
                     return True, self.__open_long_position(
-                        symbol=symbol, boughtRate=ask_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
+                        symbol=symbol, bought_rate=ask_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
@@ -141,15 +144,17 @@ class ClientBase(metaclass=ABCMeta):
                 if suc:
                     logger.info(f"open short position: {bid_rate}")
                     return True, self.__open_short_position(
-                        symbol=symbol, soldRate=bid_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
+                        symbol=symbol, sold_rate=bid_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
                     return False, result
         else:
+            logger.debug("limit/stop order is requested.")
             if price is None:
+                logger.error("price must be specified for limit/stop order.")
                 return False, None
-            p = Position(POSITION_TYPE.long if is_buy is True else POSITION_TYPE.short, symbol=symbol, amount=amount, tp=tp, sl=sl)
+            p = Position(POSITION_TYPE.long if is_buy is True else POSITION_TYPE.short, price=price, symbol=symbol, amount=amount, tp=tp, sl=sl)
             if order_type == ORDER_TYPE.limit or order_type == ORDER_TYPE.limit.value:
                 logger.debug(f"limit order: is_buy {is_buy}")
                 if is_buy:
@@ -157,8 +162,12 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     suc, ticket_id = self._sell_limit(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
                 if suc:
-                    self.__open_orders[ticket_id] = p
-                return suc, ticket_id
+                    p.id = ticket_id
+                    # TODO: persist orders
+                    self._open_orders[ticket_id] = Order(
+                        ORDER_TYPE.limit, POSITION_TYPE.long if is_buy else POSITION_TYPE.short, symbol, price, amount, tp, sl, id=ticket_id
+                    )
+                return suc, p
             elif order_type == ORDER_TYPE.stop or order_type == ORDER_TYPE.stop.value:
                 logger.debug(f"stop order: is_buy {is_buy}")
                 if is_buy:
@@ -166,8 +175,11 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     suc, ticket_id = self._sell_stop(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
                 if suc:
-                    self.__open_orders[ticket_id] = p
-                return suc, ticket_id
+                    self._open_orders[ticket_id] = Order(
+                        ORDER_TYPE.stop, POSITION_TYPE.long if is_buy else POSITION_TYPE.short, symbol, price, amount, tp, sl, id=ticket_id
+                    )
+                    p.id = ticket_id
+                return suc, p
             else:
                 logger.error(f"{order_type} is not defined/implemented.")
                 return False, None
@@ -178,7 +190,6 @@ class ClientBase(metaclass=ABCMeta):
     def close_position(self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
-        _sell_to_close or _buy_to_close is calleds
 
         Args:
             price (float, optional): price for settlement. If not specified, market value is specified.
@@ -252,8 +263,8 @@ class ClientBase(metaclass=ABCMeta):
         return price, position.price, price_diff, profit, True
 
     def close_all_positions(self, symbols: list = None):
-        """close all open_position.
-        sell_for_settlement or _buy_to_close is calleds for each position
+        """close all open_position with market price
+        if None is pecified for symbols, close all positions regardless of symbol
         """
 
         if symbols is None:
@@ -266,10 +277,10 @@ class ClientBase(metaclass=ABCMeta):
         for positions in both_positions:
             for position in positions:
                 result = self.close_position(position=position)
-                results.append(result)
+                results.append((*result, position.id))
         pending_results = self.__closed_position_with_exist.copy()
         for id, result in pending_results.items():
-            results.append((result, False))
+            results.append((result, False, id))
             self.__closed_position_with_exist.pop(id)
         return results
 
@@ -658,8 +669,11 @@ class ClientBase(metaclass=ABCMeta):
         do_add_eco_idc = False
         if len(economic_keys) > 0:
             do_add_eco_idc = True
-
-        data_freq = Frame.freq_str[frame]
+        if isinstance(frame, str):
+            data_freq = frame
+            frame = Frame.to_freq(frame)
+        else:
+            data_freq = Frame.freq_str[frame]
 
         if index is None or type(index) is int:
             # return DataFrame for trading
@@ -777,10 +791,13 @@ class ClientBase(metaclass=ABCMeta):
         return True
 
     def cancel_order(self, id: str):
-        if id in self.__open_orders:
-            self.__open_orders.pop(id)
+        if id in self._open_orders:
+            self._open_orders.pop(id)
             return True
         return False
+
+    def get_orders(self):
+        return self._open_orders.values()
 
     def get_remaining_orders(self):
         return {}
@@ -863,12 +880,12 @@ class ClientBase(metaclass=ABCMeta):
                 diffs.append(*bid_diffs)
             return diffs
 
-    def __open_long_position(self, symbol, boughtRate, amount, tp=None, sl=None, option_info=None, result=None):
-        logger.debug(f"open long position is created: {symbol}, {boughtRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
-        id = self.wallet.open_position(
+    def __open_long_position(self, symbol, bought_rate, amount, tp=None, sl=None, option_info=None, result=None):
+        logger.debug(f"open long position is created: {symbol}, {bought_rate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+        p = self.wallet.open_position(
             position_type=POSITION_TYPE.long,
             symbol=symbol,
-            price=boughtRate,
+            price=bought_rate,
             amount=amount,
             tp=tp,
             sl=sl,
@@ -876,17 +893,19 @@ class ClientBase(metaclass=ABCMeta):
             option=option_info,
             result=result,
         )
-        if id is not None:
+        if p is not None:
             if self.do_render:
-                self.__rendere.add_trade_history_to_latest_tick(1, boughtRate, self.__ohlc_index)
-        return id
+                self.__rendere.add_trade_history_to_latest_tick(1, bought_rate, self.__ohlc_index)
+            if self.enable_trade_log:
+                self._trading_log(p.id, bought_rate, amount, True)
+        return p
 
-    def __open_short_position(self, symbol, soldRate, amount, option_info=None, tp=None, sl=None, result=None):
-        logger.debug(f"open short position is created: {symbol}, {soldRate}, {amount}, {tp}, {sl}, {option_info}, {result}")
-        id = self.wallet.open_position(
+    def __open_short_position(self, symbol, sold_rate, amount, option_info=None, tp=None, sl=None, result=None):
+        logger.debug(f"open short position is created: {symbol}, {sold_rate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+        p = self.wallet.open_position(
             position_type=POSITION_TYPE.short,
             symbol=symbol,
-            price=soldRate,
+            price=sold_rate,
             amount=amount,
             tp=tp,
             sl=sl,
@@ -894,12 +913,12 @@ class ClientBase(metaclass=ABCMeta):
             option=option_info,
             result=result,
         )
-        if id is not None:
+        if p is not None:
             if self.do_render:
-                self.__rendere.add_trade_history_to_latest_tick(2, soldRate, self.__ohlc_index)
+                self.__rendere.add_trade_history_to_latest_tick(2, sold_rate, self.__ohlc_index)
             if self.enable_trade_log:
-                self._trading_log(id, soldRate, amount, True)
-        return id
+                self._trading_log(p.id, sold_rate, amount, True)
+        return p
 
     def _get_columns_from_data(self, symbol=slice(None)):
         # disable auto index and rendering option

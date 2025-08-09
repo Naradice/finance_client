@@ -25,3 +25,7 @@ loggers:
     level: INFO
     handlers: [file, console]
     propagate: no
+  fprocfess:
+    level: INFO
+    handlers: [file, console]
+    propagate: no

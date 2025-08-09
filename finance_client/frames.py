@@ -15,6 +15,7 @@ D4 = 5760
 W1 = 10080
 MO1 = 43200
 
+# string value to use it for file name, etc
 min_str = {
     MIN1: "MIN1",
     MIN5: "MIN5",
@@ -31,6 +32,7 @@ min_str = {
     MO1: "MO1",
 }
 
+# freq value used with pandas
 freq_str = {
     MIN1: "1min",
     MIN5: "5min",
@@ -53,6 +55,12 @@ def to_str(value: int):
     if value in min_str:
         return min_str[value]
     return str(value)
+
+
+def to_freq(freq_str_value: str):
+    for freq, key in freq_str.items():
+        if key == freq_str_value:
+            return freq
 
 
 def to_freq_str(mins: int):

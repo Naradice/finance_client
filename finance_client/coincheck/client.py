@@ -160,7 +160,7 @@ class CoinCheckClient(ClientBase):
             logger.info("get_rates returns shortened or filled with 0 data without initialization as Coincheck don't provide historical data API.")
         elif isinstance(initialized_with, ClientBase):
             if type(initialized_with.symbols) is list:
-                self.symbols = initialized_with.symbols
+                self._symbols = initialized_with.symbols
             if initialized_with.frame != frame:
                 raise ValueError("initialize client and frame should be same.")
             self.data = initialized_with.get_ohlc()

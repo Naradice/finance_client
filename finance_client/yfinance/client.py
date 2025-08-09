@@ -111,19 +111,19 @@ class YahooClient(CSVClient):
 
         if symbols is not None:
             if type(symbols) == list:
-                self.symbols = symbols
+                self._symbols = symbols
             elif type(symbols) == str:
                 symbols = [symbols]
-                self.symbols = symbols
+                self._symbols = symbols
             else:
                 # TODO: initialize logger
                 raise TypeError("symbol must be str or list.")
 
-            self.__get_rates(self.symbols)
+            self.__get_rates(self._symbols)
         super().__init__(
             auto_step_index=auto_step_index,
             file_name_generator=self._file_path_generator,
-            symbols=self.symbols,
+            symbols=self._symbols,
             frame=frame,
             out_frame=None,
             columns=self.OHLC_COLUMNS,
@@ -246,7 +246,7 @@ class YahooClient(CSVClient):
         return pd.DataFrame()
 
     def _update_rates(self, symbols=[]):
-        _symbols = set(symbols) & set(self.symbols)
+        _symbols = set(symbols) & set(self._symbols)
         isUpdated = False
         if len(_symbols) > 0:
             symbols_require_update = []
@@ -265,11 +265,12 @@ class YahooClient(CSVClient):
         # frame rolling is handled in csv client
         interval = self.frame_to_str(self.frame)
         for symbol in symbols:
-            if symbol not in self.symbols:
+            if symbol not in self._symbols:
                 ticks_df = self.__download(symbol, interval)
                 write_df_to_csv(ticks_df, self.kinds, self._file_path_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
                 self.__updated_time[symbol] = datetime.datetime.now()
         return super()._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)
 
     def cancel_order(self, order):
+        pass
         pass

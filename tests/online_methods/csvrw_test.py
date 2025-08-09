@@ -21,12 +21,10 @@ class TestYFClient(unittest.TestCase):
 
     def test_write_read(self):
         dotenv.load_dotenv(".env")
-        rates = yf.download(
-            self.symbols, interval="60m", start=datetime.datetime.now() - datetime.timedelta(days=10), group_by="ticker"
-        )
-        csvrw.write_multi_symbol_df_to_csv(rates, "yfinance", "yfinance_60", self.symbols)
+        rates = yf.download(self._symbols, interval="60m", start=datetime.datetime.now() - datetime.timedelta(days=10), group_by="ticker")
+        csvrw.write_multi_symbol_df_to_csv(rates, "yfinance", "yfinance_60", self._symbols)
         time.sleep(3)
-        dfs = csvrw.read_csvs("yfinance", "yfinance_60", self.symbols, ["Datetime"])
+        dfs = csvrw.read_csvs("yfinance", "yfinance_60", self._symbols, ["Datetime"])
         self.assertEqual(type(dfs.columns), pd.MultiIndex)
 
 
