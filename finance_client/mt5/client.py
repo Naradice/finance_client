@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import random
+import threading
 from time import sleep
 
 import MetaTrader5 as mt5
@@ -14,7 +15,8 @@ from ..client_base import ClientBase
 from ..position import Position
 
 try:
-    from ..fprocess.fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
+    from ..fprocess.fprocess.csvrw import (get_datafolder_path, read_csv,
+                                           write_df_to_csv)
 except ImportError:
     from ..fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 
@@ -213,17 +215,18 @@ class MT5Client(ClientBase):
 
         return data.columns
 
-    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, position=None, order=None):
+    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, magic=0, position=None, order=None):
         request = {
             "action": action,
             "symbol": symbol,
             "volume": vol,
             "price": price,
             "deviation": dev,
-            "magic": 100000000,
+            "magic": magic,
             "type_time": mt5.ORDER_TIME_GTC,
             "type": _type,
             "type_filling": mt5.ORDER_FILLING_IOC,
+            "comment": self.user_name if self.user_name is not None else "",
         }
         if sl is not None:
             request["sl"] = sl
@@ -425,7 +428,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_limit(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
+    def _sell_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
         suc = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, None
@@ -443,6 +446,7 @@ class MT5Client(ClientBase):
                 dev=20,
                 sl=sl,
                 tp=tp,
+                order=order_number,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -452,7 +456,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _sell_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
         suc = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, None
@@ -470,6 +474,7 @@ class MT5Client(ClientBase):
                 dev=20,
                 sl=sl,
                 tp=tp,
+                magic=order_number,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -526,7 +531,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_limit(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
+    def _buy_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
         suc = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, None
@@ -544,6 +549,7 @@ class MT5Client(ClientBase):
                 dev=20,
                 sl=sl,
                 tp=tp,
+                magic=order_number,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -553,7 +559,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _buy_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
         suc = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, None
@@ -571,6 +577,7 @@ class MT5Client(ClientBase):
                 dev=20,
                 sl=sl,
                 tp=tp,
+                magic=order_number,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -857,6 +864,44 @@ class MT5Client(ClientBase):
                     living_orders.append(order)
             return living_orders
 
+    def _update_client_positions(self, actual_positions):
+        self._sync_positions(actual_positions=actual_positions)
+
+    def get_positions(self):
+        if self.__ignore_order:
+            return super().get_positions()
+        else:
+            mt5_positions = mt5.positions_get()
+            positions = []
+            positions_by_order = []
+            # convert mt5 position to client position
+            for m_position in mt5_positions:
+                if self.user_name is not None:
+                    if self.user_name != m_position.comment:
+                        continue
+                for order in self._open_orders:
+                    if order.magic == m_position.magic and order.symbol == m_position.symbol:
+                        positions_by_order.append(order.id)
+                position_type = 1 if mt5.POSITION_TYPE_BUY == m_position.type else -1
+                symbol = m_position.symbol
+                position_price = m_position.price_open
+                amount = m_position.volume
+                tp = None if m_position.tp == 0.0 else m_position.tp
+                sl = None if m_position.sl == 0.0 else m_position.sl
+                time_index = datetime.datetime.fromtimestamp(m_position.time)
+                id = m_position.ticket
+                p = Position(
+                    position_type=position_type, symbol=symbol, price=position_price, amount=amount, tp=tp, sl=sl, time_index=time_index, id=id
+                )
+                positions.append(p)
+
+            t = threading.Thread(target=self._update_client_positions, args=(positions,), daemon=True)
+            t.start()
+            if len(positions_by_order) > 0:
+                for order_id in positions_by_order:
+                    self._open_orders.pop(order_id)
+            return positions
+
     def update_position(self, position, tp=None, sl=None):
         if tp is None and sl is None:
             logger.error("update position require tp or sl")
@@ -879,30 +924,4 @@ class MT5Client(ClientBase):
             return self.LAST_IDX[self.frame]
         else:
             MAX_LENGTH = 12 * 24 * 345
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
-            return MAX_LENGTH
             return MAX_LENGTH

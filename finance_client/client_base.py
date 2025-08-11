@@ -179,28 +179,54 @@ class ClientBase(metaclass=ABCMeta):
                 logger.error("price must be specified for limit/stop order.")
                 return False, None
             p = Position(POSITION_TYPE.long if is_buy is True else POSITION_TYPE.short, price=price, symbol=symbol, amount=amount, tp=tp, sl=sl)
+            # number to match position and order
+            magic_number = uuid.uuid4().int & (1 << 64) - 1
             if order_type == ORDER_TYPE.limit or order_type == ORDER_TYPE.limit.value:
                 logger.debug(f"limit order: is_buy {is_buy}")
                 if is_buy:
-                    suc, ticket_id = self._buy_limit(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                    suc, ticket_id = self._buy_limit(
+                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                    )
                 else:
-                    suc, ticket_id = self._sell_limit(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                    suc, ticket_id = self._sell_limit(
+                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                    )
                 if suc:
                     p.id = ticket_id
                     # TODO: persist orders
                     self._open_orders[ticket_id] = Order(
-                        ORDER_TYPE.limit, POSITION_TYPE.long if is_buy else POSITION_TYPE.short, symbol, price, amount, tp, sl, id=ticket_id
+                        ORDER_TYPE.limit,
+                        POSITION_TYPE.long if is_buy else POSITION_TYPE.short,
+                        symbol,
+                        price,
+                        amount,
+                        tp,
+                        sl,
+                        id=ticket_id,
+                        magic_number=magic_number,
                     )
                 return suc, p
             elif order_type == ORDER_TYPE.stop or order_type == ORDER_TYPE.stop.value:
                 logger.debug(f"stop order: is_buy {is_buy}")
                 if is_buy:
-                    suc, ticket_id = self._buy_stop(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                    suc, ticket_id = self._buy_stop(
+                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                    )
                 else:
-                    suc, ticket_id = self._sell_stop(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                    suc, ticket_id = self._sell_stop(
+                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                    )
                 if suc:
                     self._open_orders[ticket_id] = Order(
-                        ORDER_TYPE.stop, POSITION_TYPE.long if is_buy else POSITION_TYPE.short, symbol, price, amount, tp, sl, id=ticket_id
+                        ORDER_TYPE.stop,
+                        POSITION_TYPE.long if is_buy else POSITION_TYPE.short,
+                        symbol,
+                        price,
+                        amount,
+                        tp,
+                        sl,
+                        id=ticket_id,
+                        magic_number=magic_number,
                     )
                     p.id = ticket_id
                 return suc, p
@@ -338,6 +364,31 @@ class ClientBase(metaclass=ABCMeta):
         long_positions, short_positions = self.wallet.storage.get_positions()
         long_positions.extend(short_positions)
         return long_positions
+
+    def _sync_positions(self, actual_positions):
+        long_positions, short_positions = self.wallet.storage.get_positions()
+        all_our_positions = {}
+        for position in long_positions:
+            all_our_positions[position.id] = position
+        for position in short_positions:
+            all_our_positions[position.id] = position
+
+        # remove unhandled positions
+        for id, position in all_our_positions.items():
+            is_found = False
+            for actual_position in actual_positions:
+                if position.id == actual_position.id:
+                    is_found = True
+                    break
+            if not is_found:
+                logger.debug(f"position {id} is not found in actual positions. remove it from our positions.")
+                self.wallet.storage.delete_position(position.id)
+
+        # add missing positions
+        for actual_position in actual_positions:
+            if actual_position.id not in all_our_positions:
+                logger.debug(f"position {actual_position.id} is not found in our positions. add it to our positions.")
+                self.wallet.storage.store_position(actual_position)
 
     def _get_required_length(self, processes: list) -> int:
         required_length_list = [0]
@@ -847,16 +898,16 @@ class ClientBase(metaclass=ABCMeta):
     def _market_sell(self, symbol, price, amount, tp, sl, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _buy_limit(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _buy_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _sell_limit(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _sell_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _buy_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _buy_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _sell_stop(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _sell_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
     def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
