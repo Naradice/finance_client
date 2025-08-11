@@ -156,22 +156,23 @@ class MT5Client(ClientBase):
                 random.seed(seed)
             else:
                 random.seed(1017)
-            # self.sim_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
+            # self._step_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
             if frame >= Frame.H2:
                 if frame in self.LAST_IDX:
-                    self.sim_index = self.LAST_IDX[frame]
+                    self._step_index = self.LAST_IDX[frame]
                 else:
                     raise ValueError(f"unexpected Frame is specified: {frame}")
             else:
-                self.sim_index = 12 * 24 * 345
-            self.sim_initial_index = self.sim_index
+                self._step_index = 12 * 24 * 345
+            self.sim_initial_index = self._step_index
             self.auto_index = auto_index
             if auto_index:
                 self.__next_time = None
 
+        self.simulation = simulation
+        self.back_test = back_test
         if simulation and auto_index:
             logger.warning("auto index feature is applied only for back test.")
-
         if back_test or simulation:
             self.__ignore_order = True
         else:
@@ -298,11 +299,11 @@ class MT5Client(ClientBase):
             symbols = [symbols]
         if self.back_test:
             if len(symbols) == 1:
-                df = self.__download(length=1, symbol=symbols[0], frame=self.mt5_frame, index=self.sim_index - 1)
+                df = self.__download(length=1, symbol=symbols[0], frame=self.mt5_frame, index=self._step_index - 1)
             else:
                 df = pd.DataFrame()
                 for symbol in symbols:
-                    symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
+                    symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self._step_index - 1)
                     symbol_tick.index = [symbol]
                     df = pd.concat(df, symbol_tick)
             ohlc_columns = self.get_ohlc_columns()
@@ -328,11 +329,11 @@ class MT5Client(ClientBase):
             symbols = [symbols]
         if self.back_test:
             if len(symbols) == 1:
-                df = self.__download(length=1, symbol=symbols[0], frame=self.mt5_frame, index=self.sim_index - 1)
+                df = self.__download(length=1, symbol=symbols[0], frame=self.mt5_frame, index=self._step_index - 1)
             else:
                 df = pd.DataFrame()
                 for symbol in symbols:
-                    symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
+                    symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self._step_index - 1)
                     symbol_tick.index = [symbol]
                     df = pd.concat(df, symbol_tick)
             ohlc_columns = self.get_ohlc_columns()
@@ -358,7 +359,7 @@ class MT5Client(ClientBase):
         if self.back_test:
             df = pd.DataFrame()
             for symbol in symbols:
-                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self.sim_index - 1)
+                symbol_tick = self.__download(length=1, symbol=symbol, frame=self.mt5_frame, index=self._step_index - 1)
                 symbol_tick.index = [symbol]
                 df = pd.concat(df, symbol_tick)
             spread_srs = df["spread"].iloc[0]
@@ -710,7 +711,7 @@ class MT5Client(ClientBase):
         if index is None:
             if self.back_test:
                 # simu index will be reduced by get_ohlc_from_client
-                start_index = self.sim_index
+                start_index = self._step_index
             else:
                 start_index = 0
         else:
@@ -741,28 +742,28 @@ class MT5Client(ClientBase):
                         self.__next_time = df_rates["time"].iloc[1]
                     elif current_time > self.__next_time:
                         logger.debug(f"auto index: {current_time} > {self.__next_time}. may time past.")
-                        candidate = self.sim_index
+                        candidate = self._step_index
                         while current_time != self.__next_time:
                             candidate += 1
                             rates = mt5.copy_rates_from_pos(symbol, frame, candidate, length)
                             df_rates = pd.DataFrame(rates)
                             df_rates["time"] = pd.to_datetime(df_rates["time"], unit="s", utc=True)
                             current_time = df_rates["time"].iloc[0]
-                        self.sim_index = candidate
+                        self._step_index = candidate
 
                         logger.debug(f"auto index: fixed to {current_time}")
                         self.__next_time = df_rates["time"].iloc[1]
                         # to avoid infinite loop, don't call oneself
                     else:
                         logger.debug(f"auto index: {current_time} < {self.__next_time} somehow.")
-                        candidate = self.sim_index
+                        candidate = self._step_index
                         while current_time != self.__next_time:
                             candidate = candidate - 1
                             rates = mt5.copy_rates_from_pos(symbol, frame, candidate, length)
                             df_rates = pd.DataFrame(rates)
                             df_rates["time"] = pd.to_datetime(df_rates["time"], unit="s", utc=True)
                             current_time = df_rates["time"].iloc[0]
-                        self.sim_index = candidate
+                        self._step_index = candidate
 
                         logger.debug(f"auto index: fixed to {current_time}")
                         self.__next_time = df_rates["time"].iloc[1]
@@ -779,7 +780,7 @@ class MT5Client(ClientBase):
             if frame in self.AVAILABLE_FRAMES:
                 frame = self.AVAILABLE_FRAMES[frame]
 
-        if length is None:
+        if length is None or length == slice(None):
             download_func = self.__download_entire
             kwargs = {"frame": frame}
         elif length > 0:
@@ -801,14 +802,14 @@ class MT5Client(ClientBase):
             df = df[symbols[0]]
         return df
 
-    def _get_ohlc_from_client(self, length: int = None, symbols=slice(None), frame: int = None, columns=None, index=None, grouped_by_symbol=True):
+    def _get_ohlc_from_client(self, length=None, symbols=slice(None), frame: int = None, columns=None, index=None, grouped_by_symbol=True):
         if symbols is None or symbols == slice(None) or len(symbols) == 0:
             logger.error(f"symbols are mandatory to get_ohlc: {symbols}")
             return pd.DataFrame()
         df_rates = self.__get_ohlc(length, symbols, frame, columns, index, grouped_by_symbol)
         if self.auto_index:
             if len(df_rates) > 0:
-                self.sim_index = self.sim_index - 1
+                self._step_index = self._step_index - 1
             else:
                 logger.error(f"auto index is not applied for {length}, {symbols}, {frame}, {columns}, {index}, {grouped_by_symbol}")
         return df_rates
@@ -878,6 +879,13 @@ class MT5Client(ClientBase):
             return self.LAST_IDX[self.frame]
         else:
             MAX_LENGTH = 12 * 24 * 345
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
+            return MAX_LENGTH
             return MAX_LENGTH
             return MAX_LENGTH
             return MAX_LENGTH

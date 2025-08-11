@@ -1,4 +1,5 @@
 import datetime
+import glob
 import json
 import logging
 import os
@@ -28,7 +29,13 @@ def _check_path(file_path, default_file_name: str):
     return file_path
 
 
-class LogStorage(metaclass=ABCMeta):
+def _get_all_user_position_filepaths():
+    any_user_folder = os.path.join(os.getcwd(), "user", "*", "positions.json")
+    all_user_folders = glob.glob(any_user_folder)
+    return all_user_folders
+
+
+class LogStorageBase(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def _convert_position_to_log(self, provider, p: Position, is_open):
@@ -49,17 +56,27 @@ class LogStorage(metaclass=ABCMeta):
     def get(self):
         return []
 
+    def __create_place_holder(self, num: int):
+        place_holders = f"({'?,' * (num -1)}?)"
+        return place_holders
 
-class LogCSVStorage(LogStorage):
+    def _create_basic_query(self, table_schema_keys: list):
+        keys = ",".join(table_schema_keys)
+        place_holders = self.__create_place_holder(len(table_schema_keys))
+        return keys, place_holders
+
+
+class LogCSVStorage(LogStorageBase):
     __log_lock = threading.Lock()
 
     def __init__(self, trade_log_path: str = None) -> None:
         super().__init__()
         self.trade_log_path = _check_path(trade_log_path, "finance_trade_log.csv")
 
-    def _convert_position_to_log(self, provider, p: Position, is_open):
+    def _convert_position_to_log(self, provider, username, p: Position, is_open):
         log_item = {}
         log_item["provider"] = provider
+        log_item["username"] = username
         log_item["symbol"] = p.symbol
         log_item["time"] = p.index
         log_item["price"] = p.price
@@ -72,8 +89,8 @@ class LogCSVStorage(LogStorage):
         log_item["logged_at"] = datetime.datetime.now(datetime.UTC).isoformat()
         return log_item
 
-    def store_log(self, provider, position: Position, is_open):
-        log_item = self._convert_position_to_log(provider, position, is_open)
+    def store_log(self, provider, username, position: Position, is_open):
+        log_item = self._convert_position_to_log(provider, username, position, is_open)
         df = pd.DataFrame.from_dict([log_item])
         save_header = not os.path.exists(self.trade_log_path)
         df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
@@ -91,83 +108,19 @@ class LogCSVStorage(LogStorage):
             save_header = not os.path.exists(self.trade_log_path)
             df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
 
-    def get(self, provider):
+    def get(self, provider, username):
         df = pd.read_csv(self.trade_log_path)
-        provider_logs = df[df["provider"] == self.provider]
-        return provider_logs
-
-
-class LogSQLiteStorage(LogStorage):
-    TRADE_TABLE_NAME = "trade"
-    _TRADE_TABLE_KEYS = {
-        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
-        "provider": "TEXT",
-        "symbol": "TEXT",
-        "time_index": "TEXT",
-        "price": "REAL",
-        "amount": "REAL",
-        "position_type": "INT",
-        "order_type": "INT",
-        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-    }
-
-    def __init__(self, database_path, provider: str) -> None:
-        super().__init__(provider)
-
-        self.__conn = sqlite3.connect(database_path)
-        self.__database_path = database_path
-        self._table_init()
-
-    def _get_cursor(self):
-        try:
-            return self.__conn.cursor()
-        except sqlite3.ProgrammingError:
-            self.__conn = sqlite3.connect(self.__database_path)
-            return self._get_cursor()
-        except Exception as e:
-            raise e
-
-    def _table_init(self):
-        cursor = self.__conn.cursor()
-        table_schema = ",".join([f"{key} {attr}" for key, attr in self._TRADE_TABLE_KEYS.items()])
-        cursor.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {self.TRADE_TABLE_NAME} (
-                {table_schema}
-            )
-            """
-        )
-
-    def __commit(self, query, params=()):
-        with self.__lock:
-            cursor = self._get_cursor()
-            cursor.execute(query, params)
-            self.__conn.commit()
-            cursor.close()
-
-    def __multi_commit(self, query, params_list):
-        with self.__lock:
-            cursor = self._get_cursor()
-            cursor.executemany(query, params_list)
-            self.__conn.commit()
-            cursor.close()
-
-    def store_log(self, position: Position, is_open):
-        values = self._convert_position_to_log(position, is_open)
-        keys, place_holders = self.__create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
-        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
-        self.__commit(query, values)
-
-    def store_logs(self, positions: List[Position], is_open):
-        log_values = [self._convert_position_to_log(p, is_open) for p in positions]
-        keys, place_holders = self.__create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
-        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
-        self.__multi_commit(query, log_values)
+        log_df = df[df["provider"] == provider]
+        log_df = log_df[log_df["username"] == username]
+        return log_df
 
 
 class BaseStorage:
-    def __init__(self, provider: str) -> None:
+    """Base Storage for position. Store position in memory."""
+
+    def __init__(self, provider: str, username: str) -> None:
         self.provider = provider
+        self.username = username
         self._positions = {POSITION_TYPE.long: {}, POSITION_TYPE.short: {}}
 
     def store_position(self, position: Position):
@@ -195,6 +148,8 @@ class BaseStorage:
 
     def get_long_positions(self, symbols: list = None) -> list:
         long_positions = self._positions[POSITION_TYPE.long].values()
+        if len(long_positions) == 0:
+            return long_positions
         if symbols is None or len(symbols) == 0:
             return long_positions
         else:
@@ -250,6 +205,7 @@ class BaseStorage:
             index = index
         log_item = {}
         log_item["provider"] = self.provider
+        log_item["username"] = self.username
         log_item["symbol"] = position.symbol
         log_item["time"] = index
         log_item["price"] = price
@@ -265,6 +221,15 @@ class BaseStorage:
     def close(self):
         pass
 
+    def __create_place_holder(self, num: int):
+        place_holders = f"({'?,' * (num -1)}?)"
+        return place_holders
+
+    def _create_basic_query(self, table_schema_keys: list):
+        keys = ",".join(table_schema_keys)
+        place_holders = self.__create_place_holder(len(table_schema_keys))
+        return keys, place_holders
+
 
 class FileStorage(BaseStorage):
     __position_lock = threading.Lock()
@@ -273,21 +238,26 @@ class FileStorage(BaseStorage):
     def __init__(
         self,
         provider: str,
+        username: str,
         positions_path: str = None,
         rating_log_path: str = None,
-        trade_log_db: LogStorage = None,
+        trade_log_db: LogStorageBase = None,
         save_period: float = 0,
     ) -> None:
         """File Handler to store objects. This class doesn't care a bout accesses from multiple instances.
 
         Args:
             provider (str): provider id to separate position information
+            username (str): username to separate position information
             positions_path (str, optional): custom position file path. Defaults to None.
             save_period (float, optional): minutes to periodically save positions. less than 0 save them immedeately when it is updated. Defaults to 1.0.
         """
-        super().__init__(provider)
-        self.positions_path = _check_path(positions_path, "positions.json")
+        super().__init__(provider, username)
         self.rating_log_path = _check_path(rating_log_path, "symbols.json")
+        if self.username is None:
+            self.positions_path = _check_path(positions_path, "positions.json")
+        else:
+            self.positions_path = _check_path(positions_path, os.path.join("user", f"_{self.username}_", "positions.json"))
         if trade_log_db is None:
             self._trade_log_db = LogCSVStorage()
         else:
@@ -442,6 +412,17 @@ class FileStorage(BaseStorage):
             with self.__position_lock:
                 positions_dict = self._load_json(self.positions_path)
             if positions_dict is None:
+                positions_dict = {}
+            if self.username is None:
+                user_position_paths = _get_all_user_position_filepaths()
+                for user_path in user_position_paths:
+                    user_positions_dict = self._load_json(user_path)
+                    for user_provider, user_positions in user_positions_dict.items():
+                        if user_provider in positions_dict:
+                            positions_dict[user_provider].update(user_positions)
+                        else:
+                            positions_dict[user_provider] = user_positions
+            if len(positions_dict) == 0:
                 return long_positions, short_positions, listening_positions
             if self.provider in positions_dict:
                 _position = positions_dict[self.provider]
@@ -467,6 +448,7 @@ class SQLiteStorage(BaseStorage):
     _POSITION_TABLE_KEYS = {
         "id": "TEXT PRIMARY KEY",
         "provider": "TEXT",
+        "username": "TEXT",
         "symbol": "TEXT",
         "position_type": "INTEGER",
         "price": "REAL",
@@ -526,8 +508,10 @@ class SQLiteStorage(BaseStorage):
         )
         cursor.close()
 
-    def __init__(self, database_path, provider: str, log_storage=None) -> None:
-        super().__init__(provider)
+    def __init__(self, database_path, provider: str, username: str, log_storage=None) -> None:
+        super().__init__(provider, username)
+        if username is None:
+            self.username = "__none__"
 
         self.__conn = sqlite3.connect(database_path)
         self.__database_path = database_path
@@ -545,15 +529,6 @@ class SQLiteStorage(BaseStorage):
             return self.__conn.cursor()
         except Exception as e:
             raise e
-
-    def __create_place_holder(self, num: int):
-        place_holders = f"({'?,' * (num -1)}?)"
-        return place_holders
-
-    def __create_basic_query(self, table_schema_keys: list):
-        keys = ",".join(table_schema_keys)
-        place_holders = self.__create_place_holder(len(table_schema_keys))
-        return keys, place_holders
 
     def __commit(self, query, params=()):
         with self.__lock:
@@ -588,10 +563,11 @@ class SQLiteStorage(BaseStorage):
         return positions
 
     def store_position(self, position: Position):
-        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
         values = (
             position.id,
             self.provider,
+            self.username,
             position.symbol,
             position.position_type.value,
             position.price,
@@ -608,11 +584,12 @@ class SQLiteStorage(BaseStorage):
         self.log_storage.store_log(self.provider, position, True)
 
     def store_positions(self, positions: List[Position]):
-        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
         values = [
             (
                 position.id,
                 self.provider,
+                self.username,
                 position.symbol,
                 position.position_type.value,
                 position.price,
@@ -637,7 +614,7 @@ class SQLiteStorage(BaseStorage):
             if len(ids) > 0:
                 return ids[0][0]
             else:
-                keys, place_holders = self.__create_basic_query(list(self._SYMBOL_TABLE_KEYS.keys())[1:])
+                keys, place_holders = self._create_basic_query(list(self._SYMBOL_TABLE_KEYS.keys())[1:])
                 query = f"INSERT INTO {self.SYMBOL_TABLE_NAME} ({keys}) VALUES {place_holders}"
                 values = (symbol, name, market)
                 self.__commit(query, values)
@@ -653,7 +630,7 @@ class SQLiteStorage(BaseStorage):
             if date is None:
                 date = datetime.datetime.now(datetime.UTC).date()
             key_list = list(self._RATING_TABLE_KEYT.keys())
-            keys, place_holders = self.__create_basic_query(key_list[1:])
+            keys, place_holders = self._create_basic_query(key_list[1:])
             query = f"""
             INSERT INTO {self.RATING_TABLE_NAME} ({keys})
             SELECT ?, ?, ?, ?
@@ -671,10 +648,11 @@ class SQLiteStorage(BaseStorage):
             self.store_symbol_info(*item)
 
     def update_position(self, position):
-        keys, place_holders = self.__create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
         values = (
             position.id,
             self.provider,
+            self.username,
             position.symbol,
             position.position_type.value,
             position.price,
@@ -691,8 +669,12 @@ class SQLiteStorage(BaseStorage):
         self.__commit(query, values)
 
     def get_position(self, id) -> Position:
-        query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = ? AND provider = ?"
-        records = self.__fetch(query, (id, self.provider))
+        if self.username == "__none__":
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = ? AND provider = ?"
+            records = self.__fetch(query, (id, self.provider))
+        else:
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = ? AND provider = ? AND username = ?"
+            records = self.__fetch(query, (id, self.provider, self.username))
         positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
         if len(positions) == 0:
             logger.info(f"no record found for position_id: {id}")
@@ -701,8 +683,12 @@ class SQLiteStorage(BaseStorage):
             return positions[0]
 
     def get_positions(self, symbols: list = None, position_type: POSITION_TYPE = None):
-        query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ?"
-        params = [self.provider]
+        if self.username == "__none__":
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ?"
+            params = [self.provider]
+        else:
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND username = ?"
+            params = [self.provider, self.username]
         if symbols is not None and len(symbols) > 0:
             place_holders = self.__create_place_holder(len(symbols))
             query = f"{query} AND symbol in {place_holders}"
@@ -743,8 +729,12 @@ class SQLiteStorage(BaseStorage):
             return []
 
     def _get_listening_positions(self):
-        query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND (tp IS NOT NULL OR sl IS NOT NULL)"
-        records = self.__fetch(query, (self.provider,))
+        if self.username == "__none__":
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND (tp IS NOT NULL OR sl IS NOT NULL)"
+            records = self.__fetch(query, (self.provider,))
+        else:
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND username= ? AND (tp IS NOT NULL OR sl IS NOT NULL)"
+            records = self.__fetch(query, (self.provider, self.username))
         positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
         positions_dict = {}
         for position in positions:
@@ -774,10 +764,15 @@ class SQLiteStorage(BaseStorage):
     def delete_position(self, id, price=None, amount=None, index=None):
         p = self.get_position(id)
         query = f"DELETE FROM {self.POSITION_TABLE_NAME}"
-        cond = "WHERE id = ? AND provider = ?"
+        if self.username == "__none__":
+            cond = "WHERE id = ? AND provider = ?"
+            params = (id, self.provider)
+        else:
+            cond = "WHERE id = ? AND provider = ? AND username = ?"
+            params = (id, self.provider, self.username)
         query = f"{query} {cond}"
         try:
-            self.__commit(query, (id, self.provider))
+            self.__commit(query, params)
             p.price = price
             p.amount = amount
             p.index = index
@@ -788,3 +783,76 @@ class SQLiteStorage(BaseStorage):
 
     def close(self):
         self.__conn.close()
+
+
+class LogSQLiteStorage(BaseStorage):
+    TRADE_TABLE_NAME = "trade"
+    _TRADE_TABLE_KEYS = {
+        "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+        "provider": "TEXT",
+        "username": "TEXT",
+        "symbol": "TEXT",
+        "time_index": "TEXT",
+        "price": "REAL",
+        "amount": "REAL",
+        "position_type": "INT",
+        "order_type": "INT",
+        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    }
+
+    def __init__(self, database_path, provider: str, username) -> None:
+        super().__init__(provider=provider, username=username)
+        self.provider = provider
+        self.username = username
+        if username is None:
+            self.username = "__none__"
+
+        self.__conn = sqlite3.connect(database_path)
+        self.__database_path = database_path
+        self._table_init()
+
+    def _get_cursor(self):
+        try:
+            return self.__conn.cursor()
+        except sqlite3.ProgrammingError:
+            self.__conn = sqlite3.connect(self.__database_path)
+            return self._get_cursor()
+        except Exception as e:
+            raise e
+
+    def _table_init(self):
+        cursor = self.__conn.cursor()
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._TRADE_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.TRADE_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
+
+    def __commit(self, query, params=()):
+        with self.__lock:
+            cursor = self._get_cursor()
+            cursor.execute(query, params)
+            self.__conn.commit()
+            cursor.close()
+
+    def __multi_commit(self, query, params_list):
+        with self.__lock:
+            cursor = self._get_cursor()
+            cursor.executemany(query, params_list)
+            self.__conn.commit()
+            cursor.close()
+
+    def store_log(self, position: Position, is_open):
+        values = self._convert_position_to_log(position, is_open)
+        keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__commit(query, values)
+
+    def store_logs(self, positions: List[Position], is_open):
+        log_values = [self._convert_position_to_log(p, is_open) for p in positions]
+        keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__multi_commit(query, log_values)

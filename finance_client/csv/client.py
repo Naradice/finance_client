@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 class CSVClientBase(ClientBase, metaclass=ABCMeta):
     kinds = "csv"
     available_slip_type = ["random", "none", "percent", "pct"]
+    simulation = True
+    back_test = True
 
     # functions for read csv
     def _update_columns(self, columns: list):
@@ -303,11 +305,15 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             files = []
         if columns is None:
             columns = []
+        if symbols is None:
+            _symbols = []
+        else:
+            _symbols = symbols
 
         super().__init__(
             budget=budget,
             do_render=do_render,
-            symbols=symbols,
+            symbols=_symbols,
             out_ohlc_columns=columns,
             idc_process=idc_process,
             pre_process=pre_process,
@@ -362,15 +368,16 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             dummpy_path = file_name_generator(sep)
             fixes = dummpy_path.split(sep)
             self._get_symbol_from_filename = lambda file_path: self.__generate_symbol(file_path, fixes)
-            if len(symbols) > 0:
+            if len(_symbols) > 0:
                 files = list(files)
-                for symbol in symbols:
+                for symbol in _symbols:
                     file_name = file_name_generator(symbol)
                     files.append(file_name)
 
         self.base_point = 0.01
         self.frame = frame
-        self._symbols = []
+        if not hasattr(self, "_symbols"):
+            self._symbols = []
 
         self._auto_reset = auto_reset_index
         _index_update_required = False
@@ -395,7 +402,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
                 files = [os.path.abspath(file) for file in files]
                 self.files = files
             self._initialize_file_name_func(files)
-            self.data, __symbols = self._read_csv(self.files, symbols, columns, date_column, skiprows, start_date, frame)
+            self.data, __symbols = self._read_csv(self.files, _symbols, columns, date_column, skiprows, start_date, frame)
             self._symbols = list(__symbols)
             if _index_update_required:
                 self._step_index = len(self) + start_index  # assume negative value is specified
@@ -539,7 +546,7 @@ class CSVClient(CSVClientBase):
             columns (list, optional): column names to read from CSV files. Defaults to [].
             date_column (str, optional): If specified, try to parse time columns. Otherwise search time column. Defaults to None
             file_name_generator (function, optional): function to create file name from symbol. Ex) lambda symbol: f'D:\\warehouse\\stock_D1_{symbol}.csv'
-            symbols (list, optional): symbols name of data. Used to specify columns names.
+            symbols (list, optional): symbols name of data to specify columns names.
             frame (int, optional): input frame. Specify time series span by minutes. Defaults None and determined by data.
             out_frame (int, optional): output frame. Ex) Convert 5MIN data to 30MIN by out_frame=30. Defaults to None.
             observation_length (int, optional): specify data length for __getitem__.
@@ -677,7 +684,7 @@ class CSVClient(CSVClientBase):
         return target_symbols, pd.DataFrame()
 
     def __get_rates(self, index, length, symbols, frame, columns):
-        if length is None:
+        if length is None or length == slice(None):
             rates = self.data
             if frame is not None and self.frame < frame:
                 rates = self.roll_ohlc_data(rates, frame, grouped_by_symbol=True)
@@ -719,9 +726,9 @@ class CSVClient(CSVClientBase):
         else:
             raise Exception("interval should be greater than 0.")
 
-    def _get_ohlc_from_client(
-        self, length: int = None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol: bool = False
-    ):
+    def _get_ohlc_from_client(self, length=None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol: bool = False):
+        if symbols is None or symbols == slice(None):
+            symbols = []
         missing_data = pd.DataFrame()
         target_symbols = []
         try:
@@ -1209,7 +1216,7 @@ class CSVChunkClient(CSVClientBase):
 
     def __get_rates_by_chunk(self, interval: int = None, symbols: list = [], frame: int = None):
         target_symbols = list(set(self._symbols) & set(symbols))
-        if interval is None:
+        if interval is None or interval == slice(None):
             # todo: update missing columns
             if self.auto_step_index:
                 self._step_index += 1
@@ -1234,7 +1241,9 @@ class CSVChunkClient(CSVClientBase):
                 self._step_index += 1
         return rates
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False):
+    def _get_ohlc_from_client(self, length=None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False):
+        if symbols is None or symbols == slice(None):
+            symbols = []
         target_symbols, missing_files = self._get_target_symbols(symbols)
         if len(missing_files) > 0:
             try:

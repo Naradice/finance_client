@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 class ClientBase(metaclass=ABCMeta):
+
+    simulation = False
+    back_test = False
+
     def __init__(
         self,
         budget=1000000.0,
@@ -36,10 +40,29 @@ class ClientBase(metaclass=ABCMeta):
         frame=None,
         start_index=0,
         observation_length=None,
+        user_name: str = None,
         do_render=False,
         enable_trade_log=False,
         storage: db.BaseStorage = None,
     ):
+        """Base Class of Finance Client. Each Client should overwride required method.
+
+        Args:
+            budget (float, optional): Available badged in your trade. Defaults to 1000000.0.
+            provider (str, optional): Identity of provider. Specify to separate info (e.g. position) in DB. Defaults to "Default".
+            symbols (str or list, optional): list of symbols. Defaults to None.
+            out_ohlc_columns (tuple, optional): column names of historical data. Defaults to ("Open", "High", "Low", "Close").
+            idc_process (list[process], optional): indicator process to apply it when you get ohlc data. Defaults to None.
+            pre_process (list[process], optional): pre process (e.g. standalization) to apply it when you get ohlc data. Defaults to None.
+            economic_keys (list[str], optional): key name to add indicator values when you get ohlc data (experimental). Defaults to None.
+            frame (int or Frame, optional): Default timeframe of OHLC. Defaults to None.
+            start_index (int, optional): initial index of histrical data. Defaults to 0.
+            observation_length (int, optional): default observation length to get training/trading data. Defaults to None.
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
+            do_render (bool, optional): plot ohlc data with matplotlib or not. Defaults to False.
+            enable_trade_log (bool, optional): Store trade log to csv or not. Defaults to False.
+            storage (db.BaseStorage, optional): Specify supported storage. Defaults to None, then use SQLite.
+        """
         self.auto_index = None
         self._step_index = start_index
 
@@ -51,6 +74,7 @@ class ClientBase(metaclass=ABCMeta):
         self.__closed_position_with_exist = {}
         self._open_orders = {}
         self.frame = frame
+        self.user_name = user_name
         self.observation_length = observation_length
         self.enable_trade_log = enable_trade_log
         if self.do_render:
@@ -384,6 +408,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def __check_pending_positions_completion(self, ohlc_df: pd.DataFrame, symbols: list):
         if len(self.wallet.listening_positions) > 0:
+            # handle take profit and stop loss
             positions = self.wallet.listening_positions.copy()
             logger.debug("start checking the tp and sl of positions")
             if self.ohlc_columns is None:
@@ -413,6 +438,56 @@ class ClientBase(metaclass=ABCMeta):
                             else:
                                 self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
                     self.wallet.remove_position_from_listening(position.id)
+        if len(self._open_orders) > 0:
+            # handle limit and stop orders
+            orders = self._open_orders.copy()
+            logger.debug("start checking the completion of open orders")
+            closed_orders = []
+            try:
+                tick = ohlc_df.iloc[-1]
+            except Exception as e:
+                logger.error(f"Failed to get the latest tick data: {e}")
+                return
+            for id, order in orders.items():
+                logger.debug(f"checking order: {id}")
+                if order.order_type == ORDER_TYPE.limit or order.order_type == ORDER_TYPE.stop:
+                    self.ohlc_columns = self.get_ohlc_columns()
+                    high_column = self.ohlc_columns["High"]
+                    low_column = self.ohlc_columns["Low"]
+                    open_price = None
+                    logger.debug(f"tick: {tick}, order_price: {order.price}, order_type: {order.order_type}, position_type: {order.position_type}")
+                    if order.order_type == ORDER_TYPE.limit:
+                        if order.position_type == POSITION_TYPE.long:
+                            if tick[low_column] <= order.price:
+                                open_price = order.price
+                        elif order.position_type == POSITION_TYPE.short:
+                            if tick[high_column] >= order.price:
+                                open_price = order.price
+                    elif order.order_type == ORDER_TYPE.stop:
+                        if order.position_type == POSITION_TYPE.long:
+                            if tick[high_column] >= order.price:
+                                open_price = order.price
+                        elif order.position_type == POSITION_TYPE.short:
+                            if tick[low_column] <= order.price:
+                                open_price = order.price
+                    if open_price is not None:
+                        if order.position_type == POSITION_TYPE.long:
+                            logger.info(f"long position is opened by limit/stop order: {open_price}")
+                            if self.__open_long_position(
+                                symbol=order.symbol, bought_rate=open_price, amount=order.amount, tp=order.tp, sl=order.sl, result=None
+                            ):
+                                closed_orders.append(id)
+                        else:
+                            logger.info(f"short position is opened by limit/stop order: {open_price}")
+                            if self.__open_short_position(
+                                symbol=order.symbol, sold_rate=open_price, amount=order.amount, tp=order.tp, sl=order.sl, result=None
+                            ):
+                                closed_orders.append(id)
+            # remove closed orders
+            for id in closed_orders:
+                if id in self._open_orders:
+                    self._open_orders.pop(id)
+                    logger.debug(f"order {id} is removed from open orders as it is closed by limit/stop order.")
 
     def __plot_data(self, symbols: list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
@@ -515,7 +590,7 @@ class ClientBase(metaclass=ABCMeta):
         if do_run_process:
             required_length += self._get_required_length(idc_processes + pre_processes)
 
-        if length is None:
+        if length is None or length == slice(None):
             ohlc_df = self._get_ohlc_from_client(
                 length=length, symbols=symbols, frame=frame, columns=columns, index=index, grouped_by_symbol=grouped_by_symbol
             )
@@ -642,7 +717,7 @@ class ClientBase(metaclass=ABCMeta):
             if self.observation_length is not None:
                 length = self.observation_length
             else:
-                length = slice(None)
+                length = None
         if isinstance(symbols, str):
             symbols = [symbols]
 
@@ -1039,7 +1114,7 @@ class ClientBase(metaclass=ABCMeta):
         else:
             freq = to_freq
 
-        if grouped_by_symbol:
+        if grouped_by_symbol and isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.swaplevel(0, 1)
 
         ohlc_columns_dict = self.get_ohlc_columns()
@@ -1082,7 +1157,7 @@ class ClientBase(metaclass=ABCMeta):
 
         if len(rolled_data_dict) > 0:
             rolled_df = pd.concat(rolled_data_dict.values(), axis=1, keys=rolled_data_dict.keys())
-            if grouped_by_symbol:
+            if grouped_by_symbol and isinstance(rolled_df.columns, pd.MultiIndex):
                 data.columns = data.columns.swaplevel(0, 1)
                 rolled_df.columns = rolled_df.columns.swaplevel(0, 1)
                 rolled_df.sort_index(level=0, axis=1, inplace=True)
