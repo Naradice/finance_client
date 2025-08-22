@@ -90,6 +90,7 @@ class CoinCheckClient(ClientBase):
         frame: int = 30,
         observation_length=None,
         do_render=False,
+        user_name=None,
         enable_trade_log=False,
     ):
         """CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
@@ -103,6 +104,7 @@ class CoinCheckClient(ClientBase):
             frame (int, optional): Frame minutes. finance_client.frames is also available. Defaults to 30.
             initialized_with (Client | None, optional): CoinCheck API don't provide history data. You can specify other Client to initialized ohlc with history data of the client. Defaults to None.
             do_render (bool, optional): If true, plot ohlc data by matplotlib. Defaults to False.
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
         """
         super().__init__(
             budget,
@@ -111,6 +113,7 @@ class CoinCheckClient(ClientBase):
             observation_length=observation_length,
             do_render=do_render,
             enable_trade_log=enable_trade_log,
+            user_name=user_name
         )
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
 

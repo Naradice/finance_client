@@ -8,7 +8,8 @@ from .. import frames as Frame
 from ..csv.client import CSVClient
 
 try:
-    from ..fprocess.fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
+    from ..fprocess.fprocess.csvrw import (get_file_path, read_csv,
+                                           write_df_to_csv)
 except ImportError:
     from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
@@ -78,6 +79,7 @@ class YahooClient(CSVClient):
         pre_process=None,
         enable_trade_log=False,
         storage=None,
+        user_name=None,
         budget=1000000,
     ):
         """Get ohlc rate from yfinance
@@ -88,6 +90,7 @@ class YahooClient(CSVClient):
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
             budget (int, optional): budget for the simulation. Defaults to 1000000.
             seed (int, optional): random seed. Defaults to 1017.
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
 
         Raises:
             ValueError: other than 1, 5, 15, 30, 60, 60*24, 60*24*7, 60*24*7*30 is specified as frame

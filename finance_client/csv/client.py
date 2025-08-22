@@ -296,6 +296,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         do_render=False,
         seed=1017,
         provider="csv",
+        user_name=None,
         enable_trade_log=False,
     ):
         """CSV Client Base
@@ -538,6 +539,7 @@ class CSVClient(CSVClientBase):
         do_render=False,
         seed=1017,
         enable_trade_log=False,
+        user_name:str = None
     ):
         """CSV Client for time series data like bitcoin, stock, finance
 
@@ -564,6 +566,7 @@ class CSVClient(CSVClientBase):
             do_render (bool, optional): If true, plot OHLC and supported indicaters.
             enable_trade_log (bool, optional): If true, trade log is enabled. Defaults to False.
             seed (int, optional): specify random seed. Defaults to 1017
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
         """
         super().__init__(
             files=files,
@@ -589,6 +592,7 @@ class CSVClient(CSVClientBase):
             storage=storage,
             do_render=do_render,
             seed=seed,
+            user_name=user_name,
             provider="csv",
             enable_trade_log=enable_trade_log,
         )
@@ -993,6 +997,7 @@ class CSVChunkClient(CSVClientBase):
         budget=1000000,
         do_render=False,
         seed=1017,
+        user_name:str = None,
         provider="csv",
     ):
         """Low memory CSV Client
@@ -1016,6 +1021,7 @@ class CSVChunkClient(CSVClientBase):
             slip_type (str, optional): Specify how ask and bid slipped. random: random value from Close[i] to High[i] and Low[i]. prcent or pct: slip_rate=0.1 is applied. none: no slip.
             do_render (bool, optional): If true, plot OHLC and supported indicaters.
             seed (int, optional): specify random seed. Defaults to 1017
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
         """
         if chunksize < 1:
             raise ValueError("chunksize should be greater than 0.")

@@ -3,7 +3,7 @@ import logging
 import os
 
 from finance_client.db import BaseStorage, FileStorage
-from finance_client.position import POSITION_TYPE, Position
+from finance_client.position import POSITION_TYPE, ClosedResult, Position
 
 logger = logging.getLogger(__name__)
 
@@ -105,11 +105,16 @@ class Manager:
             float, float, float, float: closed_price, position_price, price_diff, profit
             (profit = price_diff * amount * trade_unit(pips etc))
         """
+        closed_result = ClosedResult()
         if price is None or id is None:
             logger.error(f"either id or price is None: {id}, {price}")
-            return None, None, None, None
+            closed_result.msg = "either id or price is None"
+            closed_result.error = True
+            return closed_result
         if position is None:
             position = self.storage.get_position(id)
+        elif id is None:
+            id = position.id
         if position is not None:
             if amount is None:
                 amount = position.amount
@@ -135,11 +140,14 @@ class Manager:
             logger.info(f"closed result:: profit {profit}, budget: {return_budget}")
             self.budget += return_budget
             self.remove_position_from_listening(id)
-            return price, position.price, price_diff, profit
+            closed_result.update(id=id, price=price, amount=amount, profit=profit, price_diff=price_diff)
+            return closed_result
         else:
             self.remove_position_from_listening(id)
             logger.error("position id is not found")
-            return None, None, None, None
+            closed_result.msg = "position id is not found"
+            closed_result.error = True
+            return closed_result
 
     def remove_position_from_listening(self, id):
         if id in self.listening_positions:

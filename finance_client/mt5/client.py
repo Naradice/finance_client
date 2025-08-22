@@ -12,7 +12,7 @@ import pandas as pd
 from .. import enum
 from .. import frames as Frame
 from ..client_base import ClientBase
-from ..position import Position
+from ..position import ClosedResult, Position
 
 try:
     from ..fprocess.fprocess.csvrw import (get_datafolder_path, read_csv,
@@ -62,6 +62,16 @@ class MT5Client(ClientBase):
         Frame.W1: 2681,
     }
 
+    ohlc_columns = {
+        "Open": "open",
+        "High": "high",
+        "Low": "low",
+        "Close": "close",
+        "Volume": "tick_volume",
+        "Spread": "spread",
+        "Time": "time",
+    }
+
     def login(self, id, password, server):
         return mt5.login(
             id,
@@ -88,6 +98,7 @@ class MT5Client(ClientBase):
         budget=1000000,
         storage=None,
         seed=1017,
+        user_name=None,
         idc_process=None,
         std_processes=None,
     ):
@@ -107,6 +118,7 @@ class MT5Client(ClientBase):
             budget (int, optional): Defaults to 1000000.
             storage (db.BaseStorage, optional): Storage to store positions. Defaults to None.
             seed (int, optional): _description_. Defaults to 1017.
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             idc_process (list[fprocess.ProcessBase], optional): list of indicator process to apply them when get_ohlc is called. Defaults to None.
             std_processes (list[fprocess.ProcessBase], optional): list of standalization process to apply them when get_ohlc is called. Defaults to None.
         """
@@ -118,6 +130,7 @@ class MT5Client(ClientBase):
             do_render=do_render,
             enable_trade_log=False,
             storage=storage,
+            user_name=user_name,
             idc_process=idc_process,
             pre_process=std_processes,
         )
@@ -187,14 +200,15 @@ class MT5Client(ClientBase):
         if self.point_unit is None:
             symbol_info = mt5.symbol_info(symbol)
             if symbol_info is None:
-                logger.error(f"symbol info is not available for {symbol}")
-                return None
+                msg = f"symbol info is not available for {symbol}"
+                logger.error(msg)
+                return None, msg
             else:
                 unit_for_symbol = symbol_info.volume_step
                 logger.debug(f"detected point for symbol: {unit_for_symbol}")
-                return unit_for_symbol
+                return unit_for_symbol, None
         else:
-            return self.point_unit
+            return self.point_unit, None
 
     def _get_default_path(self):
         data_folder = get_datafolder_path()
@@ -280,7 +294,11 @@ class MT5Client(ClientBase):
             sleep(1)
             return self.__request_order(request)
         else:
-            return False, result
+            if result is None:
+                error_details = mt5.last_error()[1]
+            else:
+                error_details = result.comment
+            return False, error_details
 
     def __get_attr_from_info(self, symbol, attr: str, retry=1):
         info = mt5.symbol_info(symbol)
@@ -384,30 +402,34 @@ class MT5Client(ClientBase):
         if buy_order:
             if tp is not None:
                 if rate >= tp:
-                    logger.error("tp should be higer than price for buy order")
-                    return False
+                    error_msg = "tp should be higher than price for buy order"
+                    logger.error(error_msg)
+                    return False, error_msg
             if sl is not None:
                 if rate <= sl:
-                    logger.error("sl should be lower than price for buy order")
-                    return False
+                    error_msg = "sl should be lower than price for buy order"
+                    logger.error(error_msg)
+                    return False, error_msg
         else:
             if tp is not None:
                 if rate <= tp:
-                    logger.error("tp should be lower than price for sell order")
-                    return False
+                    error_msg = "tp should be lower than price for sell order"
+                    logger.error(error_msg)
+                    return False, error_msg
             if sl is not None:
                 if rate >= sl:
-                    logger.error("sl should be higer than price for sell order")
-                    return False
-        return True
+                    error_msg = "sl should be higher than price for sell order"
+                    logger.error(error_msg)
+                    return False, error_msg
+        return True, "success"
 
     def _market_sell(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
-        suc = self.__check_params(False, price, tp, sl)
+        suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
-            return False, None
-        point = self.__get_point(symbol)
+            return False, msg
+        point, msg = self.__get_point(symbol)
         if point is None:
-            return False, None
+            return False, msg
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
@@ -424,17 +446,17 @@ class MT5Client(ClientBase):
             if order_suc:
                 return True, result.order
             else:
-                return False, None
+                return False, result
         else:
             return True, numpy.random.randint(100, 100000)
 
     def _sell_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
-        suc = self.__check_params(False, price, tp, sl)
+        suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
-            return False, None
-        point = self.__get_point(symbol)
+            return False, msg
+        point, msg = self.__get_point(symbol)
         if point is None:
-            return False, None
+            return False, msg
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
@@ -452,17 +474,17 @@ class MT5Client(ClientBase):
             if order_suc:
                 return True, result.order
             else:
-                return False, None
+                return False, result
         else:
             return True, numpy.random.randint(100, 100000)
 
     def _sell_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
-        suc = self.__check_params(False, price, tp, sl)
+        suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
-            return False, None
-        point = self.__get_point(symbol)
+            return False, msg
+        point, msg = self.__get_point(symbol)
         if point is None:
-            return False, None
+            return False, msg
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
@@ -480,12 +502,12 @@ class MT5Client(ClientBase):
             if order_suc:
                 return True, result.order
             else:
-                return False, None
+                return False, result
         else:
             return True, numpy.random.randint(100, 100000)
 
     def _buy_to_close(self, symbol, price, amount, result, *args, **kwargs):
-        point = self.__get_point(symbol)
+        point, msg = self.__get_point(symbol)
         if point is None:
             return False
 
@@ -504,9 +526,9 @@ class MT5Client(ClientBase):
                     dev=20,
                     position=position_id,
                 )
-                order_suc, result = self.__request_order(request=request)
+                order_suc, order_result = self.__request_order(request=request)
                 if order_suc:
-                    return result
+                    return order_result
                 else:
                     return False
             else:
@@ -516,10 +538,12 @@ class MT5Client(ClientBase):
 
     def _market_buy(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
         if self.__ignore_order is False:
-            suc = self.__check_params(True, price, tp, sl)
+            suc, msg = self.__check_params(True, price, tp, sl)
             if suc is False:
-                return False, None
-            point = self.__get_point(symbol)
+                return False, msg
+            point, msg = self.__get_point(symbol)
+            if point is None:
+                return False, msg
             request = self.__generate_common_request(
                 action=mt5.TRADE_ACTION_DEAL, symbol=symbol, _type=mt5.ORDER_TYPE_BUY, vol=point * amount, price=price, dev=20, sl=sl, tp=tp
             )
@@ -527,17 +551,17 @@ class MT5Client(ClientBase):
             if order_suc:
                 return True, result.order
             else:
-                return False, None
+                return False, result
         else:
             return True, numpy.random.randint(100, 100000)
 
     def _buy_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
-        suc = self.__check_params(True, price, tp, sl)
+        suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
-            return False, None
-        point = self.__get_point(symbol)
+            return False, msg
+        point, msg = self.__get_point(symbol)
         if point is None:
-            return False, None
+            return False, msg
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
@@ -555,17 +579,17 @@ class MT5Client(ClientBase):
             if order_suc:
                 return True, result.order
             else:
-                return False, None
+                return False, result
         else:
             return True, numpy.random.randint(100, 100000)
 
     def _buy_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
-        suc = self.__check_params(True, price, tp, sl)
+        suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
-            return False, None
-        point = self.__get_point(symbol)
+            return False, msg
+        point, msg = self.__get_point(symbol)
         if point is None:
-            return False, None
+            return False, msg
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
@@ -583,7 +607,7 @@ class MT5Client(ClientBase):
             if order_suc:
                 return True, result.order
             else:
-                return False, None
+                return False, result
         else:
             return True, numpy.random.randint(100, 100000)
 
@@ -595,7 +619,7 @@ class MT5Client(ClientBase):
         return False
 
     def _sell_to_close(self, symbol, price, amount, result, *args, **kwargs):
-        point = self.__get_point(symbol)
+        point, msg = self.__get_point(symbol)
         if point is None:
             return False
         if self.__ignore_order is False:
@@ -626,6 +650,8 @@ class MT5Client(ClientBase):
     def _check_position(self, position: Position, **kwargs):
         position_id = position.result
         deals = mt5.history_deals_get(position=position_id)
+        if deals is None:
+            return None
         if len(deals) > 1:
             # if the deals has 2 length, it would have closed result
             for deal in deals:
@@ -861,7 +887,7 @@ class MT5Client(ClientBase):
             living_orders = []
             for order in mt5_orders:
                 if order.ticket in self._open_orders:
-                    living_orders.append(order)
+                    living_orders.append(self._open_orders[order.ticket])
             return living_orders
 
     def _update_client_positions(self, actual_positions):
@@ -880,7 +906,7 @@ class MT5Client(ClientBase):
                     if self.user_name != m_position.comment:
                         continue
                 for order in self._open_orders:
-                    if order.magic == m_position.magic and order.symbol == m_position.symbol:
+                    if order == m_position.magic and order.symbol == m_position.symbol:
                         positions_by_order.append(order.id)
                 position_type = 1 if mt5.POSITION_TYPE_BUY == m_position.type else -1
                 symbol = m_position.symbol
@@ -918,6 +944,30 @@ class MT5Client(ClientBase):
             return suc
         else:
             return True
+        
+    def get_ohlc_columns(self, symbol: str = slice(None), out_type="dict", ignore=None) -> dict:
+        ohlc_columns = {
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "tick_volume",
+            "Spread": "spread",
+            "Time": "time",
+        }
+        if ignore is not None:
+            if type(ignore) == str and ignore in ohlc_columns:
+                ohlc_columns.pop(ignore)
+            elif type(ignore) == list:
+                for key in ignore:
+                    if key in ohlc_columns:
+                        ohlc_columns.pop(key)
+        if out_type == "dict":
+            return ohlc_columns
+        else:
+            columns = [item for key, item in ohlc_columns.items()]
+            return columns
+
 
     def __len__(self):
         if self.frame in self.LAST_IDX:

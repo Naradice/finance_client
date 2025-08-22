@@ -13,7 +13,7 @@ import pandas as pd
 from . import db
 from . import frames as Frame
 from . import graph, wallet
-from .position import ORDER_TYPE, POSITION_TYPE, Order, Position
+from .position import ORDER_TYPE, POSITION_TYPE, ClosedResult, Order, Position
 
 try:
     from .fprocess import fprocess
@@ -86,7 +86,7 @@ class ClientBase(metaclass=ABCMeta):
 
         if storage is None:
             db_path = os.path.join(os.getcwd(), "finance_client.db")
-            storage = db.SQLiteStorage(db_path, provider)
+            storage = db.SQLiteStorage(db_path, provider, user_name)
             # storage = db.FileStorage(provider)
         self.wallet = wallet.Manager(budget=budget, storage=storage, provider=provider)
 
@@ -205,7 +205,9 @@ class ClientBase(metaclass=ABCMeta):
                         id=ticket_id,
                         magic_number=magic_number,
                     )
-                return suc, p
+                    return suc, p
+                else:
+                    return suc, ticket_id
             elif order_type == ORDER_TYPE.stop or order_type == ORDER_TYPE.stop.value:
                 logger.debug(f"stop order: is_buy {is_buy}")
                 if is_buy:
@@ -229,7 +231,10 @@ class ClientBase(metaclass=ABCMeta):
                         magic_number=magic_number,
                     )
                     p.id = ticket_id
-                return suc, p
+                    return suc, p
+                else:
+                    # this case, ticket_id is message
+                    return suc, ticket_id
             else:
                 logger.error(f"{order_type} is not defined/implemented.")
                 return False, None
@@ -249,14 +254,19 @@ class ClientBase(metaclass=ABCMeta):
             symbols (str, optional): key of symbol
             position_type (str, optional): 1: long, -1: short. if both symbol and position_type is specified, try to order
         """
+        default_closed_result = ClosedResult()
+        default_closed_result.error = True
         if position is not None:
             id = position.id
 
         if id is not None:
             if id in self.__closed_position_with_exist:
+                # message should be added by limit handler
                 closed_result = self.__closed_position_with_exist.pop(id)
                 logger.info("Specified position was already closed.")
-                return closed_result, False
+                # mark as error since it is already closed
+                closed_result.error = True
+                return closed_result
             if position is None:
                 position = self.wallet.storage.get_position(id)
             if amount is None:
@@ -264,11 +274,14 @@ class ClientBase(metaclass=ABCMeta):
                     amount = position.amount
                 else:
                     logger.error(f"both amount and position is None: {id}")
-                    return None, None, None, None, False
+                    default_closed_result.msg = "both amount and position is None"
+                    return default_closed_result
         else:
             if symbol is None or position_type is None:
-                logger.error("Either id or symbol and position_type should be specified.")
-                return None, None, None, None, False
+                error_msg = "Either id or symbol and position_type should be specified."
+                logger.error(error_msg)
+                default_closed_result.msg = error_msg
+                return default_closed_result
             if amount is None:
                 amount = 1
             position = Position(
@@ -292,7 +305,8 @@ class ClientBase(metaclass=ABCMeta):
                 logger.debug(f"order close with current ask rate {price}")
             result = self._sell_to_close(position.symbol, price, amount, position.option, position.result)
             if result is False:
-                return None, None, None, None, False
+                default_closed_result.msg = "Failed to close position"
+                return default_closed_result
             position_plot = -2
         elif position.position_type == POSITION_TYPE.short:
             logger.debug(f"close short position is ordered for {id}")
@@ -301,16 +315,17 @@ class ClientBase(metaclass=ABCMeta):
                 price = self.get_current_ask(position.symbol)
             result = self._buy_to_close(position.symbol, price, amount, position.option, position.result)
             if result is False:
-                return None, None, None, None, False
+                default_closed_result.msg = "Failed to close position"
+                return default_closed_result
             position_plot = -1
         else:
             logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
-        price, position.price, price_diff, profit = self.wallet.close_position(
+        closed_result = self.wallet.close_position(
             position.id, price, amount=amount, position=position, index=self.get_current_datetime()
         )
-        return price, position.price, price_diff, profit, True
+        return closed_result
 
     def close_all_positions(self, symbols: list = None):
         """close all open_position with market price
@@ -327,10 +342,11 @@ class ClientBase(metaclass=ABCMeta):
         for positions in both_positions:
             for position in positions:
                 result = self.close_position(position=position)
-                results.append((*result, position.id))
+                results.append(result)
         pending_results = self.__closed_position_with_exist.copy()
         for id, result in pending_results.items():
-            results.append((result, False, id))
+            result.error = True
+            results.append(result)
             self.__closed_position_with_exist.pop(id)
         return results
 
@@ -467,6 +483,8 @@ class ClientBase(metaclass=ABCMeta):
             high_column = self.ohlc_columns["High"]
             low_column = self.ohlc_columns["Low"]
             # assume trading data is retrieved every frame
+            if ohlc_df.empty:
+                return
             tick = ohlc_df.iloc[-1]
             for id, position in positions.items():
                 closed_price = self._check_position(position, low_price=tick[low_column], high_price=tick[high_column])
@@ -481,6 +499,7 @@ class ClientBase(metaclass=ABCMeta):
                     if result is not None:
                         # save the result to decline close order to the position
                         # TODO: use history data instead of dict
+                        result.msg = "Position is closed by tp/sl"
                         self.__closed_position_with_exist[position.id] = result
                         logger.info(f"Position is closed by limit: {result}")
                         if self.do_render:
@@ -506,7 +525,7 @@ class ClientBase(metaclass=ABCMeta):
                     high_column = self.ohlc_columns["High"]
                     low_column = self.ohlc_columns["Low"]
                     open_price = None
-                    logger.debug(f"tick: {tick}, order_price: {order.price}, order_type: {order.order_type}, position_type: {order.position_type}")
+                    # logger.debug(f"tick: {tick}, order_price: {order.price}, order_type: {order.order_type}, position_type: {order.position_type}")
                     if order.order_type == ORDER_TYPE.limit:
                         if order.position_type == POSITION_TYPE.long:
                             if tick[low_column] <= order.price:
@@ -1103,7 +1122,7 @@ class ClientBase(metaclass=ABCMeta):
         if ignore is not None:
             if type(ignore) == str and ignore in ohlc_columns:
                 ohlc_columns.pop(ignore)
-            elif type(ignore):
+            elif type(ignore) == list:
                 for key in ignore:
                     if key in ohlc_columns:
                         ohlc_columns.pop(key)

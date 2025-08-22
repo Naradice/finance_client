@@ -163,3 +163,44 @@ class Order:
             "sl": self.sl,
             "id": self.id,
         }
+
+class ClosedResult:
+
+    def __init__(self, id=None, price=0.0, entry_price=0.0, amount=0, price_diff=0.0, profit=0.0, msg=""):
+        self.id = id
+        self.price = price
+        self.entry_price = entry_price
+        self.amount = amount
+        self.price_diff = price_diff
+        self.profit = profit
+        self.msg = msg
+        self.error = False
+
+    def update(self, id=None, price=None, entry_price=None, price_diff=None, amount=None, profit=None, msg=None):
+        if id is not None:
+            self.id = id
+        if price is not None:
+            self.price = price
+        if entry_price is not None:
+            self.entry_price = entry_price
+        if price_diff is not None:
+            self.price_diff = price_diff
+        if profit is not None:
+            self.profit = profit
+        if msg is not None:
+            self.msg = msg
+        if amount is not None:
+            self.amount = amount
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "price": self.price,
+            "entry_price": self.entry_price,
+            "price_diff": self.price_diff,
+            "profit": self.profit,
+            "msg": self.msg,
+        }
+    
+    def __str__(self):
+        return f"ClosedResult(id={self.id}, price={self.price}, entry_price={self.entry_price}, amount={self.amount}, price_diff={self.price_diff}, profit={self.profit}, msg={self.msg})"

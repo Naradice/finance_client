@@ -35,10 +35,35 @@ class SBIClient(ClientBase):
         start_index=0,
         frame: int = Frame.D1,
         provider="Default",
+        user_name=None,
         storage=None,
         do_render=False,
         enable_trade_log=False,
     ):
+        """_summary_
+
+        Args:
+            symbols (list, optional): _description_. Defaults to None.
+            id (str, optional): _description_. Defaults to None.
+            password (str, optional): _description_. Defaults to None.
+            trade_password (str, optional): _description_. Defaults to None.
+            use_yfinance (bool, optional): _description_. Defaults to True.
+            auto_step_index (bool, optional): _description_. Defaults to True.
+            adjust_close (bool, optional): _description_. Defaults to True.
+            start_index (int, optional): _description_. Defaults to 0.
+            frame (int, optional): _description_. Defaults to Frame.D1.
+            provider (str, optional): _description_. Defaults to "Default".
+            user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
+            storage (_type_, optional): _description_. Defaults to None.
+            do_render (bool, optional): _description_. Defaults to False.
+            enable_trade_log (bool, optional): _description_. Defaults to False.
+
+        Raises:
+            Exception: _description_
+            Exception: _description_
+            Exception: _description_
+            Exception: _description_
+        """
         if id is None:
             if self.ID_KEY in os.environ:
                 id = os.environ[self.ID_KEY]
@@ -71,6 +96,7 @@ class SBIClient(ClientBase):
             do_render=do_render,
             storage=storage,
             enable_trade_log=enable_trade_log,
+            user_name=user_name
         )
 
     def get_additional_params(self):

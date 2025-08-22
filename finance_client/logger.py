@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import sys
+from datetime import datetime
 
 import yaml
 
@@ -26,7 +27,16 @@ def apply_partial_config(config_dict, target_loggers: list[str]):
 
         if "filename" in handler_conf:
             rel_path = handler_conf["filename"]
-            abs_path = os.path.join(PROJECT_DIR, rel_path)
+            path_names = rel_path.split(".")
+            if len(path_names) < 2:
+                extension = ".log"
+                base_name = "".join(path_names)
+            else:
+                extension = path_names[-1]
+                base_name = "".join(path_names[:-1])
+            date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{base_name}_{date_str}.{extension}"
+            abs_path = os.path.join(PROJECT_DIR, filename)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             handler_conf["filename"] = str(abs_path)
         if "stream" in handler_conf:

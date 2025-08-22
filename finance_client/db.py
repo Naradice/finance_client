@@ -56,13 +56,13 @@ class LogStorageBase(metaclass=ABCMeta):
     def get(self):
         return []
 
-    def __create_place_holder(self, num: int):
+    def _create_place_holder(self, num: int):
         place_holders = f"({'?,' * (num -1)}?)"
         return place_holders
 
     def _create_basic_query(self, table_schema_keys: list):
         keys = ",".join(table_schema_keys)
-        place_holders = self.__create_place_holder(len(table_schema_keys))
+        place_holders = self._create_place_holder(len(table_schema_keys))
         return keys, place_holders
 
 
@@ -221,13 +221,13 @@ class BaseStorage:
     def close(self):
         pass
 
-    def __create_place_holder(self, num: int):
+    def _create_place_holder(self, num: int):
         place_holders = f"({'?,' * (num -1)}?)"
         return place_holders
 
     def _create_basic_query(self, table_schema_keys: list):
         keys = ",".join(table_schema_keys)
-        place_holders = self.__create_place_holder(len(table_schema_keys))
+        place_holders = self._create_place_holder(len(table_schema_keys))
         return keys, place_holders
 
 
@@ -480,7 +480,8 @@ class SQLiteStorage(BaseStorage):
     __lock = threading.Lock()
 
     def _table_init(self):
-        cursor = self.__conn.cursor()
+        conn = sqlite3.connect(self.__database_path)
+        cursor = conn.cursor()
         table_schema = ",".join([f"{key} {attr}" for key, attr in self._POSITION_TABLE_KEYS.items()])
         cursor.execute(
             f"""
@@ -507,49 +508,47 @@ class SQLiteStorage(BaseStorage):
             """
         )
         cursor.close()
+        conn.close()
 
     def __init__(self, database_path, provider: str, username: str, log_storage=None) -> None:
         super().__init__(provider, username)
         if username is None:
             self.username = "__none__"
 
-        self.__conn = sqlite3.connect(database_path)
         self.__database_path = database_path
         if log_storage is None:
             self.log_storage = LogCSVStorage()
         else:
             self.log_storage = log_storage
         self._table_init()
-
-    def _get_cursor(self):
-        try:
-            return self.__conn.cursor()
-        except sqlite3.ProgrammingError:
-            self.__conn = sqlite3.connect(self.__database_path)
-            return self.__conn.cursor()
-        except Exception as e:
-            raise e
-
+    
     def __commit(self, query, params=()):
         with self.__lock:
-            cursor = self._get_cursor()
+            conn = sqlite3.connect(self.__database_path)
+            cursor = conn.cursor()
             cursor.execute(query, params)
-            self.__conn.commit()
+            conn.commit()
             cursor.close()
+            conn.close()
 
     def __multi_commit(self, query, params_list):
         with self.__lock:
-            cursor = self._get_cursor()
+            conn = sqlite3.connect(self.__database_path)
+            cursor = conn.cursor()
             cursor.executemany(query, params_list)
-            self.__conn.commit()
+            conn.commit()
             cursor.close()
+            conn.close()
+
 
     def __fetch(self, query, params=()):
         with self.__lock:
-            cursor = self._get_cursor()
+            conn = sqlite3.connect(self.__database_path)
+            cursor = conn.cursor()
             cursor.execute(query, params)
             records = cursor.fetchall()
             cursor.close()
+            conn.close()
         return records
 
     def __records_to_positions(self, records, keys):
@@ -581,7 +580,7 @@ class SQLiteStorage(BaseStorage):
         )
         query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__commit(query, values)
-        self.log_storage.store_log(self.provider, position, True)
+        self.log_storage.store_log(self.provider, self.username, position, True)
 
     def store_positions(self, positions: List[Position]):
         keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
@@ -690,7 +689,7 @@ class SQLiteStorage(BaseStorage):
             query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND username = ?"
             params = [self.provider, self.username]
         if symbols is not None and len(symbols) > 0:
-            place_holders = self.__create_place_holder(len(symbols))
+            place_holders = self._create_place_holder(len(symbols))
             query = f"{query} AND symbol in {place_holders}"
             params.extend(symbols)
         if position_type is not None:
@@ -781,10 +780,6 @@ class SQLiteStorage(BaseStorage):
         except Exception:
             return False
 
-    def close(self):
-        self.__conn.close()
-
-
 class LogSQLiteStorage(BaseStorage):
     TRADE_TABLE_NAME = "trade"
     _TRADE_TABLE_KEYS = {
@@ -807,21 +802,13 @@ class LogSQLiteStorage(BaseStorage):
         if username is None:
             self.username = "__none__"
 
-        self.__conn = sqlite3.connect(database_path)
         self.__database_path = database_path
         self._table_init()
-
-    def _get_cursor(self):
-        try:
-            return self.__conn.cursor()
-        except sqlite3.ProgrammingError:
-            self.__conn = sqlite3.connect(self.__database_path)
-            return self._get_cursor()
-        except Exception as e:
-            raise e
+        
 
     def _table_init(self):
-        cursor = self.__conn.cursor()
+        conn = sqlite3.connect(self.__database_path)
+        cursor = conn.cursor()
         table_schema = ",".join([f"{key} {attr}" for key, attr in self._TRADE_TABLE_KEYS.items()])
         cursor.execute(
             f"""
@@ -830,20 +817,27 @@ class LogSQLiteStorage(BaseStorage):
             )
             """
         )
+        conn.commit()
+        cursor.close()
+        cursor.close()
 
     def __commit(self, query, params=()):
         with self.__lock:
-            cursor = self._get_cursor()
+            conn = sqlite3.connect(self.__database_path)
+            cursor = conn.cursor()
             cursor.execute(query, params)
-            self.__conn.commit()
+            conn.commit()
             cursor.close()
+            conn.close()
 
     def __multi_commit(self, query, params_list):
         with self.__lock:
-            cursor = self._get_cursor()
+            conn = sqlite3.connect(self.__database_path)
+            cursor = conn.cursor()
             cursor.executemany(query, params_list)
-            self.__conn.commit()
+            conn.commit()
             cursor.close()
+            conn.close()
 
     def store_log(self, position: Position, is_open):
         values = self._convert_position_to_log(position, is_open)
