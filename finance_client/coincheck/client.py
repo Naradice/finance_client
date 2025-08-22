@@ -296,7 +296,7 @@ class CoinCheckClient(ClientBase):
             return datetime.datetime.now().timestamp()
         else:
             if ask_rate is None:
-                ask_rate = self.get_current_ask()
+                ask_rate = self.get_current_ask(symbol)
             response = apis.create_pending_buy_order(rate=ask_rate, amount=amount, stop_loss_rate=sl)
             if response["success"]:
                 return True, response["id"]

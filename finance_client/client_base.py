@@ -971,14 +971,15 @@ class ClientBase(metaclass=ABCMeta):
         positions = self.wallet.storage.get_long_positions()
         if len(positions) > 0:
             diffs = []
-            current_bid = self.get_current_bid()
             if standalization == "minimax":
-                current_bid = fprocess.standalization.mini_max(current_bid, self.min, self.max, (0, 1))
                 for key, position in positions.items():
+                    current_bid = self.get_current_bid(position.symbol)
+                    current_bid = fprocess.standalization.mini_max(current_bid, self.min, self.max, (0, 1))
                     price = fprocess.standalization.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(current_bid - price)
             else:
                 for key, position in positions.items():
+                    current_bid = self.get_current_bid(position.symbol)
                     diffs.append(current_bid - position.price)
             return diffs
         else:
@@ -988,14 +989,16 @@ class ClientBase(metaclass=ABCMeta):
         positions = self.wallet.storage.get_short_positions()
         if len(positions) > 0:
             diffs = []
-            current_ask = self.get_current_ask()
             if standalization == "minimax":
-                current_ask = fprocess.standalization.mini_max(current_ask, self.min, self.max, (0, 1))
                 for key, position in positions.items():
+                    current_ask = self.get_current_ask(position.symbol)
+                    current_ask = fprocess.standalization.mini_max(current_ask, self.min, self.max, (0, 1))
+
                     price = fprocess.standalization.mini_max(position.price, self.min, self.max, (0, 1))
                     diffs.append(price - current_ask)
             else:
                 for key, position in positions.items():
+                    current_ask = self.get_current_ask(position.symbol)
                     diffs.append(position.price - current_ask)
             return diffs
         else:
