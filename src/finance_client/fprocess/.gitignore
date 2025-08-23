@@ -1,0 +1,4 @@
+/fp_venv
+__pycache__
+preprocess.json
+fprocess/logs/
