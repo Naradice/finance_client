@@ -1266,6 +1266,7 @@ class ClientBase(metaclass=ABCMeta):
         portfolio = {"long": {}, "short": {}}
         long_positions, short_positions = self.wallet.storage.get_positions()
         ask_symbols = []
+        ask_position_states = []
         if len(long_positions) > 0:
             for position in long_positions:
                 symbol = position.symbol
@@ -1274,8 +1275,20 @@ class ClientBase(metaclass=ABCMeta):
                     portfolio["long"][symbol].append(position)
                 else:
                     portfolio["long"][symbol] = [position]
+                    bid_rates = self.get_current_bid(list(set(ask_symbols)))
+            if isinstance(bid_rates, pd.Series):
+                get_bid_rate = lambda symbol: bid_rates[symbol]
+            else:
+                get_bid_rate = lambda symbol: bid_rates
+            for symbol, positions in portfolio["long"].items():
+                bid_rate = get_bid_rate(symbol)
+                for position in positions:
+                    profit = (bid_rate - position.price) * position.amount
+                    profit_rate = bid_rate / position.price
+                    ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
 
         bid_symbols = []
+        bid_position_states = []
         if len(short_positions) > 0:
             for position in short_positions:
                 symbol = position.symbol
@@ -1284,32 +1297,17 @@ class ClientBase(metaclass=ABCMeta):
                     portfolio["short"][symbol].append(position)
                 else:
                     portfolio["short"][symbol] = [position]
-
-        bid_rates = self.get_current_bid(list(set(ask_symbols)))
-        if isinstance(bid_rates, pd.Series):
-            get_bid_rate = lambda symbol: bid_rates[symbol]
-        else:
-            get_bid_rate = lambda symbol: bid_rates
-        ask_position_states = []
-        for symbol, positions in portfolio["long"].items():
-            bid_rate = get_bid_rate(symbol)
-            for position in positions:
-                profit = (bid_rate - position.price) * position.amount
-                profit_rate = bid_rate / position.price
-                ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
-
-        ask_rates = self.get_current_ask(list(set(bid_symbols)))
-        if isinstance(ask_rates, pd.Series):
-            get_ask_rate = lambda symbol: ask_rates[symbol]
-        else:
-            get_ask_rate = lambda symbol: ask_rates
-        bid_position_states = []
-        for symbol, positions in portfolio["short"].items():
-            ask_rate = get_ask_rate(symbol)
-            for position in positions:
-                profit = (position.price - ask_rate) * position.amount
-                profit_rate = position.price / ask_rate
-                bid_position_states.append((symbol, position.price, position.amount, ask_rate, profit, profit_rate))
+            ask_rates = self.get_current_ask(list(set(bid_symbols)))
+            if isinstance(ask_rates, pd.Series):
+                get_ask_rate = lambda symbol: ask_rates[symbol]
+            else:
+                get_ask_rate = lambda symbol: ask_rates
+            for symbol, positions in portfolio["short"].items():
+                ask_rate = get_ask_rate(symbol)
+                for position in positions:
+                    profit = (position.price - ask_rate) * position.amount
+                    profit_rate = position.price / ask_rate
+                    bid_position_states.append((symbol, position.price, position.amount, ask_rate, profit, profit_rate))
         return ask_position_states, bid_position_states
 
     def seed(self, seed=None):

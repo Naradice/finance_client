@@ -315,7 +315,7 @@ class MT5Client(ClientBase):
 
     def get_current_ask(self, symbols):
         if symbols is None or symbols == slice(None) or len(symbols) == 0:
-            stack = "\n".join(traceback.format_stack())
+            stack = "".join(traceback.format_stack())
             logger.error(f"symbol is mandatory to get current ask\n{stack}")
             return None
         if isinstance(symbols, str):
@@ -346,7 +346,7 @@ class MT5Client(ClientBase):
 
     def get_current_bid(self, symbols):
         if symbols is None or len(symbols) == 0:
-            stack = "\n".join(traceback.format_stack())
+            stack = "".join(traceback.format_stack())
             logger.error(f"symbol is mandatory to get current bid\n{stack}")
             return None
         if isinstance(symbols, str):
@@ -376,7 +376,7 @@ class MT5Client(ClientBase):
 
     def get_current_spread(self, symbols):
         if symbols is None or len(symbols) == 0:
-            stack = "\n".join(traceback.format_stack())
+            stack = "".join(traceback.format_stack())
             logger.error(f"symbol is mandatory to get current spread\n{stack}")
             return None
         if isinstance(symbols, str):
