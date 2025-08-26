@@ -86,7 +86,7 @@ class LogCSVStorage(LogStorageBase):
             log_item["order_type"] = 1
         else:
             log_item["order_type"] = -1
-        log_item["logged_at"] = datetime.datetime.now(datetime.UTC).isoformat()
+        log_item["logged_at"] = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
         return log_item
 
     def store_log(self, provider, username, position: Position, is_open):
@@ -212,7 +212,7 @@ class BaseStorage:
         log_item["amount"] = amount
         log_item["position_type"] = position.position_type.value
         log_item["order_type"] = order_type
-        log_item["logged_at"] = datetime.datetime.now(datetime.UTC).isoformat()
+        log_item["logged_at"] = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
         return log_item
 
     def _store_log(self, symbol, time_index, price, amount, position_type, is_open):
@@ -627,7 +627,7 @@ class SQLiteStorage(BaseStorage):
         id = self.__get_symbol_id(symbol, name=None, market=market)
         if id is not None:
             if date is None:
-                date = datetime.datetime.now(datetime.UTC).date()
+                date = datetime.datetime.now(tz=datetime.timezone.utc).date()
             key_list = list(self._RATING_TABLE_KEYT.keys())
             keys, place_holders = self._create_basic_query(key_list[1:])
             query = f"""
@@ -753,7 +753,7 @@ class SQLiteStorage(BaseStorage):
             p.amount,
             p.position_type.value,
             order_type,
-            datetime.datetime.now(datetime.UTC),
+            datetime.datetime.now(tz=datetime.timezone.utc),
         )
         return values
 

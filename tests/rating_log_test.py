@@ -119,7 +119,7 @@ class TestLogRatingWithSQLite(unittest.TestCase):
         source = "test_company"
         org_ratings = [4.0, 4.0, 0.0, 0.0, 1.0]
         new_rating_info = ",".join([str(value) for value in org_ratings])
-        date = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
+        date = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(days=1)
         date = date.date()
 
         self.storage.store_symbol_info(symbol=symbol, date=date, rating=new_rating_info, source=source)

@@ -876,7 +876,7 @@ class ClientBase(metaclass=ABCMeta):
 
     # Override if provider has datetime index
     def get_current_datetime(self):
-        return Frame.get_frame_time(datetime.datetime.now(datetime.UTC), self.frame)
+        return Frame.get_frame_time(datetime.datetime.now(tz=datetime.timezone.utc), self.frame)
 
     def get_params(self) -> dict:
         print("Need to implement get_params")

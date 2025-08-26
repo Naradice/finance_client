@@ -699,7 +699,7 @@ class MT5Client(ClientBase):
             interval = MAX_LENGTH
         else:
             latest_frame_timestamp = existing_rate_df["time"].iloc[-1]
-            current_time = datetime.datetime.now(tz=datetime.UTC)
+            current_time = datetime.datetime.now(tz=datetime.timezone.utc)
             delta = current_time - latest_frame_timestamp
             total_seconds = delta.total_seconds()
             if (total_seconds / (60 * 60 * 24 * 7)) >= 1:
