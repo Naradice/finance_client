@@ -101,6 +101,8 @@ class AgentTool:
                     is_buy (bool): True if long position,
                     tp (float): take profit price of order,
                     sl (float): stop loss price of order,
+                    order_type (str): "limit", "stop",
+                    created (str): creation time of order
                 }
             }
         """
@@ -122,6 +124,7 @@ class AgentTool:
                 "is_buy": True if order.position_type == POSITION_TYPE.long else False,
                 "tp": 0 if order.tp is None else order.tp,
                 "sl": 0 if order.sl is None else order.sl,
+                "created": order.created.isoformat() if isinstance(order.created, datetime.datetime) else order.created
             }
 
         # logger.debug(f"get_orders result: {len(return_orders_dict)}")
