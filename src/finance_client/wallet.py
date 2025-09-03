@@ -67,31 +67,31 @@ class Manager:
             return position
         else:
             # check if budget has enough amount
-            required_budget = self.trade_unit * amount * price
+            # required_budget = self.trade_unit * amount * price
             # if enough, add position
-            if required_budget <= self.budget:
-                position = Position(
-                    position_type=position_type,
-                    symbol=symbol,
-                    price=price,
-                    amount=amount,
-                    time_index=index,
-                    tp=tp,
-                    sl=sl,
-                    option=option,
-                    result=result,
-                )
-                self.storage.store_position(position)
-                # then reduce budget
-                self.budget -= required_budget
-                # check if tp/sl exists
-                if tp is not None or sl is not None:
-                    self.listening_positions[position.id] = position
-                    logger.debug("position is stored to listening list")
-                return position
-            else:
-                logger.info(f"current budget {self.budget} is less than required {required_budget}")
-                return None
+            # if required_budget <= self.budget:
+            position = Position(
+                position_type=position_type,
+                symbol=symbol,
+                price=price,
+                amount=amount,
+                time_index=index,
+                tp=tp,
+                sl=sl,
+                option=option,
+                result=result,
+            )
+            self.storage.store_position(position)
+            # then reduce budget
+            # self.budget -= required_budget
+            # check if tp/sl exists
+            if tp is not None or sl is not None:
+                self.listening_positions[position.id] = position
+                logger.debug("position is stored to listening list")
+            return position
+            # else:
+            #     logger.info(f"current budget {self.budget} is less than required {required_budget}")
+            #     return None
 
     def close_position(self, id, price: float, amount: float = None, position=None, index=None):
         """close a position based on the id generated when the positions is opened.
