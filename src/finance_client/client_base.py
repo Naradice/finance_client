@@ -134,7 +134,7 @@ class ClientBase(metaclass=ABCMeta):
             Position (Position): position or id which is required to close the position
         """
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
-            logger.debug("budget order is requested.")
+            logger.debug("order is requested.")
             if self.do_render and self.__ohlc_index == -1:
                 # self.__ohlc_index is initialized when get_ohlc is called. If ohlc_index == -1, it means position is opened before get_ohlc.
                 try:
@@ -385,25 +385,25 @@ class ClientBase(metaclass=ABCMeta):
         long_positions, short_positions = self.wallet.storage.get_positions()
         all_our_positions = {}
         for position in long_positions:
-            all_our_positions[position.id] = position
+            all_our_positions[str(position.id)] = position
         for position in short_positions:
-            all_our_positions[position.id] = position
+            all_our_positions[str(position.id)] = position
 
         # remove unhandled positions
         for id, position in all_our_positions.items():
             is_found = False
             for actual_position in actual_positions:
-                if position.id == actual_position.id:
+                if str(id) == str(actual_position.id):
                     is_found = True
                     break
             if not is_found:
-                logger.debug(f"position {id} is not found in actual positions. remove it from our positions.")
-                self.wallet.storage.delete_position(position.id)
+                logger.debug(f"position {repr(id)} is not found in actual positions. remove it from our positions.")
+                self.wallet.storage.delete_position(id)
 
         # add missing positions
         for actual_position in actual_positions:
-            if actual_position.id not in all_our_positions:
-                logger.debug(f"position {actual_position.id} is not found in our positions. add it to our positions.")
+            if str(actual_position.id) not in all_our_positions:
+                logger.debug(f"position {repr(actual_position.id)} is not found in our positions. add it to our positions.")
                 self.wallet.storage.store_position(actual_position)
 
     def _get_required_length(self, processes: list) -> int:

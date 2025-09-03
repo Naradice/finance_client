@@ -21,8 +21,9 @@ MACD_SIG_KEY = "MACD_Signal"
 
 class AgentTool:
 
-    def __init__(self, client: ClientBase):
+    def __init__(self, client: ClientBase, max_volume = None):
         self.client = client
+        self.max_volume = max_volume
         # for simulation, step index is used to simulate time
         self._step_index = self.client._step_index if hasattr(self.client, "_step_index") else 0
         self._EMA10 = idcprocess.EMAProcess(window=10, key=S_EMA_KEY, column="close")
@@ -33,7 +34,6 @@ class AgentTool:
         self._Bollinger = idcprocess.BBANDProcess(window=20, key="Bollinger", target_column="close", alpha=2)
         self._ATR = idcprocess.ATRProcess(window=14, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
         self._CCI = idcprocess.CCIProcess(window=20, key="CCI", ohlc_column=("open", "high", "low", "close"))
-
 
     def order(self, is_buy: bool, price: float, volume: float, symbol: str, order_type: int, tp: float, sl: float):
         """order to open a position
@@ -63,6 +63,8 @@ class AgentTool:
             price = None
         if volume > 0 and volume < 1:
             volume = volume * 100
+        if self.max_volume is not None and volume > self.max_volume:
+            volume = self.max_volume
         # sometimes AI Agent order limit order as stop order. So if price is invalid, it will be treated as a stop order.
         if order_type == 1:
             if is_buy:
@@ -214,8 +216,9 @@ class AgentTool:
         """
         logger.debug(f"tool: cancel_order for {id}")
         suc = self.client.cancel_order(id)
+        message = "cancel_order success" if suc else "already canceled"
         logger.debug(f"cancel_order result {suc}")
-        return {"result": suc}
+        return {"result": suc, "message": message}
 
     def get_ask_rate(self, symbol: str):
         """return current ask rate of specified symbol

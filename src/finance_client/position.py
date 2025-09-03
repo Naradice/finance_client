@@ -151,6 +151,7 @@ class Order:
         self.amount = amount
         self.tp = tp
         self.sl = sl
+        self.created = datetime.datetime.now(tz=datetime.timezone.utc)
 
     def to_dict(self):
         return {
@@ -163,6 +164,9 @@ class Order:
             "sl": self.sl,
             "id": self.id,
         }
+    
+    def __str__(self):
+        return f"Order(id={self.id}, order_type={self.order_type}, position_type={self.position_type}, symbol={self.symbol}, price={self.price}, amount={self.amount}, tp={self.tp}, sl={self.sl})"
 
 class ClosedResult:
 
