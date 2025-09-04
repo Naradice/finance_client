@@ -107,13 +107,14 @@ class AgentTool:
             }
         """
         # logger.debug("tool:get_orders")
-        orders = self.client.get_orders()
         return_orders_dict = {}
         if self.client.back_test:
             symbols = set()
             for order in orders:
                 symbols.add(order.symbol)
             self.__advance_step(list(symbols))
+            orders = self.client.get_orders()
+        else:
             orders = self.client.get_orders()
         for order in orders:
             return_orders_dict[order.id] = {
@@ -360,9 +361,6 @@ class AgentTool:
         if isinstance(ohlc_df, dict):
             return {"open": {}, "high": {}, "low": {}, "close": {}, "EMA10": {}, "EMA50": {}, "EMA200": {}, "MACD": {}, "RSI": {}, "Bollinger": {}, "ATR": {}, "CCI": {}}
 
-        ohlc_df = self._EMA10.run(ohlc_df)
-        ohlc_df = self._EMA50.run(ohlc_df)
-        ohlc_df = self._EMA200.run(ohlc_df)
         macd_df = self._MACD.run(ohlc_df)
         macd_df = macd_df[[self._MACD.KEY_MACD, self._MACD.KEY_SIGNAL]]
         ohlc_df = pd.concat([ohlc_df, macd_df], axis=1)
@@ -372,6 +370,13 @@ class AgentTool:
         ohlc_df = pd.concat([ohlc_df, bb_df], axis=1)
         ohlc_df = self._ATR.run(ohlc_df)
         ohlc_df = self._CCI.run(ohlc_df)
+        try:
+            ohlc_df = self._EMA10.run(ohlc_df)
+            ohlc_df = self._EMA50.run(ohlc_df)
+            ohlc_df = self._EMA200.run(ohlc_df)
+        except Exception as e:
+            logger.exception("Error occurred while calculating EMA indicators")
+
         ohlc_df = ohlc_df.iloc[-length:]  # Get the last 'length' rows
         ohlc_df = ohlc_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
         if isinstance(ohlc_df.index, pd.DatetimeIndex):
