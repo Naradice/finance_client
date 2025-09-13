@@ -718,7 +718,7 @@ class STOCK:
             symbol_name = names[0]
             symbol_index = int(names[2])
 
-            links = tds[4].find_elements(By.XPATH, "a")
+            links = tds[5].find_elements(By.XPATH, "a")
             cancel_ele = links[0]
             modify_ele = links[1]
 
