@@ -343,11 +343,11 @@ class STOCK:
                 header_ele = self.driver.find_element(
                     By.CLASS_NAME, "slc-header-nav-lower-menu"
                 )
-                header_eles = header_ele.find_element(By.TAG_NAME, "ul").find_elements(
-                    By.TAG_NAME, "li"
+                header_eles = header_ele.find_element(By.XPATH, "ul").find_elements(
+                    By.XPATH, "li"
                 )
-                # 0: お知らせ, 2: ポートフォリト, 3: 取引
-                header_eles[3].find_element(By.XPATH, ".//div/a").click()
+                # 0: お知らせ, 1: ポートフォリト, 2: 取引
+                header_eles[2].find_element(By.XPATH, ".//div/a").click()
             except Exception as e:
                 self.logger.error(f"failed to open trade page: {e}")
                 return False
@@ -381,8 +381,8 @@ class STOCK:
             target_class_name = "slc-global-nav-container"
             try:
                 header_ele = self.driver.find_element(By.CLASS_NAME, target_class_name)
-                lis = header_ele.find_element(By.TAG_NAME, "ul").find_elements(
-                    By.TAG_NAME, "li"
+                lis = header_ele.find_element(By.XPATH, "ul").find_elements(
+                    By.XPATH, "li"
                 )
                 lis[index].click()
                 return True
@@ -401,7 +401,7 @@ class STOCK:
             )
             self.logger.debug("found header for symbol information")
             first_tr = header_tr.find_element(By.XPATH, ".//table/tbody/tr")
-            tds = first_tr.find_elements(By.TAG_NAME, "td")
+            tds = first_tr.find_elements(By.XPATH, "td")
             tds[index].click()
             if index == 0:
                 ele = wait.until(
