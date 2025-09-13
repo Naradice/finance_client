@@ -23,6 +23,7 @@ class STOCK:
         self.logger = utils.setup_logger()
         options = Options()
         options.add_argument(f"--user-data-dir={os.path.join(BASE_PATH, "profile")}")
+        options.add_argument("user-agent=Mozilla/5.0 ... Chrome/114.0.0.0 Safari/537.36")
         self.driver = webdriver.Chrome(options=options)
         self.driver.implicitly_wait(5)
         self.open()
@@ -74,7 +75,7 @@ class STOCK:
     def __get_device_code_element(self):
         try:
             self.logger.debug("getting device element")
-            eleemt = self.driver.find_element(By.NAME, "device_code")
+            eleemt = self.driver.find_element(By.NAME, "ACT_deviceotpcall")
             return eleemt
         except Exception:
             return None
@@ -90,27 +91,51 @@ class STOCK:
             print(f"error happened on is_logged_in: {e}")
             return False
 
-    def _get_device_code(self):
-        # If anyone want other source, need to overwrite the method
-        return gmail.retrieve_sbi_device_code()
+    def _input_device_code(self, code: str):
+        # If anyone want to use other mail provider, need to overwrite the method
+        url = gmail.retrieve_code_input_url()
+        if url:
+            # open a new tab
+            self.driver.execute_script(f"window.open('{url}');")
+            handles = self.driver.window_handles
+            self.driver.switch_to.window(handles[-1])
+            # close pop up
+            try:
+                close_btn = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "a.karte-close"))
+                )
+                close_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.karte-close"))
+                )
+                close_btn.click()
+            except exceptions.NoSuchElementException:
+                self.logger.debug("no popup to close")
+                pass
+            code_input = self.driver.find_element(By.ID, "verifyCode")
+            code_input.send_keys(code)
+            verify_btn = self.driver.find_element(By.ID, "verification")
+            verify_btn.click()
+            # close the tab
+            self.driver.close()
+            # switch to the original tab
+            self.driver.switch_to.window(handles[0])
+            return True
+        return False
 
-    def handle_otp(self, device_element) -> bool:
+    def handle_otp(self) -> bool:
         try:
-            self.logger.debug("start getting device code from gmail")
-            if device_element is None:
-                device_element = self.driver.find_element(By.NAME, "device_code")
-            checkbox = self.driver.find_element(By.NAME, "device_string_checkbox")
-            checkbox.click()
-            device_code = self._get_device_code()
-            if device_code:
-                self.logger.debug("input device code")
-                reg_device_element = self.driver.find_element(By.NAME, "ACT_deviceauth")
-                device_element.send_keys(device_code)
-                reg_device_element.click()
+            self.logger.debug("start input device code with gmail")
+            device_element = self.driver.find_element(By.ID, "code-display")
+            device_code = device_element.text
+            checkbox = self.driver.find_element(By.ID, "device-checkbox")
+            if checkbox and checkbox.is_selected() is False:
+                checkbox.click()
+            if self._input_device_code(device_code):
+                register_button = self.driver.find_element(By.ID, "device-auth-otp")
+                register_button.click()
                 return True
-            else:
-                self.logger.warning("device code not found.")
-                return False
+            self.logger.error("failed to get device code")
+            return False
         except exceptions.NoSuchElementException as e:
             self.logger.error(e)
             return self.is_logged_in()
@@ -144,8 +169,9 @@ class STOCK:
                     return False
             else:
                 # wait to receive device code
+                device_element.click()
                 sleep(3)
-                if self.handle_otp(device_element):
+                if self.handle_otp():
                     self.logger.debug("device code was available. check login state.")
                     if self.is_logged_in():
                         self.id = id
