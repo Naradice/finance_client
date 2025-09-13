@@ -108,24 +108,24 @@ def get_latest_email_by_subject(subject_keyword: list, from_email=None):
 
 def extract_auth_code_from_body(body: str) -> str | None:
     # 改行や空白を挟んだ「認証コード」の後の英数字（例: A0123）を抽出
-    match = re.search(r"認証コード\s*[\r\n　]+([A-Z0-9]{4,})", body)
+    match = re.search(r".*認証コードはこちら.*?(\d{6})", body.replace("\n", ""), re.DOTALL)
     if match:
         return match.group(1)
-    print(f"no match in {body}")
+    print(f"no match in {body[:100]}")
     return None
 
 
 def retrieve_sbi_device_code(
     subject="認証コードのお知らせ", sender="info@sbisec.co.jp"
 ):
-    """outdated
+    """retrieve authentication code from latest email
 
     Args:
-        subject (str, optional): _description_. Defaults to "認証コードのお知らせ".
-        sender (str, optional): _description_. Defaults to "info@sbisec.co.jp".
+        subject (str, optional): Defaults to "認証コードのお知らせ".
+        sender (str, optional): Defaults to "info@sbisec.co.jp".
 
     Returns:
-        _type_: _description_
+        str: device code or None if not found
     """
     date, subject, sender, body = get_latest_email_by_subject(subject, sender)
     if body:
@@ -154,4 +154,5 @@ def retrieve_code_input_url() -> str | None:
     return None
 
 if __name__ == "__main__":
-    print(retrieve_code_input_url())
+    # print(retrieve_code_input_url())
+    print(retrieve_sbi_device_code())

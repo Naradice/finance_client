@@ -71,6 +71,50 @@ class STOCK:
                 return True
         except Exception:
             return False
+    
+    def _check_device_verification(self):
+        try:
+            device_element = self.driver.find_element(By.ID, "deviceButton")
+            if device_element:
+                self.logger.debug("need to pass device verification")
+                return True
+            return False
+        except exceptions.NoSuchElementException:
+            return False
+        except Exception as e:
+            self.logger.error(f"error happened on _check_device_verification: {e}")
+            return False
+    
+    def _input_additional_device_code(self):
+        # If anyone want to use other mail provider, need to overwrite the method
+        sleep(5)  # wait for email to arrive
+        code = gmail.retrieve_sbi_device_code()
+        if code:
+            self.logger.debug("got device code from email")
+            code_input = self.driver.find_element(By.ID, "deviceCodeInput")
+            code_input.send_keys(str(code).strip())
+            verify_btn = self.driver.find_element(By.ID, "deviceButton")
+            verify_btn.click()
+
+            self.logger.debug("waiting for device verification")
+            error_txt_ele = self.driver.find_elements(By.CLASS_NAME, "fRed01")
+            if error_txt_ele:
+                self.logger.error(f"failed to pass device verification: {error_txt_ele[0].text}")
+                return self._input_additional_device_code()
+            # wait until device verification is completed
+            try:
+                section = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, "//h1"))
+                )
+                if "失敗" in section.text:
+                    self.logger.error("failed to pass device verification. It may be timed out.")
+                    return self._input_additional_device_code()
+            except Exception as e:
+                pass
+            self.logger.info("device verification is completed.")
+            return True
+        self.logger.error("failed to get device code")
+        return False
 
     def __get_device_code_element(self):
         try:
@@ -227,13 +271,13 @@ class STOCK:
             )
             # header_ele = self.driver.find_element(By.CLASS_NAME, "head01")
             if header_ele.text == "国内株式":
-                candidate_eles = self.driver.find_elements(By.CLASS_NAME, order_type)
+                candidate_eles = self.driver.find_elements(By.CLASS_NAME, sbi_enum.ORDER_BUY_CLASS)
                 target_txt = sbi_enum.symbol_page_to_order_element[order_type]
                 for candidate in candidate_eles:
-                    text_ele = candidate.find_element(By.CLASS_NAME, "fm01")
-                    if text_ele:
-                        if text_ele.text == target_txt:
-                            text_ele.click()
+                    text = candidate.text
+                    if text:
+                        if text == target_txt:
+                            candidate.click()
                             result = True
                             break
                 if result is False:
@@ -259,6 +303,12 @@ class STOCK:
             bool: suc or not
             str: error text. if succeed, None
         """
+        if self._check_device_verification():
+            success = self._input_additional_device_code()
+            if success is False:
+                error_txt = "failed to pass device verification"
+                self.logger.error(error_txt)
+                return False, error_txt
         target_class_name = "mtext"
         wait = WebDriverWait(self.driver, 10)
         mtexts_eles = wait.until(
@@ -304,6 +354,12 @@ class STOCK:
             order_btn_ele = self.driver.find_elements(By.ID, order_wo_conf)
             order_btn_ele[0].click()
             self.logger.debug("clicked to order")
+            if self._check_device_verification():
+                success = self._input_additional_device_code()
+                if success is False:
+                    error_txt = "failed to pass device verification"
+                    self.logger.error(error_txt)
+                    return False, error_txt
 
             # check if order is completed
             target_name = "md-l-table-01"
