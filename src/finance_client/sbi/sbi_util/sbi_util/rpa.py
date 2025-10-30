@@ -23,6 +23,7 @@ class STOCK:
         self.logger = utils.setup_logger()
         options = Options()
         options.add_argument(f"--user-data-dir={os.path.join(BASE_PATH, "profile")}")
+        options.add_argument("user-agent=Mozilla/5.0 ... Chrome/114.0.0.0 Safari/537.36")
         self.driver = webdriver.Chrome(options=options)
         self.driver.implicitly_wait(5)
         self.open()
@@ -70,11 +71,55 @@ class STOCK:
                 return True
         except Exception:
             return False
+    
+    def _check_device_verification(self):
+        try:
+            device_element = self.driver.find_element(By.ID, "deviceButton")
+            if device_element:
+                self.logger.debug("need to pass device verification")
+                return True
+            return False
+        except exceptions.NoSuchElementException:
+            return False
+        except Exception as e:
+            self.logger.error(f"error happened on _check_device_verification: {e}")
+            return False
+    
+    def _input_additional_device_code(self):
+        # If anyone want to use other mail provider, need to overwrite the method
+        sleep(5)  # wait for email to arrive
+        code = gmail.retrieve_sbi_device_code()
+        if code:
+            self.logger.debug("got device code from email")
+            code_input = self.driver.find_element(By.ID, "deviceCodeInput")
+            code_input.send_keys(str(code).strip())
+            verify_btn = self.driver.find_element(By.ID, "deviceButton")
+            verify_btn.click()
+
+            self.logger.debug("waiting for device verification")
+            error_txt_ele = self.driver.find_elements(By.CLASS_NAME, "fRed01")
+            if error_txt_ele:
+                self.logger.error(f"failed to pass device verification: {error_txt_ele[0].text}")
+                return self._input_additional_device_code()
+            # wait until device verification is completed
+            try:
+                section = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, "//h1"))
+                )
+                if "失敗" in section.text:
+                    self.logger.error("failed to pass device verification. It may be timed out.")
+                    return self._input_additional_device_code()
+            except Exception as e:
+                pass
+            self.logger.info("device verification is completed.")
+            return True
+        self.logger.error("failed to get device code")
+        return False
 
     def __get_device_code_element(self):
         try:
             self.logger.debug("getting device element")
-            eleemt = self.driver.find_element(By.NAME, "device_code")
+            eleemt = self.driver.find_element(By.NAME, "ACT_deviceotpcall")
             return eleemt
         except Exception:
             return None
@@ -90,27 +135,51 @@ class STOCK:
             print(f"error happened on is_logged_in: {e}")
             return False
 
-    def _get_device_code(self):
-        # If anyone want other source, need to overwrite the method
-        return gmail.retrieve_sbi_device_code()
+    def _input_device_code(self, code: str):
+        # If anyone want to use other mail provider, need to overwrite the method
+        url = gmail.retrieve_code_input_url()
+        if url:
+            # open a new tab
+            self.driver.execute_script(f"window.open('{url}');")
+            handles = self.driver.window_handles
+            self.driver.switch_to.window(handles[-1])
+            # close pop up
+            try:
+                close_btn = WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "a.karte-close"))
+                )
+                close_btn = WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.karte-close"))
+                )
+                close_btn.click()
+            except exceptions.NoSuchElementException:
+                self.logger.debug("no popup to close")
+                pass
+            code_input = self.driver.find_element(By.ID, "verifyCode")
+            code_input.send_keys(code)
+            verify_btn = self.driver.find_element(By.ID, "verification")
+            verify_btn.click()
+            # close the tab
+            self.driver.close()
+            # switch to the original tab
+            self.driver.switch_to.window(handles[0])
+            return True
+        return False
 
-    def handle_otp(self, device_element) -> bool:
+    def handle_otp(self) -> bool:
         try:
-            self.logger.debug("start getting device code from gmail")
-            if device_element is None:
-                device_element = self.driver.find_element(By.NAME, "device_code")
-            checkbox = self.driver.find_element(By.NAME, "device_string_checkbox")
-            checkbox.click()
-            device_code = self._get_device_code()
-            if device_code:
-                self.logger.debug("input device code")
-                reg_device_element = self.driver.find_element(By.NAME, "ACT_deviceauth")
-                device_element.send_keys(device_code)
-                reg_device_element.click()
+            self.logger.debug("start input device code with gmail")
+            device_element = self.driver.find_element(By.ID, "code-display")
+            device_code = device_element.text
+            checkbox = self.driver.find_element(By.ID, "device-checkbox")
+            if checkbox and checkbox.is_selected() is False:
+                checkbox.click()
+            if self._input_device_code(device_code):
+                register_button = self.driver.find_element(By.ID, "device-auth-otp")
+                register_button.click()
                 return True
-            else:
-                self.logger.warning("device code not found.")
-                return False
+            self.logger.error("failed to get device code")
+            return False
         except exceptions.NoSuchElementException as e:
             self.logger.error(e)
             return self.is_logged_in()
@@ -144,8 +213,9 @@ class STOCK:
                     return False
             else:
                 # wait to receive device code
+                device_element.click()
                 sleep(3)
-                if self.handle_otp(device_element):
+                if self.handle_otp():
                     self.logger.debug("device code was available. check login state.")
                     if self.is_logged_in():
                         self.id = id
@@ -201,13 +271,13 @@ class STOCK:
             )
             # header_ele = self.driver.find_element(By.CLASS_NAME, "head01")
             if header_ele.text == "国内株式":
-                candidate_eles = self.driver.find_elements(By.CLASS_NAME, order_type)
+                candidate_eles = self.driver.find_elements(By.CLASS_NAME, sbi_enum.ORDER_BUY_CLASS)
                 target_txt = sbi_enum.symbol_page_to_order_element[order_type]
                 for candidate in candidate_eles:
-                    text_ele = candidate.find_element(By.CLASS_NAME, "fm01")
-                    if text_ele:
-                        if text_ele.text == target_txt:
-                            text_ele.click()
+                    text = candidate.text
+                    if text:
+                        if text == target_txt:
+                            candidate.click()
                             result = True
                             break
                 if result is False:
@@ -233,6 +303,12 @@ class STOCK:
             bool: suc or not
             str: error text. if succeed, None
         """
+        if self._check_device_verification():
+            success = self._input_additional_device_code()
+            if success is False:
+                error_txt = "failed to pass device verification"
+                self.logger.error(error_txt)
+                return False, error_txt
         target_class_name = "mtext"
         wait = WebDriverWait(self.driver, 10)
         mtexts_eles = wait.until(
@@ -278,6 +354,12 @@ class STOCK:
             order_btn_ele = self.driver.find_elements(By.ID, order_wo_conf)
             order_btn_ele[0].click()
             self.logger.debug("clicked to order")
+            if self._check_device_verification():
+                success = self._input_additional_device_code()
+                if success is False:
+                    error_txt = "failed to pass device verification"
+                    self.logger.error(error_txt)
+                    return False, error_txt
 
             # check if order is completed
             target_name = "md-l-table-01"
@@ -317,11 +399,11 @@ class STOCK:
                 header_ele = self.driver.find_element(
                     By.CLASS_NAME, "slc-header-nav-lower-menu"
                 )
-                header_eles = header_ele.find_element(By.TAG_NAME, "ul").find_elements(
-                    By.TAG_NAME, "li"
+                header_eles = header_ele.find_element(By.XPATH, "ul").find_elements(
+                    By.XPATH, "li"
                 )
-                # 0: お知らせ, 2: ポートフォリト, 3: 取引
-                header_eles[3].find_element(By.XPATH, ".//div/a").click()
+                # 0: お知らせ, 1: ポートフォリト, 2: 取引
+                header_eles[2].find_element(By.XPATH, ".//div/a").click()
             except Exception as e:
                 self.logger.error(f"failed to open trade page: {e}")
                 return False
@@ -355,8 +437,8 @@ class STOCK:
             target_class_name = "slc-global-nav-container"
             try:
                 header_ele = self.driver.find_element(By.CLASS_NAME, target_class_name)
-                lis = header_ele.find_element(By.TAG_NAME, "ul").find_elements(
-                    By.TAG_NAME, "li"
+                lis = header_ele.find_element(By.XPATH, "ul").find_elements(
+                    By.XPATH, "li"
                 )
                 lis[index].click()
                 return True
@@ -375,7 +457,7 @@ class STOCK:
             )
             self.logger.debug("found header for symbol information")
             first_tr = header_tr.find_element(By.XPATH, ".//table/tbody/tr")
-            tds = first_tr.find_elements(By.TAG_NAME, "td")
+            tds = first_tr.find_elements(By.XPATH, "td")
             tds[index].click()
             if index == 0:
                 ele = wait.until(

@@ -5,6 +5,9 @@ sell = "sell"
 margin_buy = "margin_buy"
 margin_sell = "margin_sell"
 
+ORDER_BUY_CLASS = "StockBuyBtn"
+ORDER_SELL_CLASS = "StockSellBtn"
+
 order_types = [buy, sell, margin_buy, margin_sell]
 
 symbol_page_to_order_element = {

@@ -1,4 +1,6 @@
 import base64
+import html
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -7,6 +9,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 BASE_PATH = os.path.dirname(__file__)
@@ -30,7 +34,7 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds)
 
 
-def get_latest_email_by_subject(subject_keyword, from_email=None):
+def get_latest_email_by_subject(subject_keyword: list, from_email=None):
     service = get_gmail_service()
 
     date = None
@@ -51,7 +55,7 @@ def get_latest_email_by_subject(subject_keyword, from_email=None):
     messages = results.get("messages", [])
 
     if not messages:
-        print("該当するメールは見つかりませんでした。")
+        logger.warning("該当するメールは見つかりませんでした。")
         return date, subject, sender, body
 
     latest_message = None
@@ -71,7 +75,7 @@ def get_latest_email_by_subject(subject_keyword, from_email=None):
             latest_message = msg
 
     if latest_message is None:
-        print("該当するメールは見つかりませんでした。")
+        logger.warning("該当するメールは見つかりませんでした。")
         return date, subject, sender, body
 
     payload = latest_message["payload"]
@@ -104,22 +108,51 @@ def get_latest_email_by_subject(subject_keyword, from_email=None):
 
 def extract_auth_code_from_body(body: str) -> str | None:
     # 改行や空白を挟んだ「認証コード」の後の英数字（例: A0123）を抽出
-    match = re.search(r"認証コード\s*[\r\n　]+([A-Z0-9]{4,})", body)
+    match = re.search(r".*認証コードはこちら.*?(\d{6})", body.replace("\n", ""), re.DOTALL)
     if match:
         return match.group(1)
-    print(f"no match in {body}")
+    print(f"no match in {body[:100]}")
     return None
 
 
 def retrieve_sbi_device_code(
     subject="認証コードのお知らせ", sender="info@sbisec.co.jp"
 ):
+    """retrieve authentication code from latest email
+
+    Args:
+        subject (str, optional): Defaults to "認証コードのお知らせ".
+        sender (str, optional): Defaults to "info@sbisec.co.jp".
+
+    Returns:
+        str: device code or None if not found
+    """
     date, subject, sender, body = get_latest_email_by_subject(subject, sender)
     if body:
         return extract_auth_code_from_body(body)
     print("body is missing")
     return None
 
+def retrieve_code_input_url() -> str | None:
+    """retrieve URL for inputting authentication code from latest email"""
+    logger.debug("start retrieving URL for inputting authentication code")
+    date, subject, sender, body = get_latest_email_by_subject(
+        subject_keyword=["認証コード入力画面"], from_email="info@sbisec.co.jp"
+    )
+    logger.debug(f"email subject: {subject}, from: {sender}, date: {date}")
+    if body:
+        # search for URL including https://m.sbisec.co.jp/
+        match = re.search(r".*(https://m\.sbisec\.co\.jp/.*)", body)
+        if match:
+            url = match.group(1).strip()
+            url = html.unescape(url)  # decode HTML entities
+            logger.info(f"found URL in email: {url}")
+            return url
+        logger.warning(f"no match in {body[:100]}")
+        return None
+    logger.warning("body is missing")
+    return None
 
 if __name__ == "__main__":
+    # print(retrieve_code_input_url())
     print(retrieve_sbi_device_code())
