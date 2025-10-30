@@ -222,8 +222,13 @@ class AgentTool:
             }
         """
         logger.debug(f"tool: cancel_order for {id}")
-        suc = self.client.cancel_order(id)
-        message = "cancel_order success" if suc else "already canceled"
+        try:
+            suc = self.client.cancel_order(id)
+            message = "cancel_order success" if suc else "already canceled"
+        except Exception as e:
+            logger.error(f"Error in cancel_order: {e}")
+            suc = False
+            message = str(e)
         logger.debug(f"cancel_order result {suc}")
         return {"result": suc, "message": message}
 
