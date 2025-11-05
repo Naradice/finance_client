@@ -74,12 +74,12 @@ class AgentTool:
                 ask_price = self.get_ask_rate(symbol)
                 if price >= float(ask_price):
                     order_type = 2
-                    print("Changed order type to Stop")
+                    logger.debug("Changed order type to Stop")
             else:
                 bid_price = self.get_bid_rate(symbol)
                 if price <= float(bid_price):
                     order_type = 2
-                    print("Changed order type to Stop")
+                    logger.debug("Changed order type to Stop")
 
         suc, position = self.client.open_trade(is_buy=is_buy, price=price, symbol=symbol, order_type=order_type, amount=volume, tp=tp, sl=sl)
         if suc and position is not None:
@@ -146,7 +146,11 @@ class AgentTool:
             msg (str): error message if order is failed.
         """
         logger.debug(f"close_position with {id}, {volume}, {symbol}")
-        closed_result = self.client.close_position(price=None, id=id, amount=volume, symbol=symbol)
+        try:
+            closed_result = self.client.close_position(price=None, id=id, amount=volume, symbol=symbol)
+        except Exception:
+            logger.exception(f"Error in close_position")
+            return {"closed_price": "0", "profit": "0", "msg": str(e)}
         if closed_result.error:
             result = {"closed_price": str(closed_result.price), "profit": str(closed_result.profit), "msg": closed_result.msg}
         else:
@@ -165,7 +169,11 @@ class AgentTool:
             }
         """
         logger.debug("tool:close_all_positions")
-        results = self.client.close_all_positions()
+        try:
+            results = self.client.close_all_positions()
+        except Exception:
+            logger.exception(f"Error in close_all_positions")
+            return {"msg": "failed to close all positions"}
         # convert result to dict for agent
         result_dict = {}
         for result in results:
@@ -225,8 +233,8 @@ class AgentTool:
         try:
             suc = self.client.cancel_order(id)
             message = "cancel_order success" if suc else "already canceled"
-        except Exception as e:
-            logger.error(f"Error in cancel_order: {e}")
+        except Exception:
+            logger.exception(f"Error in cancel_order")
             suc = False
             message = str(e)
         logger.debug(f"cancel_order result {suc}")

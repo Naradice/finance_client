@@ -192,6 +192,7 @@ class ClientBase(metaclass=ABCMeta):
                         symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
                     )
                 if suc:
+                    ticket_id = str(ticket_id)
                     p.id = ticket_id
                     # TODO: persist orders
                     self._open_orders[ticket_id] = Order(
@@ -219,6 +220,7 @@ class ClientBase(metaclass=ABCMeta):
                         symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
                     )
                 if suc:
+                    ticket_id = str(ticket_id)
                     self._open_orders[ticket_id] = Order(
                         ORDER_TYPE.stop,
                         POSITION_TYPE.long if is_buy else POSITION_TYPE.short,
@@ -555,9 +557,10 @@ class ClientBase(metaclass=ABCMeta):
                                 closed_orders.append(id)
             # remove closed orders
             for id in closed_orders:
-                if id in self._open_orders:
-                    self._open_orders.pop(id)
-                    logger.debug(f"order {id} is removed from open orders as it is closed by limit/stop order.")
+                ticket_id = str(id)
+                if ticket_id in self._open_orders:
+                    self._open_orders.pop(ticket_id)
+                    logger.debug(f"order {ticket_id} is removed from open orders as it is closed by limit/stop order.")
 
     def __plot_data(self, symbols: list, data_df: pd.DataFrame):
         if self.__is_graph_initialized is False:
@@ -936,8 +939,9 @@ class ClientBase(metaclass=ABCMeta):
         return True
 
     def cancel_order(self, id: str):
-        if id in self._open_orders:
-            self._open_orders.pop(id)
+        ticket_id = str(id)
+        if ticket_id in self._open_orders:
+            self._open_orders.pop(ticket_id)
             return True
         return False
 
