@@ -518,9 +518,9 @@ class MT5Client(ClientBase):
         if self.__ignore_order is False:
             if result is not None:
                 if hasattr(result, "order"):
-                    position_id = result.order
+                    position_id = int(result.order)
                 else:
-                    position_id = result
+                    position_id = int(result)
                 request = self.__generate_common_request(
                     action=mt5.TRADE_ACTION_DEAL,
                     symbol=symbol,
@@ -615,11 +615,16 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def cancel_order(self, id: str):
-        request = {"action": mt5.TRADE_ACTION_REMOVE, "order": id}
+    def cancel_order(self, id: int):
+        try:
+            order_id = int(id)
+        except Exception as e:
+            logger.error(f"invalid order id is specified: {id}")
+            return False
+        request = {"action": mt5.TRADE_ACTION_REMOVE, "order": order_id}
         suc, result = self.__request_order(request=request)
         if suc:
-            return super().cancel_order(id)
+            return super().cancel_order(order_id)
         return False
 
     def _sell_to_close(self, symbol, price, amount, result, *args, **kwargs):
@@ -629,9 +634,9 @@ class MT5Client(ClientBase):
         if self.__ignore_order is False:
             if result is not None:
                 if hasattr(result, "order"):
-                    position_id = result.order
+                    position_id = int(result.order)
                 else:
-                    position_id = result
+                    position_id = int(result)
                 request = self.__generate_common_request(
                     action=mt5.TRADE_ACTION_DEAL,
                     symbol=symbol,
@@ -971,7 +976,6 @@ class MT5Client(ClientBase):
         else:
             columns = [item for key, item in ohlc_columns.items()]
             return columns
-
 
     def __len__(self):
         if self.frame in self.LAST_IDX:
