@@ -860,8 +860,9 @@ class MT5Client(ClientBase):
         if self.__ignore_order is False:
             orders = mt5.orders_get()
             for order in orders:
-                if order.ticket == order_id:
-                    request = {"action": mt5.TRADE_ACTION_MODIFY, "price": price, "order": order_id}
+                ordered_ticket_id = int(order_id)
+                if order.ticket == ordered_ticket_id:
+                    request = {"action": mt5.TRADE_ACTION_MODIFY, "price": price, "order": ordered_ticket_id}
                     if tp is not None:
                         request["tp"] = tp
                     if sl is not None:
@@ -878,7 +879,7 @@ class MT5Client(ClientBase):
                 position = id.order
             else:
                 position = id
-            request = {"action": mt5.TRADE_ACTION_REMOVE, "order": position}
+            request = {"action": mt5.TRADE_ACTION_REMOVE, "order": int(position)}
             suc, _ = self.__request_order(request)
             if suc:
                 super().cancel_order(id)
@@ -895,8 +896,9 @@ class MT5Client(ClientBase):
             mt5_orders = mt5.orders_get()
             living_orders = []
             for order in mt5_orders:
-                if order.ticket in self._open_orders:
-                    living_orders.append(self._open_orders[order.ticket])
+                ticket_id = str(order.ticket)
+                if ticket_id in self._open_orders:
+                    living_orders.append(self._open_orders[ticket_id])
             return living_orders
 
     def _update_client_positions(self, actual_positions):
