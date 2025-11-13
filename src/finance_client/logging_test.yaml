@@ -18,7 +18,7 @@ handlers:
     interval: 1
     backupCount: 7
     encoding: utf-8
-    level: WARNING
+    level: DEBUG
     formatter: simple
 
 loggers:

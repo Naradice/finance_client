@@ -305,7 +305,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 price = self.get_current_bid(position.symbol)
                 logger.debug(f"order close with current ask rate {price}")
-            result = self._sell_to_close(position.symbol, price, amount, position.option, position.result)
+            result = self._sell_to_close(position.symbol, price, amount, position.result, position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
@@ -315,7 +315,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.debug(f"order close with current bid rate {price}")
                 price = self.get_current_ask(position.symbol)
-            result = self._buy_to_close(position.symbol, price, amount, position.option, position.result)
+            result = self._buy_to_close(position.symbol, price, amount, position.result, position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
@@ -755,11 +755,12 @@ class ClientBase(metaclass=ABCMeta):
         self,
         symbols: Union[
             Any,
+            str,
             Sequence[Any],
             slice,
             np.ndarray,
             pd.Series,
-        ],
+        ] = None,
         length: int = None,
         frame: int = None,
         columns: list = None,
@@ -786,13 +787,15 @@ class ClientBase(metaclass=ABCMeta):
             pd.DataFrame: ohlc data of symbols which is sorted from older to latest. data are returned with length from latest data
             Column name is depend on actual client. You can get column name dict by get_ohlc_columns function
         """
+        if symbols is None:
+            if self.symbols is None:
+                raise ValueError("symbols must be specified")
+            symbols = self.symbols
         if length is None:
             if self.observation_length is not None:
                 length = self.observation_length
             else:
                 length = None
-        if isinstance(symbols, str):
-            symbols = [symbols]
 
         if frame is None:
             frame = self.frame
@@ -1093,7 +1096,7 @@ class ClientBase(metaclass=ABCMeta):
         """
         if self.ohlc_columns is None:
             self.ohlc_columns = {}
-            is_no_symbol = symbol == slice(None)
+            is_no_symbol = symbol == slice(None) or (isinstance(symbol, list) and len(symbol) == 0)
             columns = self._get_columns_from_data(symbol)
             if type(columns) == pd.MultiIndex:
                 if is_no_symbol:
@@ -1107,7 +1110,11 @@ class ClientBase(metaclass=ABCMeta):
                         columns = columns.swaplevel(0, 1)
                     elif symbol not in columns.droplevel(1):
                         raise ValueError(f"Specified symbol {symbol} not found on columns.")
-                    columns = columns[symbol]
+                    try:
+                        columns = columns[columns.get_level_values(0) == symbol].get_level_values(1).unique()
+                    except Exception as e:
+                        logger.exception(f"Failed to get columns for symbol {symbol}")
+                        raise e
             for column in columns:
                 column_ = str(column).lower()
                 if column_ == "open":
@@ -1244,7 +1251,7 @@ class ClientBase(metaclass=ABCMeta):
             return pd.DataFrame()
 
     def get_symbols(self):
-        if self._symbols is None:
+        if self._symbols is None or len(self._symbols) == 0:
             ohlc = self.get_ohlc(slice(None), length=1)
             symbols = fprocess.ohlc.get_symbols(ohlc)
             if symbols is None:

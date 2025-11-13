@@ -730,7 +730,7 @@ class CSVClient(CSVClientBase):
         else:
             raise Exception("interval should be greater than 0.")
 
-    def _get_ohlc_from_client(self, length=None, symbols: list = [], frame: int = None, columns=None, index=None, grouped_by_symbol: bool = False):
+    def _get_ohlc_from_client(self, length=None, symbols: list = None, frame: int = None, columns=None, index=None, grouped_by_symbol: bool = False):
         if symbols is None or symbols == slice(None):
             symbols = []
         missing_data = pd.DataFrame()

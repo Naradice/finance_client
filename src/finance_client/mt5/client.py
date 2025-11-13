@@ -830,6 +830,8 @@ class MT5Client(ClientBase):
             kwargs = {"length": length, "frame": frame, "index": index}
         DFS = {}
         df = pd.DataFrame()
+        if isinstance(symbols, str):
+            symbols = [symbols]
         for symbol in symbols:
             temp_df = download_func(symbol=symbol, **kwargs)
             if columns is not None:

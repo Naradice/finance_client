@@ -262,6 +262,10 @@ class FileStorage(BaseStorage):
             self._trade_log_db = LogCSVStorage()
         else:
             self._trade_log_db = trade_log_db
+        if not os.path.exists(self.positions_path):
+            os.makedirs(os.path.dirname(self.positions_path), exist_ok=True)
+            with open(self.positions_path, mode="w") as fp:
+                json.dump({}, fp)
         self._load_positions()
 
         self.__update_required = False

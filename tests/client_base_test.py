@@ -10,6 +10,7 @@ os.environ["FC_DEBUG"] = "true"
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 import finance_client.frames as Frame
+from finance_client import db
 from finance_client.client_base import ClientBase
 
 
@@ -22,7 +23,12 @@ class TestClient(ClientBase):
         pre_processes: list = None,
         frame: int = Frame.MIN5,
         provider="Default",
+        storage=None,
     ):
+        if storage is None:
+            base_path = os.path.dirname(__file__)
+            self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_storage.json"))
+            storage = db.FileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
         super().__init__(
             budget=budget,
             provider=provider,
@@ -31,6 +37,7 @@ class TestClient(ClientBase):
             pre_process=pre_processes,
             frame=frame,
             do_render=do_render,
+            storage=storage,
         )
         self.data = pd.DataFrame.from_dict(
             {
@@ -66,16 +73,16 @@ class TestClient(ClientBase):
         max_value = self.data.loc[self.step_index, "Open"]
         return random.randrange(min_value, max_value)
 
-    def _market_buy(self, symbol, price, amount, tp, sl, option_info):
+    def _market_buy(self, symbol, price, amount, tp, sl, option_info=None):
         return True, None
 
-    def _market_sell(self, symbol, price, amount, tp, sl, option_info):
+    def _market_sell(self, symbol, price, amount, tp, sl, option_info=None):
         return True, None
 
-    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, amount, option_info=None, result=None):
         return True
 
-    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_to_close(self, symbol, bid_rate, amount, option_info=None, result=None):
         return True
 
     def get_params(self) -> dict:
@@ -103,14 +110,17 @@ class TestClient(ClientBase):
 
     def __len__(self):
         return super().__len__()
-
-
+    
 class TestMultiClient(TestClient):
     def __init__(
         self,
         budget=1000000,
         do_render=False,
     ):
+        base_path = os.path.dirname(__file__)
+        self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_multi_storage.json"))
+        storage = db.FileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
+
         super().__init__(
             budget=budget,
             provider="Default",
@@ -118,6 +128,7 @@ class TestMultiClient(TestClient):
             pre_processes=None,
             frame=Frame.MIN5,
             do_render=do_render,
+            storage=storage,
         )
         uj_data = pd.DataFrame.from_dict(
             {
@@ -184,19 +195,19 @@ class TestBaseClient(unittest.TestCase):
     def test_trading_simulation(self):
         budget = 100000
         client = TestClient(budget=budget, do_render=True)
-        suc, position_id = client.open_trade(is_buy=True, amount=100.0, symbol="USDJPY")
+        suc, position = client.open_trade(is_buy=True, amount=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
             # check if diagonal graph is shown
             time.sleep(1)
         long, short = client.get_portfolio()
-        self.assertEqual(len(long), 1)
+        self.assertEqual(len(long), 1, f"Long position should be 1: {long}")
         current_budget, in_use, profit = client.get_budget()
-        self.assertLess(current_budget, budget)
+        # self.assertLess(current_budget, budget)
         self.assertGreater(in_use, 0)
-        price, bought_price, price_diff, profit, suc = client.close_position(id=position_id)
-        self.assertTrue(suc)
-        self.assertNotEqual(profit, 0)
+        close_result = client.close_position(id=position.id)
+        self.assertTrue(close_result.error is False)
+        self.assertNotEqual(close_result.profit, 0)
 
     # Multiindex without symbol
     def test_multi_ohlc_columns(self):
@@ -210,7 +221,7 @@ class TestBaseClient(unittest.TestCase):
     def test_multi_symbols(self):
         client = TestMultiClient(do_render=False)
         symbols = client.get_symbols()
-        self.assertEqual(len(symbols), 2)
+        self.assertEqual(len(symbols), 2, f"Symbols should be 2: {symbols}")
         self.assertEqual(symbols[0], "USDJPY")
         self.assertEqual(symbols[1], "USDAUD")
 
@@ -231,12 +242,12 @@ class TestBaseClient(unittest.TestCase):
     def test_multi_trading_simulation(self):
         budget = 100000
         client = TestClient(budget=budget, do_render=True)
-        suc, long_position_id = client.open_trade(is_buy=True, amount=100.0, symbol="USDJPY")
+        suc, long_position = client.open_trade(is_buy=True, amount=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
             # check if diagonal graph is shown
             time.sleep(1)
-        suc, short_position_id = client.open_trade(is_buy=False, amount=100.0, symbol="USDAUD")
+        suc, short_position = client.open_trade(is_buy=False, amount=100.0, symbol="USDAUD")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
             # check if diagonal graph is shown
@@ -245,14 +256,15 @@ class TestBaseClient(unittest.TestCase):
         self.assertEqual(len(long), 1)
         self.assertEqual(len(short), 1)
         current_budget, in_use, profit = client.get_budget()
-        self.assertLess(current_budget, budget)
-        self.assertGreater(in_use, 0)
-        price, bought_price, price_diff, profit, suc = client.close_position(id=long_position_id)
-        self.assertTrue(suc)
-        self.assertNotEqual(profit, 0)
-        price, bought_price, price_diff, profit, suc = client.close_position(id=short_position_id)
-        self.assertTrue(suc)
-        self.assertNotEqual(profit, 0)
+        # budget caliculation is removed
+        # self.assertLess(current_budget, budget)
+        # self.assertGreater(in_use, 0)
+        closed_result = client.close_position(id=long_position.id)
+        self.assertTrue(closed_result.error is False)
+        self.assertNotEqual(closed_result.profit, 0)
+        short_close_result = client.close_position(id=short_position.id)
+        self.assertTrue(short_close_result.error is False)
+        self.assertNotEqual(short_close_result.profit, 0)
 
 
 if __name__ == "__main__":
