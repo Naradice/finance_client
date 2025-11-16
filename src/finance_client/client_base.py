@@ -139,9 +139,9 @@ class ClientBase(metaclass=ABCMeta):
                 # self.__ohlc_index is initialized when get_ohlc is called. If ohlc_index == -1, it means position is opened before get_ohlc.
                 try:
                     self.get_ohlc(symbol)
-                except Exception as e:
+                except Exception:
                     # ignore exception as it doesn't relete with the trade
-                    logger.debug(f"failed to get ohlc: {e}")
+                    logger.exception(f"failed to get ohlc for {symbol}")
                     pass
             if is_buy:
                 if price is None:

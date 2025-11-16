@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import sys
 import unittest
@@ -15,10 +16,12 @@ module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 print(module_path)
 sys.path.append(module_path)
 
-from finance_client import fprocess, logger
+from finance_client import fprocess
 from finance_client.csv.client import CSVClient
 
-file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
+logger = logging.getLogger(__name__)
+
+file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv")
 ohlc_columns = ["open", "high", "low", "close"]
 date_column = "time"
 
@@ -27,7 +30,7 @@ class TestIndicaters(unittest.TestCase):
     client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, auto_step_index=False, start_index=500)
 
     def test_cci_process(self):
-        ohlc = self.client.get_ohlc(110)
+        ohlc = self.client.get_ohlc(length=110)
         cci_prc = fprocess.CCIProcess(14, ohlc_column=ohlc_columns)
         input_data_1 = ohlc.iloc[:100].copy()
         self.assertEqual(len(input_data_1), 100)
@@ -103,7 +106,7 @@ class TestIndicaters(unittest.TestCase):
         prc = fprocess.RenkoProcess(window=120, ohlc_column=ohlc_columns)
         column = prc.KEY_BRICK_NUM
         start_time = datetime.datetime.now()
-        data = client.get_ohlc(300, idc_processes=[prc])
+        data = client.get_ohlc(length=300, idc_processes=[prc])
         end_time = datetime.datetime.now()
         logger.debug(f"renko process took {end_time - start_time}")
         self.assertEqual(column in data.columns, True)
@@ -114,7 +117,7 @@ class TestIndicaters(unittest.TestCase):
         prc = fprocess.SlopeProcess(window=5, target_column=ohlc_columns[3])
         slp_column = prc.KEY_SLOPE
         start_time = datetime.datetime.now()
-        data = client.get_ohlc(100, idc_processes=[prc])
+        data = client.get_ohlc(length=100, idc_processes=[prc])
         end_time = datetime.datetime.now()
         logger.debug(f"slope process took {end_time - start_time}")
         self.assertEqual(slp_column in data.columns, True)
@@ -130,7 +133,7 @@ class TestIndicaters(unittest.TestCase):
         slp_column = prc.KEY_SLOPE
         s_slp_column = s_prc.KEY_SLOPE
         start_time = datetime.datetime.now()
-        data = client.get_ohlc(100, idc_processes=[macd, prc, s_prc])
+        data = client.get_ohlc(length=100, idc_processes=[macd, prc, s_prc])
         end_time = datetime.datetime.now()
         logger.debug(f"macd slope process took {end_time - start_time}")
         self.assertEqual(slp_column in data.columns, True)
@@ -145,10 +148,10 @@ class TestIndicaters(unittest.TestCase):
         range_p = fprocess.RangeTrendProcess(slope_window=slope_window)
         bband_p = fprocess.BBANDProcess(alpha=2, target_column=ohlc_columns[3], window=14)
         start_time = datetime.datetime.now()
-        client.get_ohlc(100, idc_processes=[bband_p, range_p])
+        client.get_ohlc(length=100, idc_processes=[bband_p, range_p])
         end_time = datetime.datetime.now()
         logger.debug(f"range process took {end_time - start_time}")
-        data = client.get_ohlc(100, idc_processes=[bband_p, range_p])
+        data = client.get_ohlc(length=100, idc_processes=[bband_p, range_p])
         self.assertEqual(len(data), 100)
         ran = data[range_p.KEY_RANGE]
         self.assertLessEqual(ran.max(), 1)

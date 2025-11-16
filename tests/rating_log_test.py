@@ -24,7 +24,7 @@ class TestLogRatingWithFile(unittest.TestCase):
             os.remove(self.rating_file_path)
         except Exception:
             pass
-        storage = db.FileStorage(key, save_period=0, rating_log_path=self.rating_file_path)
+        storage = db.FileStorage(key, save_period=0, username=key, rating_log_path=self.rating_file_path)
         storage.store_symbol_info(symbol=symbol, rating=new_rating_info, source=source)
         with open(self.rating_file_path) as fp:
             data = json.load(fp)
@@ -47,7 +47,7 @@ class TestLogRatingWithFile(unittest.TestCase):
             os.remove(self.rating_file_path)
         except Exception:
             pass
-        storage = db.FileStorage(key, save_period=0, rating_log_path=self.rating_file_path)
+        storage = db.FileStorage(key, username=key,save_period=0, rating_log_path=self.rating_file_path)
         info = [(f"{symbol}_{index}", new_rating_info, None, source, market) for index in range(10)]
         storage.store_symbols_info(info)
         with open(self.rating_file_path) as fp:
@@ -75,7 +75,7 @@ class TestLogRatingWithFile(unittest.TestCase):
             os.remove(self.rating_file_path)
         except Exception:
             pass
-        storage = db.FileStorage(key, save_period=0, rating_log_path=self.rating_file_path)
+        storage = db.FileStorage(key, username=key, save_period=0, rating_log_path=self.rating_file_path)
         info = [[symbol, create_rate(index), None, source, market] for index in range(10)]
 
         storage.store_symbols_info(info)
@@ -95,7 +95,7 @@ class TestLogRatingWithFile(unittest.TestCase):
 class TestLogRatingWithSQLite(unittest.TestCase):
     db_file_path = os.path.join(os.getcwd(), "ratings_test.db")
     key = "test"
-    storage = db.SQLiteStorage(db_file_path, key)
+    storage = db.SQLiteStorage(db_file_path, key, username=key)
 
     def test_01_add_a_rating(self):
         symbol = "test_symbol"

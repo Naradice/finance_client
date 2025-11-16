@@ -2,6 +2,7 @@
 *.json
 *.db
 *.log
+logs/
 .DS_Store
 !finance_client/vantage/resources/digital_currency_list.csv
 !finance_client/vantage/resources/physical_currency_list.csv

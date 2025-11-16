@@ -1,6 +1,8 @@
 import logging
 import os
 
+BASE_PATH = os.path.dirname(__file__)
+URL = "https://site1.sbisec.co.jp/ETGate/"
 
 def setup_logger():
     logger = logging.getLogger("sbirpa")

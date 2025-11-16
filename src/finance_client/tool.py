@@ -60,8 +60,12 @@ class AgentTool:
             sl = None
         else:
             sl = float(sl)
+        if order_type is None:
+            logger.info("order_type is None, set to Market order")
+            order_type = 0
         if order_type == 0:
             price = None
+            logger.info("Market order, price is set to None")
         if price is not None:
             price = float(price)
         if volume > 0 and volume < 1:

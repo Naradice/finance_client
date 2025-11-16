@@ -81,7 +81,7 @@ def EMA(data, interval, alpha=None):
         if type(data) == pd.DataFrame or type(data) == pd.Series:
             data_cp = data.copy()
             return data_cp.ewm(span=interval, adjust=False).mean()
-        # ema = [np.NaN for i in range(0,interval-1)]
+        # ema = [np.nan for i in range(0,interval-1)]
         lastValue = data[0]
         ema = [lastValue]
         _alpha = 2 / (interval + 1)
@@ -155,7 +155,7 @@ def SMA(data, window):
         raise Exception(f"data length should be greater than window. currently {len(data)} < {window}")
     if type(data) == pd.DataFrame or type(data) == pd.Series:
         return data.rolling(window).mean()
-    sma = [np.NaN for i in range(0, window - 1)]
+    sma = [np.nan for i in range(0, window - 1)]
     # TODO: improve the loop
     for i in range(window, len(data) + 1):
         start_index = i - window

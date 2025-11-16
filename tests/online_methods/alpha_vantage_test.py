@@ -76,7 +76,7 @@ class TestVantageClient(unittest.TestCase):
         self.assertGreater(len(df["close"]), 99)
 
     def test_get_rates(self):
-        df = client.get_ohlc(100)
+        df = client.get_ohlc(length=100)
         self.assertIn("close", df.columns)
         self.assertEqual(len(df["close"]), 100)
 
@@ -86,7 +86,7 @@ class TestVantageClient(unittest.TestCase):
 
     def test_fx_get_multi_symbols_rates(self):
         client = VantageClient(os.environ["vantage_api_key"], frame=Frame.D1, symbols=["USDJPY", "CHFJPY"], start_index=100, auto_step_index=True)
-        df = client.get_ohlc(10)
+        df = client.get_ohlc(length=10)
         self.assertEqual(len(df["USDJPY"]), 10)
         self.assertEqual(len(df["CHFJPY"]), 10)
 

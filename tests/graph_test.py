@@ -35,7 +35,7 @@ class TestRender(unittest.TestCase):
         r = Rendere()
         columns = ["open", "high", "low", "close"]
         client = CSVClient(files=csv_file, columns=columns, date_column="time", start_index=30)
-        df = client.get_ohlc(30)
+        df = client.get_ohlc(length=30)
         r.register_ohlc(["symbol"], df, ohlc_columns=columns)
         r.plot()
         time.sleep(5)
@@ -45,7 +45,7 @@ class TestRender(unittest.TestCase):
         bban = fprocess.BBANDProcess(target_column="close", window=14)
         columns = ["open", "high", "low", "close"]
         client = CSVClient(files=csv_file, columns=columns, date_column="time", idc_process=[bban], start_index=100)
-        df = client.get_ohlc(30)
+        df = client.get_ohlc(length=30)
         index = r.register_ohlc_with_indicaters(["symbol"], df, [bban], ohlc_columns=columns)
         r.plot()
         time.sleep(10)

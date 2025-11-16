@@ -289,8 +289,8 @@ class FileStorage(BaseStorage):
         try:
             with open(file_path, mode="r") as fp:
                 return json.load(fp)
-        except Exception:
-            logger.exception("failed to load")
+        except Exception as e:
+            logger.debug(f"failed to load: {e}")
 
     def __update_positions_file(self):
         new_positions = self._positions.copy()
@@ -314,7 +314,9 @@ class FileStorage(BaseStorage):
             rating_info (List[List[Union[str, str, str, str, str]]]): List of [symbol, rating_info, date, source, str]
         """
         with self.__symbol_loc:
-            data = self._load_json(self.rating_log_path)
+            data = None
+            if os.path.exists(self.rating_log_path):
+                data = self._load_json(self.rating_log_path)
             if data is None:
                 data = {}
             for info in rating_info:

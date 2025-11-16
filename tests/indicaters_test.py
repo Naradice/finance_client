@@ -1,5 +1,5 @@
 import datetime
-import json
+import logging
 import os
 import sys
 import unittest
@@ -17,8 +17,9 @@ except Exception:
     pass
 
 import finance_client as fc
-from finance_client import logger
 from finance_client.fprocess.fprocess.indicaters import technical
+
+logger = logging.getLogger("finance_client")
 
 file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "L:/data/fx/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv"))
 
@@ -26,7 +27,7 @@ file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "L:/data/fx/
 class TestIndicaters(unittest.TestCase):
     ohlc_columns = ["open", "high", "low", "close"]
     client = fc.CSVClient(
-        files=file_path, columns=["open", "high", "low", "close"], date_column="time", start_index=1000, logger=logger
+        files=file_path, columns=["open", "high", "low", "close"], date_column="time", start_index=1000
     )
 
     def __init__(self, methodName: str = ...) -> None:
@@ -76,7 +77,7 @@ class TestIndicaters(unittest.TestCase):
             self.assertAlmostEqual(self.input[i], r_ema[i])
 
     def test_renko(self):
-        df = self.client.get_ohlc(100)
+        df = self.client.get_ohlc(length=100)
         try:
             technical.RenkoFromOHLC(df, ohlc_columns=self.ohlc_columns)
         except Exception as e:
@@ -84,13 +85,13 @@ class TestIndicaters(unittest.TestCase):
                 raise e
             else:
                 logger.info(f"error happened as expected: {e}")
-        df = self.client.get_ohlc(120)
+        df = self.client.get_ohlc(length=120)
         renko = technical.RenkoFromOHLC(df, ohlc_columns=self.ohlc_columns)
         self.assertLessEqual(len(renko["Brick"]), 120)
 
     def test_slope(self):
         data_length = 1000
-        df = self.client.get_ohlc(data_length)
+        df = self.client.get_ohlc(length=data_length)
         start_time = datetime.datetime.now()
         slope_df = technical.SlopeFromOHLC(df, window=10, column="close")
         end_time = datetime.datetime.now()
@@ -99,7 +100,7 @@ class TestIndicaters(unittest.TestCase):
 
     def test_macdslope(self):
         data_length = 1000
-        df = self.client.get_ohlc(data_length)
+        df = self.client.get_ohlc(length=data_length)
         start_time = datetime.datetime.now()
         slope_df = technical.SlopeFromOHLC(df, window=10, column="close")
         end_time = datetime.datetime.now()
@@ -107,7 +108,7 @@ class TestIndicaters(unittest.TestCase):
         self.assertEqual(len(slope_df["Slope"]), data_length)
 
     def test_cci(self):
-        ohlc = self.client.get_ohlc(100)
+        ohlc = self.client.get_ohlc(length=100)
         cci = technical.CommodityChannelIndex(ohlc, ohlc_columns=self.ohlc_columns)
         self.assertEqual(len(cci), 100)
         max_value = cci.max().values

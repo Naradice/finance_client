@@ -53,6 +53,8 @@ class TestClient(ClientBase):
         return {}
 
     def _get_ohlc_from_client(self, length, symbols, frame, columns, index, grouped_by_symbol):
+        if length is None:
+            length = 10
         if index is None:
             df = self.data.iloc[self.step_index - length + 1 : self.step_index + 1]
             self.step_index += 1
@@ -150,6 +152,8 @@ class TestMultiClient(TestClient):
         self.step_index = 200
 
     def _get_ohlc_from_client(self, length, symbols, frame, columns, index, grouped_by_symbol):
+        if length is None:
+            length = 10
         if index is None:
             df = self.data.loc[self.step_index - length + 1 : self.step_index + 1, symbols]
             self.step_index += 1

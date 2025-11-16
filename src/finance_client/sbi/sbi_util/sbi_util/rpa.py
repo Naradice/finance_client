@@ -10,10 +10,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from . import sbi_enum, utils
+from . import auth, sbi_enum, utils
 from .mail import gmail
-
-BASE_PATH = os.path.dirname(__file__)
 
 
 class STOCK:
@@ -22,13 +20,13 @@ class STOCK:
     def __init__(self, id=None, password=None, trading_pass=None) -> None:
         self.logger = utils.setup_logger()
         options = Options()
-        options.add_argument(f"--user-data-dir={os.path.join(BASE_PATH, "profile")}")
+        options.add_argument(f"--user-data-dir={os.path.join(utils.BASE_PATH, "profile")}")
         options.add_argument("user-agent=Mozilla/5.0 ... Chrome/114.0.0.0 Safari/537.36")
         self.driver = webdriver.Chrome(options=options)
         self.driver.implicitly_wait(5)
-        self.open()
+        self.driver.get(utils.URL)
         self.logger.debug("start initial login process.")
-        self.login(id, password)
+        auth.login(driver=self.driver, id=id, password=password)
         self.trading_pass = trading_pass
 
     def __check_login(self, retry_count=0):
@@ -38,8 +36,8 @@ class STOCK:
         # this take 10 sec.
         # if self.is_driver_available() is False:
         #     self.open()
-        if self.is_logged_in() is False:
-            if self.login(self.id, self.pa):
+        if auth.is_logged_in(self.driver) is False:
+            if auth.login(driver=self.driver, id=self.id, password=self.pa):
                 return True
             elif retry_count < 5:
                 # try opining selenium again
@@ -59,9 +57,6 @@ class STOCK:
         except Exception:
             print("driver is unavailable.")
             return False
-
-    def open(self):
-        self.driver.get("https://site1.sbisec.co.jp/ETGate/")
 
     def is_login_page(self):
         target_name = "ACT_login"
@@ -116,119 +111,13 @@ class STOCK:
         self.logger.error("failed to get device code")
         return False
 
-    def __get_device_code_element(self):
+    def get_device_code_element(self):
         try:
             self.logger.debug("getting device element")
-            eleemt = self.driver.find_element(By.NAME, "ACT_deviceotpcall")
-            return eleemt
+            element = self.driver.find_element(By.NAME, "ACT_deviceotpcall")
+            return element
         except Exception:
             return None
-
-    def is_logged_in(self) -> bool:
-        try:
-            self.driver.find_element(By.NAME, "user_password")
-            return False
-        except exceptions.NoSuchElementException:
-            # If user_password is not found, it means logged in
-            return True
-        except Exception as e:
-            print(f"error happened on is_logged_in: {e}")
-            return False
-
-    def _input_device_code(self, code: str):
-        # If anyone want to use other mail provider, need to overwrite the method
-        url = gmail.retrieve_code_input_url()
-        if url:
-            # open a new tab
-            self.driver.execute_script(f"window.open('{url}');")
-            handles = self.driver.window_handles
-            self.driver.switch_to.window(handles[-1])
-            # close pop up
-            try:
-                close_btn = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "a.karte-close"))
-                )
-                close_btn = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.karte-close"))
-                )
-                close_btn.click()
-            except exceptions.NoSuchElementException:
-                self.logger.debug("no popup to close")
-                pass
-            code_input = self.driver.find_element(By.ID, "verifyCode")
-            code_input.send_keys(code)
-            verify_btn = self.driver.find_element(By.ID, "verification")
-            verify_btn.click()
-            # close the tab
-            self.driver.close()
-            # switch to the original tab
-            self.driver.switch_to.window(handles[0])
-            return True
-        return False
-
-    def handle_otp(self) -> bool:
-        try:
-            self.logger.debug("start input device code with gmail")
-            device_element = self.driver.find_element(By.ID, "code-display")
-            device_code = device_element.text
-            checkbox = self.driver.find_element(By.ID, "device-checkbox")
-            if checkbox and checkbox.is_selected() is False:
-                checkbox.click()
-            if self._input_device_code(device_code):
-                register_button = self.driver.find_element(By.ID, "device-auth-otp")
-                register_button.click()
-                return True
-            self.logger.error("failed to get device code")
-            return False
-        except exceptions.NoSuchElementException as e:
-            self.logger.error(e)
-            return self.is_logged_in()
-        except Exception as e:
-            self.logger.error(e)
-            return False
-
-    def login(self, id: str, password: str) -> bool:
-        try:
-            id_ele = self.driver.find_element(By.NAME, "user_id")
-            id_ele.send_keys(id)
-            pa_ele = self.driver.find_element(By.NAME, "user_password")
-            pa_ele.send_keys(password)
-            log_ele = self.driver.find_element(By.NAME, "ACT_login")
-            log_ele.click()
-            device_element = self.__get_device_code_element()
-            if device_element is None:
-                self.logger.debug(
-                    "no device element. check logged in or encountered an error."
-                )
-                if self.is_logged_in():
-                    # store creds to utilize them when login life time end
-                    self.logger.info("login is completed.")
-                    self.id = id
-                    self.pa = password
-                    return True
-                else:
-                    self.logger.warning(
-                        "Failed to login. Please check your id and password."
-                    )
-                    return False
-            else:
-                # wait to receive device code
-                device_element.click()
-                sleep(3)
-                if self.handle_otp():
-                    self.logger.debug("device code was available. check login state.")
-                    if self.is_logged_in():
-                        self.id = id
-                        self.pa = password
-                        return True
-                    else:
-                        self.logger.warning("Failed to loing. Please try again.")
-                        return False
-                else:
-                    self.logger.warning("Failed to loing. Please try again.")
-        except Exception as e:
-            self.logger.error(e)
-            return False
 
     def __open_symbol_page(self, symbol: str) -> bool:
         try:
@@ -402,7 +291,7 @@ class STOCK:
                 header_eles = header_ele.find_element(By.XPATH, "ul").find_elements(
                     By.XPATH, "li"
                 )
-                # 0: お知らせ, 1: ポートフォリト, 2: 取引
+                # 0: ポートフォリト, 1: 口座管理, 2: 取引,
                 header_eles[2].find_element(By.XPATH, ".//div/a").click()
             except Exception as e:
                 self.logger.error(f"failed to open trade page: {e}")
@@ -792,6 +681,9 @@ class STOCK:
                 return None
         else:
             return None
+        
+    def screening(self, keyword: str):
+        pass
 
     def __del__(self):
         if hasattr(self, "driver"):

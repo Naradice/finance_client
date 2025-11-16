@@ -7,7 +7,7 @@ import unittest
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 from finance_client import db
-from finance_client.position import POSITION_TYPE, Position
+from finance_client.position import POSITION_TYPE, ClosedResult, Position
 from finance_client.wallet import Manager
 
 
@@ -16,7 +16,7 @@ class TestPositionWithFile(unittest.TestCase):
 
     def test_open_a_position(self):
         key = "test"
-        storage = db.FileStorage(key, save_period=0, positions_path=self.position_file_path)
+        storage = db.FileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
         manager = Manager(10000, storage=storage)
         long_positions, short_positions = manager.storage.get_positions()
         pre_positions_count = len(long_positions) + len(short_positions)
@@ -33,13 +33,12 @@ class TestPositionWithFile(unittest.TestCase):
 
     def test_close_a_position(self):
         key = "close_test"
-        storage = db.FileStorage(key, save_period=0, positions_path=self.position_file_path)
+        storage = db.FileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
         manager = Manager(10000, storage=storage)
-        id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        self.assertNotEqual(id, None)
-        result = manager.close_position(id, price=101.0)
-        for item in result:
-            self.assertEqual(type(item), float)
+        position = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
+        self.assertNotEqual(position.id, None)
+        result = manager.close_position(position.id, price=101.0)
+        self.assertEqual(type(result), ClosedResult)
 
         with open(self.position_file_path, mode="r") as fp:
             positions = json.load(fp)
@@ -49,12 +48,12 @@ class TestPositionWithFile(unittest.TestCase):
 
     def test_frequent_trade(self):
         key = "freq_test"
-        storage = db.FileStorage(key, save_period=0.1, positions_path=self.position_file_path)
+        storage = db.FileStorage(key, save_period=0.1, username=key, positions_path=self.position_file_path)
         manager = Manager(10000, storage=storage)
         ids = []
         for i in range(30):
-            id = manager.open_position(POSITION_TYPE.long, "symbol", 100.0, 1)
-            ids.append(id)
+            position = manager.open_position(POSITION_TYPE.long, "symbol", 100.0, 1)
+            ids.append(position.id)
         time.sleep(10)
         with open(self.position_file_path, mode="r") as fp:
             positions = json.load(fp)
@@ -73,7 +72,7 @@ class TestPositionWithSQLite(unittest.TestCase):
 
     def test_open_a_position(self):
         key = "test"
-        storage = db.SQLiteStorage(self.db_file_path, key)
+        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
         long_positions, short_positions = manager.storage.get_positions()
         pre_positions_count = len(long_positions) + len(short_positions)
@@ -85,22 +84,21 @@ class TestPositionWithSQLite(unittest.TestCase):
 
     def test_close_a_position(self):
         key = "close_test"
-        storage = db.SQLiteStorage(self.db_file_path, key)
+        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
-        id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        self.assertNotEqual(id, None)
-        result = manager.close_position(id, price=101.0)
-        for item in result:
-            self.assertEqual(type(item), float)
+        position = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
+        self.assertNotEqual(position.id, None)
+        result = manager.close_position(position.id, price=101.0)
+        self.assertEqual(type(result), ClosedResult)
 
     def test_frequent_trade(self):
         key = "freq_test"
-        storage = db.SQLiteStorage(self.db_file_path, key)
+        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
         ids = []
         for i in range(30):
-            id = manager.open_position(POSITION_TYPE.long, "symbol", 100.0, 1)
-            ids.append(id)
+            position = manager.open_position(POSITION_TYPE.long, "symbol", 100.0, 1)
+            ids.append(position.id)
         long_positions, short_positions = manager.storage.get_positions()
         positions_count = len(long_positions) + len(short_positions)
         self.assertEqual(positions_count, 30)
@@ -109,15 +107,15 @@ class TestPositionWithSQLite(unittest.TestCase):
 
     def get_position(self):
         key = "test"
-        storage = db.SQLiteStorage(self.db_file_path, key)
+        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
-        id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        position = manager.storage.get_position(id)
+        position = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
+        position = manager.storage.get_position(position.id)
         self.assertTrue(isinstance(position, Position))
 
     def get_positions(self):
         key = "test"
-        storage = db.SQLiteStorage(self.db_file_path, key)
+        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
         id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
         id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)

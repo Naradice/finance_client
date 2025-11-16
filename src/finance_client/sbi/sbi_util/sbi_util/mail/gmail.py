@@ -3,7 +3,8 @@ import html
 import logging
 import os
 import re
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -34,7 +35,7 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds)
 
 
-def get_latest_email_by_subject(subject_keyword: list, from_email=None):
+def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=3):
     service = get_gmail_service()
 
     date = None
@@ -45,6 +46,10 @@ def get_latest_email_by_subject(subject_keyword: list, from_email=None):
     query_parts = [f'subject:"{subject_keyword}"']
     if from_email:
         query_parts.append(f"from:{from_email}")
+    # filter with current time - 1 minute to avoid fetching old emails
+    current_time = datetime.now(timezone.utc)
+    one_minute_ago = current_time - timedelta(minutes=1)
+    query_parts.append(f"after:{int(one_minute_ago.timestamp())}")
     query = " ".join(query_parts)
     results = (
         service.users()
@@ -56,6 +61,14 @@ def get_latest_email_by_subject(subject_keyword: list, from_email=None):
 
     if not messages:
         logger.warning("該当するメールは見つかりませんでした。")
+        if retry > 0:
+            logger.info("1分待って再試行します...")
+            time.sleep(60)
+            return get_latest_email_by_subject(
+                subject_keyword, from_email, retry=retry - 1
+            )
+        else:
+            logger.warning("再試行回数の上限に達しました。")
         return date, subject, sender, body
 
     latest_message = None

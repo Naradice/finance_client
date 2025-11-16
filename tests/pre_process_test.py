@@ -11,7 +11,7 @@ sys.path.append(module_path)
 
 from finance_client import fprocess
 
-file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min30.csv")
+file_path = os.path.abspath("L:/data/mt5/OANDA-Japan MT5 Live/mt5_USDJPY_min5.csv")
 ohlc_columns = ["open", "high", "low", "close"]
 date_column = "time"
 
@@ -64,7 +64,7 @@ class TestPreProcess(unittest.TestCase):
 
     def test_diff(self):
         process = fprocess.DiffPreProcess()
-        ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.NaN, 10, -19, 4, 25]})
+        ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.nan, 10, -19, 4, 25]})
         diff_dict = process.run(ds)
         for index in range(1, len(ds)):
             self.assertEqual(diff_dict["input"].iloc[index], ds["expect"].iloc[index])
@@ -75,7 +75,7 @@ class TestPreProcess(unittest.TestCase):
         self.assertEqual(len(standalized_ds), 6)
         self.assertEqual(standalized_ds["input"].iloc[-1], new_data["expect"])
 
-        ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.NaN, numpy.NaN, numpy.NaN, -5, 10]})
+        ds = pd.DataFrame({"input": [10, 20, 1, 5, 30], "expect": [numpy.nan, numpy.nan, numpy.nan, -5, 10]})
         process = fprocess.DiffPreProcess(periods=3)
         diff_dict = process.run(ds)
         for index in range(3, len(ds)):

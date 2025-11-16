@@ -64,7 +64,7 @@ def MACD_backtest():
         start_index=100,
         enable_trade_log=True,
     )
-    df = client.get_ohlc(30)
+    df = client.get_ohlc(length=30)
     position = 0
     trend = 0
     while len(df) == 30:
@@ -86,8 +86,7 @@ def MACD_backtest():
                 suc, id = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = -1
 
-        df = client.get_ohlc(30)
-
+        df = client.get_ohlc(length=30)
 
 if __name__ == "__main__":
     MACD_backtest()

@@ -39,7 +39,7 @@ class TestCSVClient(unittest.TestCase):
     def test_get_rates(self):
         client = CSVClient(files=csv_file, date_column=datetime_column, start_index=10)
         length = 10
-        rates = client.get_ohlc(length)
+        rates = client.get_ohlc(length=length)
         self.assertEqual(len(rates["Close"]), length)
         rates = client.get_ohlc()
         self.assertGreater(len(rates["Close"]), length)
@@ -67,7 +67,7 @@ class TestCSVClient(unittest.TestCase):
         macd = fprocess.MACDProcess()
         processes = [bband, macd]
         client = CSVClient(files=csv_file, date_column=datetime_column)
-        data = client.get_ohlc(length, idc_processes=processes)
+        data = client.get_ohlc(length=length, idc_processes=processes)
         print(data.columns)
         self.assertEqual(len(data[ohlc_columns[3]]), length)
 
@@ -78,7 +78,7 @@ class TestCSVClient(unittest.TestCase):
         processes = [bband, macd]
         post_prs = [fprocess.DiffPreProcess(), fprocess.MinMaxPreProcess()]
         client = CSVClient(files=csv_file, date_column=datetime_column)
-        data = client.get_ohlc(length, idc_processes=processes, pre_processes=post_prs)
+        data = client.get_ohlc(length=length, idc_processes=processes, pre_processes=post_prs)
         print(data)
         self.assertEqual(len(data[ohlc_columns[3]]), length)
 
@@ -97,7 +97,7 @@ class TestCSVClient(unittest.TestCase):
             economic_keys=["SP500"],
             start_date=datetime.datetime(2020, 1, 1),
         )
-        data = client.get_ohlc(100)
+        data = client.get_ohlc(length=100)
         print(data)
 
     def get_current_date(self):
@@ -108,7 +108,7 @@ class TestCSVClient(unittest.TestCase):
             start_date=datetime.datetime(2020, 1, 1),
         )
         date_from_function = client.get_current_date()
-        data = client.get_ohlc(10)
+        data = client.get_ohlc(length=10)
         date_from_data = data.index[-1]
         self.assertEqual(date_from_data, date_from_function)
 
@@ -133,7 +133,7 @@ class TestCSVClientMulti(unittest.TestCase):
             files=files,
         )
         print("warning is shown")
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
@@ -147,7 +147,7 @@ class TestCSVClientMulti(unittest.TestCase):
             date_column="Datetime",
         )
         print("warning is shown")
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
@@ -165,7 +165,7 @@ class TestCSVClientMulti(unittest.TestCase):
             columns=ohlc_columns,
         )
         print("warning is shown")
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
@@ -185,13 +185,13 @@ class TestCSVClientMulti(unittest.TestCase):
             start_index=None,
         )
         print("warning is shown")
-        org_df = client.get_ohlc(DATA_LENGTH * MARGIN_FACTOR)
+        org_df = client.get_ohlc(length=DATA_LENGTH * MARGIN_FACTOR)
 
         client = CSVClient(
             files=files,
             start_index=DATA_LENGTH * MARGIN_FACTOR,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         for index in range(0, DATA_LENGTH):
             self.assertEqual(df.index[index], org_df.index[DATA_LENGTH * (MARGIN_FACTOR - 1) + index])
 
@@ -205,7 +205,7 @@ class TestCSVClientMulti(unittest.TestCase):
             files=files,
             start_date=START_DATE,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertLess(df.index[-2], START_DATE)
         self.assertGreaterEqual(df.index[-1], START_DATE)
 
@@ -219,14 +219,14 @@ class TestCSVClientMulti(unittest.TestCase):
             start_random_index=True,
             seed=100,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         first_date = df.index[-1]
         client = CSVClient(
             files=files,
             start_random_index=True,
             seed=200,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         second_date = df.index[-1]
         self.assertNotEqual(first_date, second_date)
 
@@ -240,14 +240,14 @@ class TestCSVClientMulti(unittest.TestCase):
             files=files,
             start_index=10,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         first_date = df.index[SKIP_LINES - 1]
         client = CSVClient(
             files=files,
             start_index=10,
             skiprows=SKIP_LINES,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         second_date = df.index[0]
         self.assertGreater(second_date, first_date)
 
@@ -261,7 +261,7 @@ class TestCSVClientMulti(unittest.TestCase):
             files=files,
             start_index=DATA_LENGTH * 10,
         )
-        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci])
+        df = client.get_ohlc(length=DATA_LENGTH, idc_processes=[cci])
         self.assertEqual(len(df.columns), SYMBOL_COUNT * (len(ohlc_columns) + len(additional_column) + len(cci.columns)))
 
     def test_get_data_with_preprocess(self):
@@ -274,7 +274,7 @@ class TestCSVClientMulti(unittest.TestCase):
             files=files,
             start_index=DATA_LENGTH * 10,
         )
-        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[fprocess.MinMaxPreProcess(scale=(0, 1))])
+        df = client.get_ohlc(length=DATA_LENGTH, idc_processes=[cci], pre_processes=[fprocess.MinMaxPreProcess(scale=(0, 1))])
         self.assertGreaterEqual(df.min().min(), 0)
         self.assertLessEqual(df.max().max(), 1)
 
@@ -290,7 +290,7 @@ class TestCSVClientMulti(unittest.TestCase):
             slip_type=KEY_NONE,
             start_index=DATA_LENGTH,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         target_symbols = client.symbols
         ask_values = client.get_current_ask(target_symbols)
         bid_values = client.get_current_bid(target_symbols)
@@ -309,7 +309,7 @@ class TestCSVClientMulti(unittest.TestCase):
             slip_type=KEY_PCT,
             start_index=DATA_LENGTH,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         target_symbols = client.symbols
         ask_values = client.get_current_ask(target_symbols)
         bid_values = client.get_current_bid(target_symbols)
@@ -328,7 +328,7 @@ class TestCSVClientMulti(unittest.TestCase):
             slip_type=KEY_RDM,
             start_index=DATA_LENGTH,
         )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         target_symbols = client.symbols
         ask_values = client.get_current_ask(target_symbols)
         bid_values = client.get_current_bid(target_symbols)
@@ -346,7 +346,7 @@ class TestCSVClientMulti(unittest.TestCase):
             start_index=DATA_LENGTH,
         )
         limited_symbols_1 = client.symbols[:2]
-        df_1 = client.get_ohlc(DATA_LENGTH, symbols=limited_symbols_1)
+        df_1 = client.get_ohlc(length=DATA_LENGTH, symbols=limited_symbols_1)
         self.assertEqual(len(df_1.columns), len(limited_symbols_1) * (len(ohlc_columns) + len(additional_column)))
 
     def test_get_rolled_data(self):
@@ -391,11 +391,11 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         step = 0
 
         client = CSVChunkClient(files=files, chunksize=CHUNK_SIZE, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
-        df = client.get_ohlc(CHUNK_SIZE + DATA_LENGTH)
+        df = client.get_ohlc(length=CHUNK_SIZE + DATA_LENGTH)
         self.assertEqual(CHUNK_SIZE + DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
@@ -406,7 +406,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
 
         client = CSVChunkClient(files=files, date_column=datetime_column, chunksize=CHUNK_SIZE, )
         print("warning is shown")
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertGreaterEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
@@ -424,7 +424,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         # need to check the reset function
         # how can i check the end?
         # while True:
-        #     df = client.get_ohlc(DATA_LENGTH)
+        #     df = client.get_ohlc(length=DATA_LENGTH)
 
     def test_get_data_with_files_with_limited_columns(self):
         SYMBOL_COUNT = 3
@@ -433,7 +433,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
 
         client = CSVChunkClient(files=files, columns=ohlc_columns, chunksize=100, )
         print("warning is shown")
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertEqual(DATA_LENGTH, len(df))
         self.assertEqual(len(df.columns), len(ohlc_columns) * SYMBOL_COUNT)
         del df
@@ -450,10 +450,10 @@ class TestCSVClientMultiChunk(unittest.TestCase):
 
         client = CSVChunkClient(files=files, start_index=None, chunksize=100, )
         print("warning is shown")
-        org_df = client.get_ohlc(DATA_LENGTH * MARGIN_FACTOR)
+        org_df = client.get_ohlc(length=DATA_LENGTH * MARGIN_FACTOR)
 
         client = CSVChunkClient(files=files, start_index=DATA_LENGTH * MARGIN_FACTOR, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         for index in range(0, DATA_LENGTH):
             self.assertEqual(df.index[index], org_df.index[DATA_LENGTH * (MARGIN_FACTOR - 1) + index])
 
@@ -464,7 +464,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         START_DATE = datetime.datetime(year=2001, month=4, day=1, tzinfo=datetime.timezone.utc)
 
         client = CSVChunkClient(files=files, start_date=START_DATE, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         self.assertLess(df.index[-2], START_DATE)
         self.assertGreaterEqual(df.index[-1], START_DATE)
 
@@ -474,10 +474,10 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
 
         client = CSVChunkClient(files=files, start_random_index=True, seed=100, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         first_date = df.index[-1]
         client = CSVChunkClient(files=files, start_random_index=True, seed=200, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         second_date = df.index[-1]
         self.assertNotEqual(first_date, second_date)
 
@@ -488,10 +488,10 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         files = csv_files[:SYMBOL_COUNT]
 
         client = CSVChunkClient(files=files, start_index=10, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         first_date = df.index[SKIP_LINES - 1]
         client = CSVChunkClient(files=files, start_index=10, skiprows=SKIP_LINES, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH)
+        df = client.get_ohlc(length=DATA_LENGTH)
         second_date = df.index[0]
         self.assertGreater(second_date, first_date)
 
@@ -502,7 +502,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         cci = fprocess.CCIProcess(ohlc_column=ohlc_columns)
         # macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         client = CSVChunkClient(files=files, start_index=DATA_LENGTH * 10, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci])
+        df = client.get_ohlc(length=DATA_LENGTH, idc_processes=[cci])
         self.assertEqual(len(df.columns), SYMBOL_COUNT * (len(ohlc_columns) + len(additional_column) + len(cci.columns)))
 
     def test_get_data_with_preprocess(self):
@@ -512,7 +512,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
         cci = fprocess.CCIProcess(ohlc_column=ohlc_columns)
         # macd = fprocess.MACDProcess(target_column=ohlc_columns[3])
         client = CSVChunkClient(files=files, start_index=DATA_LENGTH * 10, chunksize=100, )
-        df = client.get_ohlc(DATA_LENGTH, idc_processes=[cci], pre_processes=[fprocess.MinMaxPreProcess(scale=(0, 1))])
+        df = client.get_ohlc(length=DATA_LENGTH, idc_processes=[cci], pre_processes=[fprocess.MinMaxPreProcess(scale=(0, 1))])
         self.assertGreaterEqual(df.min().min(), 0)
         self.assertLessEqual(df.max().max(), 1)
 
@@ -523,7 +523,7 @@ class TestCSVClientMultiChunk(unittest.TestCase):
 
         client = CSVChunkClient(files=files, start_index=DATA_LENGTH, chunksize=100, )
         limited_symbols_1 = client.symbols[:2]
-        df_1 = client.get_ohlc(DATA_LENGTH, symbols=limited_symbols_1)
+        df_1 = client.get_ohlc(length=DATA_LENGTH, symbols=limited_symbols_1)
         self.assertEqual(len(df_1.columns), len(limited_symbols_1) * (len(ohlc_columns) + len(additional_column)))
 
 
@@ -552,7 +552,7 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         client.open_trade(True, 1, symbols[1])
 
         for i in range(0, 5):
-            df = client.get_ohlc(10)
+            df = client.get_ohlc(length=10)
         results = client.close_long_positions(symbols[1])
         self.assertEqual(len(results[0]), 5)
         self.assertNotEqual(results[0][0], results[0][1])
@@ -565,15 +565,15 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         client.open_trade(True, 1, symbols[1])
 
         for i in range(0, 5):
-            df = client.get_ohlc(10)
+            df = client.get_ohlc(length=10)
         client.open_trade(True, 1, symbols[2])
         for i in range(0, 5):
-            df = client.get_ohlc(10)
+            df = client.get_ohlc(length=10)
         results = client.close_long_positions(symbols[2])
         self.assertEqual(len(results), 1)
         self.assertNotEqual(results[0][0], results[0][1])
         for i in range(0, 5):
-            df = client.get_ohlc(10)
+            df = client.get_ohlc(length=10)
         self.assertEqual(len(results), 1)
         self.assertNotEqual(results[0][0], results[0][1])
 
