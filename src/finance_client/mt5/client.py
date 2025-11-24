@@ -5,6 +5,7 @@ import random
 import threading
 import traceback
 from time import sleep
+from typing import Union
 
 import MetaTrader5 as mt5
 import numpy
@@ -23,6 +24,158 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+class RequestBase:
+
+    def __init__(self, price: float, amount: float):
+        self.price = price
+        self.amount = amount
+
+    @property
+    def price(self):
+        return self._price
+    
+    @price.setter
+    def price(self, value):
+        if isinstance(value, float) is False:
+            try:
+                value = float(value)
+            except Exception:
+                logger.exception(f"price should be float type: {value}")
+                raise ValueError(f"price should be float type: {value}")
+        self._price = value
+
+    @property
+    def amount(self):
+        return self._amount
+    
+    @amount.setter
+    def amount(self, value):
+        if isinstance(value, float) is False:
+            try:
+                value = float(value)
+            except Exception:
+                logger.exception(f"amount should be float type: {value}")
+                raise ValueError(f"amount should be float type: {value}")
+        self._amount = value
+
+class OrderRequest(RequestBase):
+
+    def __init__(self, symbol:str, price: float, amount: float, tp:float=None, sl:float=None, dev:int=None):
+        self.symbol = symbol
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            raise ValueError(f"Symbol not found: {symbol}")
+        volume_min = info.volume_min
+        if amount < volume_min:
+            raise ValueError(f"amount {amount} is less than minimum volume {volume_min} for symbol {symbol}")
+        point = info.point
+        if (amount * point) < volume_min != 0:
+            order_volume = amount
+        else:
+            order_volume = amount * point
+        self.tp = tp
+        self.sl = sl
+        self.dev = dev
+        super().__init__(price, order_volume)
+
+    
+    @property
+    def symbol(self):
+        return self._symbol
+    @symbol.setter
+    def symbol(self, value):
+        if not isinstance(value, str):
+            logger.error(f"symbol should be str type: {value}")
+            raise ValueError(f"symbol should be str type: {value}")
+        self._symbol = value
+    
+    @property
+    def tp(self):
+        return self._tp
+    @tp.setter
+    def tp(self, value):
+        if value is not None:
+            if isinstance(value, float) is False:
+                try:
+                    value = float(value)
+                except Exception:
+                    logger.exception(f"tp should be float type: {value}")
+                    raise ValueError(f"tp should be float type: {value}")
+        self._tp = value
+    @property
+    def sl(self):
+        return self._sl
+    @sl.setter
+    def sl(self, value):
+        if value is not None:
+            if isinstance(value, float) is False:
+                try:
+                    value = float(value)
+                except Exception:
+                    logger.exception(f"sl should be float type: {value}")
+                    raise ValueError(f"sl should be float type: {value}")
+        self._sl = value
+
+    @property
+    def dev(self):
+        return self._dev
+    
+    @dev.setter
+    def dev(self, value):
+        if value is not None:
+            if isinstance(value, int) is False:
+                try:
+                    value = int(value)
+                except Exception:
+                    logger.exception(f"deviation should be int type: {value}")
+                    raise ValueError(f"deviation should be int type: {value}")
+        self._dev = value
+
+class CloseRequest(RequestBase):
+
+    def __init__(self, symbol:str, price: float, amount: float, position:int):
+        self.symbol = symbol
+        self.position = position
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            raise ValueError(f"Symbol not found: {symbol}")
+        volume_min = info.volume_min
+        if amount < volume_min:
+            raise ValueError(f"amount {amount} is less than minimum volume {volume_min} for symbol {symbol}")
+        point = info.point
+        if (amount * point) < volume_min != 0:
+            order_volume = amount
+        else:
+            order_volume = amount * point
+        super().__init__(price, order_volume)
+
+    @property
+    def symbol(self):
+        return self._symbol
+    
+    @symbol.setter
+    def symbol(self, value):
+        if not isinstance(value, str):
+            logger.error(f"symbol should be str type: {value}")
+            raise ValueError(f"symbol should be str type: {value}")
+        self._symbol = value
+    
+    @property
+    def position(self):
+        return self._position
+    
+    @position.setter
+    def position(self, value):
+        if not isinstance(value, int):
+            if hasattr(value, "order"):
+                value = value.order
+            try:
+                value = int(value)
+            except Exception:
+                logger.exception(f"position id should be int type: {value}")
+                raise ValueError(f"position id should be int type: {value}")
+        self._position = value
 
 class MT5Client(ClientBase):
     kinds = "mt5"
@@ -197,20 +350,6 @@ class MT5Client(ClientBase):
     def __get_provider_string(self):
         return os.path.join(self.kinds, self.provider)
 
-    def __get_point(self, symbol):
-        if self.point_unit is None:
-            symbol_info = mt5.symbol_info(symbol)
-            if symbol_info is None:
-                msg = f"symbol info is not available for {symbol}"
-                logger.error(msg)
-                return None, msg
-            else:
-                unit_for_symbol = symbol_info.volume_step
-                logger.debug(f"detected point for symbol: {unit_for_symbol}")
-                return unit_for_symbol, None
-        else:
-            return self.point_unit, None
-
     def _get_default_path(self):
         data_folder = get_datafolder_path()
         return os.path.join(data_folder, self.__get_provider_string())
@@ -229,8 +368,53 @@ class MT5Client(ClientBase):
         self.do_render = temp_r
 
         return data.columns
+    
+    def __check_args(self, symbol, price, amount, dev=None, sl=None, tp=None, result=None):
+        if not isinstance(symbol, str):
+            logger.error(f"symbol should be str type: {symbol}")
+            return False
+        if not isinstance(price, float):
+            try:
+                price = float(price)
+            except Exception:
+                logger.exception(f"price should be float type: {price}")
+                return False
+        if not isinstance(amount, float):
+            try:
+                amount = float(amount)
+            except Exception:
+                logger.exception(f"amount should be int or float type: {amount}")
+                return False
+        if dev is not None:
+            if not isinstance(dev, int):
+                try:
+                    dev = int(dev)
+                except Exception:
+                    logger.exception(f"deviation should be int type: {dev}")
+                    return False
+        if sl is not None:
+            if not isinstance(sl, float):
+                try:
+                    sl = float(sl)
+                except Exception:
+                    logger.exception(f"sl should be float type: {sl}")
+                    return False
+        if tp is not None:
+            if not isinstance(tp, float):
+                try:
+                    tp = float(tp)
+                except Exception:
+                    logger.exception(f"tp should be float type: {tp}")
+                    return False
+        if result is not None:
+            if not (isinstance(result, int) or hasattr(result, "order")):
+                logger.error(f"result should be int type or have order attribute: {result}")
+                return False
+        return True
 
     def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, magic=0, position=None, order=None):
+        if not self.__check_args(symbol, price, vol, dev, sl, tp):
+            return None
         request = {
             "action": action,
             "symbol": symbol,
@@ -396,6 +580,13 @@ class MT5Client(ClientBase):
         if len(symbols) == 1:
             spread_srs = spread_srs[symbols[0]]
         return spread_srs
+    
+    def get_unit_size(self, symbol: str) -> float:
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            raise ValueError(f"Symbol not found: {symbol}")
+        point = info.point
+        return point
 
     def get_symbols(self):
         symbols_info = mt5.symbols_get()
@@ -431,20 +622,22 @@ class MT5Client(ClientBase):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
-        point, msg = self.__get_point(symbol)
-        if point is None:
-            return False, msg
+        
+        try:
+            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+        except Exception as e:
+            return False, str(e)
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
                 action=mt5.TRADE_ACTION_DEAL,
-                symbol=symbol,
+                symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_SELL,
-                vol=amount * point,
-                price=price,
+                vol=order_request.amount,
+                price=order_request.price,
                 dev=20,
-                sl=sl,
-                tp=tp,
+                sl=order_request.sl,
+                tp=order_request.tp,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -457,21 +650,22 @@ class MT5Client(ClientBase):
     def _sell_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
-            return False, msg
-        point, msg = self.__get_point(symbol)
-        if point is None:
-            return False, msg
+            return False, msg        
+        try:
+            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+        except Exception as e:
+            return False, str(e)
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
                 action=mt5.TRADE_ACTION_PENDING,
-                symbol=symbol,
+                symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_SELL_LIMIT,
-                vol=amount * point,
-                price=price,
+                vol=order_request.amount,
+                price=order_request.price,
                 dev=20,
-                sl=sl,
-                tp=tp,
+                sl=order_request.sl,
+                tp=order_request.tp,
                 order=order_number,
             )
             order_suc, result = self.__request_order(request)
@@ -486,20 +680,21 @@ class MT5Client(ClientBase):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
-        point, msg = self.__get_point(symbol)
-        if point is None:
-            return False, msg
+        try:
+            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+        except Exception as e:
+            return False, str(e)
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
                 action=mt5.TRADE_ACTION_PENDING,
-                symbol=symbol,
+                symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_SELL_STOP,
-                vol=amount * point,
-                price=price,
+                vol=order_request.amount,
+                price=order_request.price,
                 dev=20,
-                sl=sl,
-                tp=tp,
+                sl=order_request.sl,
+                tp=order_request.tp,
                 magic=order_number,
             )
             order_suc, result = self.__request_order(request)
@@ -510,25 +705,22 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_to_close(self, symbol, price, amount, result, *args, **kwargs):
-        point, msg = self.__get_point(symbol)
-        if point is None:
-            return False
+    def _buy_to_close(self, symbol, price, amount, result, *args, **kwargs):        
+        try:
+            order_request = CloseRequest(symbol=symbol, price=price, amount=amount, position=result)
+        except Exception as e:
+            return False, str(e)
 
         if self.__ignore_order is False:
             if result is not None:
-                if hasattr(result, "order"):
-                    position_id = int(result.order)
-                else:
-                    position_id = int(result)
                 request = self.__generate_common_request(
                     action=mt5.TRADE_ACTION_DEAL,
-                    symbol=symbol,
+                    symbol=order_request.symbol,
                     _type=mt5.ORDER_TYPE_BUY,
-                    vol=amount * point,
-                    price=price,
+                    vol=order_request.amount,
+                    price=order_request.price,
                     dev=20,
-                    position=position_id,
+                    position=order_request.position,
                 )
                 order_suc, order_result = self.__request_order(request=request)
                 if order_suc:
@@ -541,15 +733,17 @@ class MT5Client(ClientBase):
             return True
 
     def _market_buy(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
+        suc, msg = self.__check_params(True, price, tp, sl)
+        if suc is False:
+            return False, msg        
+        try:
+            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+        except Exception as e:
+            return False, str(e)
+
         if self.__ignore_order is False:
-            suc, msg = self.__check_params(True, price, tp, sl)
-            if suc is False:
-                return False, msg
-            point, msg = self.__get_point(symbol)
-            if point is None:
-                return False, msg
             request = self.__generate_common_request(
-                action=mt5.TRADE_ACTION_DEAL, symbol=symbol, _type=mt5.ORDER_TYPE_BUY, vol=point * amount, price=price, dev=20, sl=sl, tp=tp
+                action=mt5.TRADE_ACTION_DEAL, symbol=order_request.symbol, _type=mt5.ORDER_TYPE_BUY, vol=order_request.amount, price=order_request.price, dev=20, sl=order_request.sl, tp=order_request.tp
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -563,20 +757,22 @@ class MT5Client(ClientBase):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg
-        point, msg = self.__get_point(symbol)
-        if point is None:
-            return False, msg
+        # validate order request parameters
+        try:
+            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+        except Exception as e:
+            return False, str(e)
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
                 action=mt5.TRADE_ACTION_PENDING,
-                symbol=symbol,
+                symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_BUY_LIMIT,
-                vol=amount * point,
-                price=price,
+                vol=order_request.amount,
+                price=order_request.price,
                 dev=20,
-                sl=sl,
-                tp=tp,
+                sl=order_request.sl,
+                tp=order_request.tp,
                 magic=order_number,
             )
             order_suc, result = self.__request_order(request)
@@ -590,21 +786,23 @@ class MT5Client(ClientBase):
     def _buy_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
-            return False, msg
-        point, msg = self.__get_point(symbol)
-        if point is None:
-            return False, msg
+            return False, msg        
+        # validate order request parameters
+        try:
+            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+        except Exception as e:
+            return False, str(e)
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
                 action=mt5.TRADE_ACTION_PENDING,
-                symbol=symbol,
+                symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_BUY_STOP,
-                vol=amount * point,
-                price=price,
+                vol=order_request.amount,
+                price=order_request.price,
                 dev=20,
-                sl=sl,
-                tp=tp,
+                sl=order_request.sl,
+                tp=order_request.tp,
                 magic=order_number,
             )
             order_suc, result = self.__request_order(request)
@@ -615,36 +813,21 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def cancel_order(self, id: int):
-        try:
-            order_id = int(id)
-        except Exception as e:
-            logger.error(f"invalid order id is specified: {id}")
-            return False
-        request = {"action": mt5.TRADE_ACTION_REMOVE, "order": order_id}
-        suc, result = self.__request_order(request=request)
-        if suc:
-            return super().cancel_order(order_id)
-        return False
-
     def _sell_to_close(self, symbol, price, amount, result, *args, **kwargs):
-        point, msg = self.__get_point(symbol)
-        if point is None:
+        try:
+            order_request = CloseRequest(symbol=symbol, price=price, amount=amount, position=result)
+        except Exception as e:
             return False
         if self.__ignore_order is False:
             if result is not None:
-                if hasattr(result, "order"):
-                    position_id = int(result.order)
-                else:
-                    position_id = int(result)
                 request = self.__generate_common_request(
                     action=mt5.TRADE_ACTION_DEAL,
-                    symbol=symbol,
+                    symbol=order_request.symbol,
                     _type=mt5.ORDER_TYPE_SELL,
-                    vol=amount * point,
-                    price=price,
+                    vol=order_request.amount,
+                    price=order_request.price,
                     dev=20,
-                    position=position_id,
+                    position=order_request.position,
                 )
                 order_suc, result = self.__request_order(request=request)
                 if order_suc:
@@ -864,32 +1047,39 @@ class MT5Client(ClientBase):
             for order in orders:
                 ordered_ticket_id = int(order_id)
                 if order.ticket == ordered_ticket_id:
-                    request = {"action": mt5.TRADE_ACTION_MODIFY, "price": price, "order": ordered_ticket_id}
+                    request = {"action": mt5.TRADE_ACTION_MODIFY, "price": float(price), "order": ordered_ticket_id}
                     if tp is not None:
-                        request["tp"] = tp
+                        request["tp"] = float(tp)
                     if sl is not None:
-                        request["sl"] = sl
+                        request["sl"] = float(sl)
                     suc, _ = self.__request_order(request)
                     return suc
             return False
         else:
             return True
 
-    def cancel_order(self, id):
+    def cancel_order(self, position: Union[int, Position]):
+        if isinstance(position, Position):
+            id = position.result
+        elif hasattr(position, "order"):
+            id = position.order
+        else:
+            id = position
+
+        try:
+            id = int(id)
+        except Exception:
+            logger.error(f"invalid order id is specified: {position}")
+            return False
         if self.__ignore_order is False:
-            if hasattr(id, "order"):
-                position = id.order
-            else:
-                position = id
-            request = {"action": mt5.TRADE_ACTION_REMOVE, "order": int(position)}
+            request = {"action": mt5.TRADE_ACTION_REMOVE, "order": id}
             suc, _ = self.__request_order(request)
             if suc:
                 super().cancel_order(id)
             return suc
         else:
-            super().cancel_order(id)
             logger.warning("pending order is not available on backtest and simulator")
-            return True
+            return super().cancel_order(id)
 
     def get_orders(self):
         if self.__ignore_order:
@@ -941,18 +1131,20 @@ class MT5Client(ClientBase):
                     self._open_orders.pop(order_id)
             return positions
 
-    def update_position(self, position, tp=None, sl=None):
+    def update_position(self, position: Union[int, Position], tp:float=None, sl:float=None):
         if tp is None and sl is None:
             logger.error("update position require tp or sl")
             return False
+        if isinstance(position, Position):
+            position = position.result
         if self.__ignore_order is False:
             if hasattr(position, "order"):
                 position = position.order
-            request = {"action": mt5.TRADE_ACTION_SLTP, "position": position}
+            request = {"action": mt5.TRADE_ACTION_SLTP, "position": int(position)}
             if tp is not None:
-                request["tp"] = tp
+                request["tp"] = float(tp)
             if sl is not None:
-                request["sl"] = sl
+                request["sl"] = float(sl)
             suc, _ = self.__request_order(request)
             return suc
         else:

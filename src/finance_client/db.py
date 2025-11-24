@@ -653,7 +653,18 @@ class SQLiteStorage(BaseStorage):
             self.store_symbol_info(*item)
 
     def update_position(self, position):
-        keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        keys = self._POSITION_TABLE_KEYS.keys()
+        targets = [f"{key} = ?" for key in keys]
+        if isinstance(position.index, datetime.datetime):
+            index = position.index.isoformat()
+        else:
+            index = position.index
+        if position.timestamp is None:
+            timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+        elif isinstance(position.timestamp, datetime.datetime):
+            timestamp = position.timestamp.isoformat()
+        else:
+            timestamp = position.timestamp
         values = (
             position.id,
             self.provider,
@@ -663,14 +674,14 @@ class SQLiteStorage(BaseStorage):
             position.price,
             position.tp,
             position.sl,
-            position.index,
+            index,
             position.amount,
-            position.timestamp,
+            timestamp,
             position.id,
             position.result,
             position.option,
         )
-        query = f"UPDATE {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders} WHERE id = ?"
+        query = f"UPDATE {self.POSITION_TABLE_NAME} SET {', '.join(targets)} WHERE id = ?"
         self.__commit(query, values)
 
     def get_position(self, id) -> Position:
@@ -764,7 +775,7 @@ class SQLiteStorage(BaseStorage):
         return values
 
     def _store_log(self, position: Position, is_open):
-        self.log_storage.store_log(self.provider, position, is_open)
+        self.log_storage.store_log(self.provider, username=self.username, position=position, is_open=is_open)
 
     def delete_position(self, id, price=None, amount=None, index=None):
         p = self.get_position(id)

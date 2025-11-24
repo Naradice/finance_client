@@ -41,15 +41,17 @@ class AgentTool:
         Args:
             is_buy (bool): buy order or not
             price (float): order price for limit or stop order. Specify 0 if you order with market price
-            volume (float): amount of trade volume. point * volume will be ordered.
+            volume (float): amount of trade volume. base_unit (e.g. lot) * volume will be ordered.
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             order_type (int): 0: Market, 1: Limit, 2: Stop
             tp (float): specify take profit price. if less than 0 is specified, order without tp
             sl (float): specify stop loss price. if less than 0 is specified, order without sl
 
         Returns:
-            price (float): price returned from client. 0 if order is failed.
-            id (str): id of position or order. error message is returned if order is failed.
+            {
+                price (float): price returned from client. 0 if order is failed.
+                id (str): id of position or order. error message is returned if order is failed.
+            }
         """
         logger.debug(f"tool:open_trade with {is_buy}, {price}, {volume}, {symbol}, {order_type}, {tp}, {sl}")
         if tp is None or tp <= 0:
@@ -68,8 +70,6 @@ class AgentTool:
             logger.info("Market order, price is set to None")
         if price is not None:
             price = float(price)
-        if volume > 0 and volume < 1:
-            volume = volume * 100
         if self.max_volume is not None and volume > self.max_volume:
             volume = self.max_volume
         # sometimes AI Agent order limit order as stop order. So if price is invalid, it will be treated as a stop order.
@@ -91,9 +91,9 @@ class AgentTool:
             self._step_index = 0
         else:
             if isinstance(position, str):
-                result = {"price": 0, "msg": position}
+                result = {"price": "0", "msg": position}
             else:
-                result = {"price": 0, "msg": "unknown error"}
+                result = {"price": "0", "msg": "unknown error"}
         logger.debug(f"tool:open_trade result: {result}")
         return result
 
@@ -101,7 +101,7 @@ class AgentTool:
         """get all orders
         Returns:
             {
-                $id: {
+                $id : {
                     price (float): price of order,
                     volume (float): volume of order,
                     symbol (str): symbol of order,
@@ -138,21 +138,22 @@ class AgentTool:
         # logger.debug(f"get_orders result: {len(return_orders_dict)}")
         return return_orders_dict
 
-    def close_position(self, id: str, volume: float, symbol: str):
+    def close_position(self, id: str, volume: float):
         """closed a position based on id. id should be specified which is returned when order it.
         Args:
             id (str): id if position
-            volume (float): volume of position to close. if 0 is specified, close all volume
-            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            volume (float): volume of position to close. base_unit * volume will be closed. if 0 is specified, close all volume.
         Returns:
-            closed_price (float): closed price. 0 if order is failed.
-            profit(float): profit of your trade result. 0 if order is failed.
-            msg (str): error message if order is failed.
+            {
+                closed_price (float): closed price. 0 if order is failed.
+                profit(float): profit of your trade result. 0 if order is failed.
+                msg (str): error message if order is failed.
+            }
         """
-        logger.debug(f"close_position with {id}, {volume}, {symbol}")
+        logger.debug(f"close_position with {id}, {volume}")
         try:
-            closed_result = self.client.close_position(price=None, id=id, amount=volume, symbol=symbol)
-        except Exception:
+            closed_result = self.client.close_position(id=id, amount=volume)
+        except Exception as e:
             logger.exception(f"Error in close_position")
             return {"closed_price": "0", "profit": "0", "msg": str(e)}
         if closed_result.error:
@@ -250,13 +251,17 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.]
         Returns:
-            rate (float)
+            ask_rate (str)
         """
         logger.debug(f"tool: get_ask_rate for {symbol}")
         self.__advance_step(symbol)
-        rates = self.client.get_current_ask(symbol)
-        logger.debug(f"get_ask_rate result: {rates}")
-        return rates
+        rate = self.client.get_current_ask(symbol)
+        logger.debug(f"get_ask_rate result: {rate}")
+        try:
+            ask_rate = str(rate)
+        except Exception:
+            ask_rate = "failed to get ask rate"
+        return ask_rate
 
     def get_bid_rate(self, symbol: str):
         """return current bid rate of specified symbol
@@ -264,12 +269,16 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.]
         Returns:
-            rate (float)
+            rate (str)
         """
         logger.debug(f"tool: get_bid_rate for {symbol}")
         self.__advance_step(symbol)
         rates = self.client.get_current_bid(symbol)
         logger.debug(f"get_bid_rate result: {rates}")
+        try:
+            rates = str(rates)
+        except Exception:
+            rates = "failed to get bid rate"
         return rates
 
     def get_current_spread(self, symbol: str):
@@ -278,7 +287,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.]
         Returns:
-            rate (float)
+            rate (str)
         """
         logger.debug(f"tool: get_current_spread for {symbol}")
         if hasattr(self.client, "get_current_spread"):
@@ -288,7 +297,28 @@ class AgentTool:
             bid_rates = self.client.get_current_bid(symbol)
             spread = ask_rates - bid_rates
         logger.debug(f"get_current_spread result: {spread}")
+        try:
+            spread = str(spread)
+        except Exception:
+            spread = "failed to get spread"
         return spread
+
+    def get_unit_size(self, symbol: str) -> str:
+        """return unit size of specified symbol
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.]
+        Returns:
+            unit_size (float)
+        """
+        logger.debug(f"tool: get_unit_size for {symbol}")
+        unit_size = self.client.get_unit_size(symbol)
+        logger.debug(f"get_unit_size result: {unit_size}")
+        try:
+            unit_size = str(unit_size)
+        except Exception:
+            unit_size = "failed to get unit size"
+        return unit_size
 
     def __get_ohlc(self, symbol: str, length: int, frame: str):
         """Internal method to get OHLC data from the client.

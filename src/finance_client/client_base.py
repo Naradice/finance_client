@@ -244,17 +244,17 @@ class ClientBase(metaclass=ABCMeta):
     def _trading_log(self, position: Position, price, amount, is_open):
         pass
 
-    def close_position(self, price: float = None, position: Position = None, id=None, amount=None, symbol=None, position_type=None):
+    def close_position(self, position: Position = None, id=None, amount=None, symbol=None, position_type=None, price: float = None):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
 
         Args:
-            price (float, optional): price for settlement. If not specified, market value is specified.
             position (Position, optional): Position returned by open_trade. Defaults to None.
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
             symbols (str, optional): key of symbol
             position_type (str, optional): 1: long, -1: short. if both symbol and position_type is specified, try to order
+            price (float, optional): price to close the position. If None is specified, use market price to close.  Defaults to None.
         """
         default_closed_result = ClosedResult()
         default_closed_result.error = True
@@ -305,7 +305,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 price = self.get_current_bid(position.symbol)
                 logger.debug(f"order close with current ask rate {price}")
-            result = self._sell_to_close(position.symbol, price, amount, position.result, position.result)
+            result = self._sell_to_close(position.symbol, price, amount, option_info=position.option, result=position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
@@ -315,7 +315,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.debug(f"order close with current bid rate {price}")
                 price = self.get_current_ask(position.symbol)
-            result = self._buy_to_close(position.symbol, price, amount, position.result, position.result)
+            result = self._buy_to_close(position.symbol, price, amount, option_info=position.option, result=position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
@@ -360,9 +360,16 @@ class ClientBase(metaclass=ABCMeta):
             symbols = [symbols]
         positions = self.wallet.storage.get_long_positions(symbols=symbols)
         results = []
+        num_positions = len(positions)
+        if num_positions == 0:
+            logger.info("no long positions to close.")
+            return results
         for position in positions:
             result = self.close_position(position=position)
             results.append(result)
+        num_results = len(results)
+        if num_positions != num_results:
+            logger.warning(f"number of closed results {num_results} is different from number of positions {num_positions}")
         return results
 
     def close_short_positions(self, symbols: list = None):
@@ -373,15 +380,37 @@ class ClientBase(metaclass=ABCMeta):
             symbols = [symbols]
         positions = self.wallet.storage.get_short_positions(symbols=symbols)
         results = []
+        num_positions = len(positions)
+        if num_positions == 0:
+            logger.info("no short positions to close.")
+            return results
         for position in positions:
             result = self.close_position(position=position)
             results.append(result)
+        num_results = len(results)
         return results
+    
+    def get_position(self, id) -> Union[Position, None]:
+        """get position by id
+
+        Args:
+            id (uuid): position id
+
+        Returns:
+            Position or None: position if found
+        """
+        position = self.wallet.storage.get_position(id)
+        return position
 
     def get_positions(self) -> list:
         long_positions, short_positions = self.wallet.storage.get_positions()
+        long_positions = list(long_positions)
+        short_positions = list(short_positions)
         long_positions.extend(short_positions)
         return long_positions
+    
+    def get_unit_size(self, symbol: str) -> float:
+        return 1.0
 
     def _sync_positions(self, actual_positions):
         long_positions, short_positions = self.wallet.storage.get_positions()
@@ -882,6 +911,8 @@ class ClientBase(metaclass=ABCMeta):
 
     # Override if provider has datetime index
     def get_current_datetime(self):
+        if self.frame is None:
+            return datetime.datetime.now(tz=datetime.timezone.utc)
         return Frame.get_frame_time(datetime.datetime.now(tz=datetime.timezone.utc), self.frame)
 
     def get_params(self) -> dict:

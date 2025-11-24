@@ -3,6 +3,7 @@ from .client_base import ClientBase
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
 from .logger import setup_logging
+from .position import ORDER_TYPE, POSITION_TYPE
 from .tool import AgentTool
 from .vantage.client import VantageClient
 from .yfinance.client import YahooClient

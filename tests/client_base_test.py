@@ -10,7 +10,7 @@ os.environ["FC_DEBUG"] = "true"
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 import finance_client.frames as Frame
-from finance_client import db
+from finance_client import ORDER_TYPE, db
 from finance_client.client_base import ClientBase
 
 
@@ -29,6 +29,8 @@ class TestClient(ClientBase):
             base_path = os.path.dirname(__file__)
             self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_storage.json"))
             storage = db.FileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
+            self.open_orders = []
+            self.positions = []
         super().__init__(
             budget=budget,
             provider=provider,
@@ -86,6 +88,18 @@ class TestClient(ClientBase):
 
     def _sell_to_close(self, symbol, bid_rate, amount, option_info=None, result=None):
         return True
+    
+    def _buy_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+        return True, random.randrange(1000000, 9999999)
+
+    def _sell_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+        return True, random.randrange(1000000, 9999999)
+
+    def _buy_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+        return True, random.randrange(1000000, 9999999)
+
+    def _sell_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+        return True, random.randrange(1000000, 9999999)
 
     def get_params(self) -> dict:
         print("Need to implement get_params")
@@ -212,6 +226,86 @@ class TestBaseClient(unittest.TestCase):
         close_result = client.close_position(id=position.id)
         self.assertTrue(close_result.error is False)
         self.assertNotEqual(close_result.profit, 0)
+
+    def test_pending_order(self):
+        budget = 100000
+        client = TestClient(budget=budget, do_render=True)
+        ask_price = client.get_current_ask()
+        suc, position = client.open_trade(
+            is_buy=True,
+            amount=100.0,
+            symbol="USDJPY",
+            price=ask_price + 20,
+            order_type=ORDER_TYPE.stop,
+            tp=ask_price + 50,
+            sl=ask_price - 50,
+        )
+        self.assertTrue(suc, "pending order placement should be successful")
+        # advance until order is triggered
+        client.get_ohlc(None, 100)
+        orders = client._open_orders
+        self.assertEqual(len(orders), 1, f"orders should be 1 after pending order is triggered: {orders}")
+        # current_budget, in_use, profit = client.get_budget()
+        # self.assertGreater(in_use, 0)
+        count = 0
+        while len(client._open_orders) > 0:
+            client.get_ohlc(None, 100)
+            time.sleep(1)
+            count += 1
+            if count > 20:
+                self.fail("pending order is not closed after 20 iterations")
+        # current_budget, in_use, profit = client.get_budget()
+        # self.assertEqual(in_use, 0)
+        positions = client.get_positions()
+        self.assertEqual(len(positions), 1, f"long position spjild: {positions}")
+        count = 0
+        while len(positions) > 0:
+            client.get_ohlc(None, 100)
+            time.sleep(1)
+            positions = client.get_positions()
+            count += 1
+            if count > 20:
+                self.fail("position is not closed after 20 iterations")
+        positions = client.get_positions()
+        if len(positions) != 0:
+            self.fail("all positions should be closed")
+
+    def test_close_after_pending_order(self):
+        budget = 100000
+        client = TestClient(budget=budget, do_render=True)
+        ask_price = client.get_current_ask()
+        suc, position = client.open_trade(
+            is_buy=True,
+            amount=100.0,
+            symbol="USDJPY",
+            price=ask_price + 20,
+            order_type=ORDER_TYPE.stop,
+            tp=ask_price + 50,
+            sl=ask_price - 50,
+        )
+        self.assertTrue(suc, "pending order placement should be successful")
+        # advance until order is triggered
+        client.get_ohlc(None, 100)
+        orders = client._open_orders
+        self.assertEqual(len(orders), 1, f"orders should be 1 after pending order is triggered: {orders}")
+        # current_budget, in_use, profit = client.get_budget()
+        # self.assertGreater(in_use, 0)
+        count = 0
+        while len(client._open_orders) > 0:
+            client.get_ohlc(None, 100)
+            time.sleep(1)
+            count += 1
+            if count > 20:
+                self.fail("pending order is not closed after 20 iterations")
+        # current_budget, in_use, profit = client.get_budget()
+        # self.assertEqual(in_use, 0)
+        positions = client.get_positions()
+        self.assertEqual(len(positions), 1, f"long position spjild: {positions}")
+        position = positions[0]
+        close_result = client.close_position(position=position)
+        self.assertTrue(close_result.error is False)
+        self.assertNotEqual(close_result.profit, 0)
+        
 
     # Multiindex without symbol
     def test_multi_ohlc_columns(self):
