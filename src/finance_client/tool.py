@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import math
 import uuid
 
 import pandas as pd
@@ -22,7 +23,7 @@ MACD_SIG_KEY = "MACD_Signal"
 
 class AgentTool:
 
-    def __init__(self, client: ClientBase, max_volume=None):
+    def __init__(self, client: ClientBase, max_volume=None, max_length=100):
         self.client = client
         self.max_volume = max_volume
         # for simulation, step index is used to simulate time
@@ -35,6 +36,7 @@ class AgentTool:
         self._Bollinger = idcprocess.BBANDProcess(window=20, key="Bollinger", target_column="close", alpha=2)
         self._ATR = idcprocess.ATRProcess(window=14, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
         self._CCI = idcprocess.CCIProcess(window=20, key="CCI", ohlc_column=("open", "high", "low", "close"))
+        self.max_length = max_length
 
     def order(self, is_buy: bool, price: float, volume: float, symbol: str, order_type: int, tp: float, sl: float):
         """order to open a position
@@ -324,12 +326,11 @@ class AgentTool:
         """Internal method to get OHLC data from the client.
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
-            length (int): specify data length > 1. If less than 0 is specified, return all date.
+            length (int): specify data length > 0.
             frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh(e.g. 1h), XD(e.g. 1D), WX(e.g. W1), MOX(e.g. MO1)
         Returns:
             pd.DataFrame: DataFrame containing OHLC data
         """
-        self._step_index += 1
         ohlc_df = self.client.get_ohlc(symbol, length, frame)
         if ohlc_df is None:
             return {"open": {}, "high": {}, "low": {}, "close": {}}
@@ -352,7 +353,7 @@ class AgentTool:
         """
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
-            length (int): specify data length > 1. If less than 0 is specified, return all date.
+            length (int): specify data length > 0.
             frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh(e.g. 1h), XD(e.g. 1D), WX(e.g. W1), MOX(e.g. MO1)
 
         Returns:
@@ -368,45 +369,15 @@ class AgentTool:
         """
         logger.debug(f"tool: get_ohlc for {symbol}, {length}, {frame}")
         ohlc_df = self.__get_ohlc(symbol, length, frame)
+        self._step_index += 1
         if isinstance(ohlc_df, dict):
             return ohlc_df
         if isinstance(ohlc_df.index, pd.DatetimeIndex):
             ohlc_df.index = ohlc_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         logger.debug(f"get_ohlc result: {ohlc_df.shape}")
         return ohlc_df.T.to_dict()
-
-    def get_ohlc_with_indicators(self, symbol: str, length: int, frame: str):
-        """
-        Args:
-            symbol (str): symbol of currency, stock etc. ex USDJPY.
-            length (int): specify data length > 1. If less than 0 is specified, return all date.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh(e.g. 1h), XD(e.g. 1D), WX(e.g. W1), MOX(e.g. MO1)
-
-        Returns:
-            {
-                $index: {
-                    "open": float,
-                    "high": float,
-                    "low": float,
-                    "close": float,
-                    "EMA10": float,
-                    "EMA50": float,
-                    "EMA200": float,
-                    "MACD": float,
-                    "MACD_Signal": float,
-                    "RSI": float,
-                    "RSI_Gain": float,
-                    "RSI_Loss": float,
-                    "Bollinger_UV": float,
-                    "Bollinger_LV": float,
-                    "Bollinger_Width": float,
-                    "Bollinger_Std": float,
-                    "ATR": float,
-                    "CCI": float
-                },
-                ...
-            }
-        """
+    
+    def _get_ohlc_with_indicators(self, symbol: str, length: int, frame: str):
         ohlc_df = self.__get_ohlc(symbol, length + 210, frame)
         if isinstance(ohlc_df, dict):
             return {
@@ -443,6 +414,43 @@ class AgentTool:
             logger.exception("Error occurred while calculating EMA indicators")
 
         ohlc_df = ohlc_df.iloc[-length:]  # Get the last 'length' rows
+        return ohlc_df
+
+    def get_ohlc_with_indicators(self, symbol: str, length: int, frame: str):
+        """
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh(e.g. 1h), XD(e.g. 1D), WX(e.g. W1), MOX(e.g. MO1)
+
+        Returns:
+            {
+                $index: {
+                    "open": float,
+                    "high": float,
+                    "low": float,
+                    "close": float,
+                    "EMA10": float,
+                    "EMA50": float,
+                    "EMA200": float,
+                    "MACD": float,
+                    "MACD_Signal": float,
+                    "RSI": float,
+                    "RSI_Gain": float,
+                    "RSI_Loss": float,
+                    "Bollinger_UV": float,
+                    "Bollinger_LV": float,
+                    "Bollinger_Width": float,
+                    "Bollinger_Std": float,
+                    "ATR": float,
+                    "CCI": float
+                },
+                ...
+            }
+        """
+        logger.debug(f"tool: get_ohlc_with_indicators for {symbol}, {length}, {frame}")
+        ohlc_df = self._get_ohlc_with_indicators(symbol, length, frame)
+        self._step_index += 1
         ohlc_df = ohlc_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
         if isinstance(ohlc_df.index, pd.DatetimeIndex):
             ohlc_df.index = ohlc_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -465,7 +473,290 @@ class AgentTool:
                 logger.debug(f"tool: advance_step to {self._step_index}")
         return self._step_index
 
+    def get_MACD(self, symbol:str, length: int, frame:str, short_window:int, long_window:int, signal_window:int):
+        """ get MACD and it's signal values based on close value. 
 
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            short_window (int): window for short EMA
+            long_window (int): window for long EMA
+            signal_window (int): window for signal line EMA
+
+        Returns:
+            str: CSV format data with index, MACD, SIGNAL columns
+        """
+        logger.debug(f"tool: get_MACD for {symbol}, {length}, {frame}, {short_window}, {long_window}, {signal_window}")
+        process = idcprocess.MACDProcess(target_column="close", short_window=short_window, long_window=long_window, signal_window=signal_window)
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + long_window + signal_window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        macd_df = process.run(ohlc_df)
+        macd_df = macd_df[[process.KEY_MACD, process.KEY_SIGNAL]]
+        macd_df.columns = ["MACD", "SIGNAL"]
+        macd_df = macd_df.iloc[-length:]
+        macd_df = macd_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(macd_df.index, pd.DatetimeIndex):
+            macd_df.index = macd_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = macd_df.to_csv()
+        return csv_data
+    
+    # idcprocess.ATRProcess
+    def get_ATR(self, symbol:str, length: int, frame:str, window:int):
+        """ get ATR values based on OHLC values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for ATR calculation
+
+        Returns:
+            str: CSV format data with index, ATR columns
+        """
+        logger.debug(f"tool: get_ATR for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.ATRProcess(window=window, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        atr_df = process.run(ohlc_df)
+        atr_df = atr_df[[process.KEY_ATR]]
+        atr_df.columns = ["ATR"]
+        atr_df = atr_df.iloc[-length:]
+        atr_df = atr_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(atr_df.index, pd.DatetimeIndex):
+            atr_df.index = atr_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = atr_df.to_csv()
+        return csv_data
+    
+    # idcprocess.BBANDProcess
+    def get_BollingerBands(self, symbol:str, length: int, frame:str, window:int, alpha:float):
+        """ get Bollinger Bands values based on close values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for Bollinger Bands calculation
+            alpha (float): alpha value for Bollinger Bands calculation
+
+        Returns:
+            str: CSV format data with index, UpperBand, LowerBand, Width, StdDev columns
+        """
+        logger.debug(f"tool: get_BollingerBands for {symbol}, {length}, {frame}, {window}, {alpha}")
+        process = idcprocess.BBANDProcess(window=window, key="Bollinger", target_column="close", alpha=alpha)
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        bband_df = process.run(ohlc_df)
+        bband_df = bband_df[
+            [process.KEY_UPPER_VALUE, process.KEY_LOWER_VALUE, process.KEY_WIDTH_VALUE, process.KEY_STD_VALUE]
+        ]
+        bband_df.columns = ["UpperBand", "LowerBand", "Width", "StdDev"]
+        bband_df = bband_df.iloc[-length:]
+        bband_df = bband_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(bband_df.index, pd.DatetimeIndex):
+            bband_df.index = bband_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = bband_df.to_csv()
+        return csv_data
+
+    # idcprocess.RSIProcess
+    def get_RSI(self, symbol:str, length: int, frame:str, window:int):
+        """ get RSI values based on close values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for RSI calculation
+
+        Returns:
+            str: CSV format data with index, RSI, Gain, Loss columns
+        """
+        logger.debug(f"tool: get_RSI for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.RSIProcess(window=window, key="RSI", ohlc_column_name=("open", "high", "low", "close"))
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        rsi_df = process.run(ohlc_df)
+        rsi_df = rsi_df[[process.KEY_RSI, process.KEY_GAIN, process.KEY_LOSS]]
+        rsi_df.columns = ["RSI", "Gain", "Loss"]
+        rsi_df = rsi_df.iloc[-length:]
+        rsi_df = rsi_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(rsi_df.index, pd.DatetimeIndex):
+            rsi_df.index = rsi_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = rsi_df.to_csv()
+        return csv_data
+    
+    # idcprocess.MAProcess
+    def get_SMA(self, symbol:str, length: int, frame:str, window:int):
+        """ get Simple Mean Average values based on close values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for MA calculation
+
+        Returns:
+            str: CSV format data with index, MA columns
+        """
+        logger.debug(f"tool: get_SMA for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.MAProcess(window=window, key="MA", column="close")
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        ma_df = process.run(ohlc_df)
+        ma_df = ma_df[[process.KEY_EMA]]
+        ma_df.columns = ["MA"]
+        ma_df = ma_df.iloc[-length:]
+        ma_df = ma_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(ma_df.index, pd.DatetimeIndex):
+            ma_df.index = ma_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = ma_df.to_csv()
+        return csv_data
+
+    # idcprocess.EMAProcess
+    def get_EMA(self, symbol:str, length: int, frame:str, window:int):
+        """ get Exponential Mean Average values based on close values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for EMA calculation
+
+        Returns:
+            str: CSV format data with index, EMA columns
+        """
+        logger.debug(f"tool: get_EMA for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.EMAProcess(window=window, key="EMA", column="close")
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        ema_df = process.run(ohlc_df)
+        ema_df = ema_df[[process.key]]
+        ema_df.columns = ["EMA"]
+        ema_df = ema_df.iloc[-length:]
+        ema_df = ema_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(ema_df.index, pd.DatetimeIndex):
+            ema_df.index = ema_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = ema_df.to_csv()
+        return csv_data
+    
+    # idcprocess.CCIProcess
+    def get_CCI(self, symbol:str, length: int, frame:str, window:int):
+        """ get CCI values based on OHLC values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for CCI calculation
+
+        Returns:
+            str: CSV format data with index, CCI columns
+        """
+        logger.debug(f"tool: get_CCI for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.CCIProcess(window=window, key="CCI", ohlc_column=("open", "high", "low", "close"))
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        cci_df = process.run(ohlc_df)
+        cci_df = cci_df[[process.KEY_CCI]]
+        cci_df.columns = ["CCI"]
+        cci_df = cci_df.iloc[-length:]
+        cci_df = cci_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(cci_df.index, pd.DatetimeIndex):
+            cci_df.index = cci_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = cci_df.to_csv()
+        return csv_data
+    
+    # idcprocess.LinearRegressionMomentumProcess
+    def get_LinearRegressionMomentum(self, symbol:str, length: int, frame:str, window:int):
+        """ get Linear Regression Momentum values based on close values. 
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for Linear Regression Momentum calculation
+
+        Returns:
+            str: CSV format data with index, LinearRegressionMomentum columns
+        """
+        logger.debug(f"tool: get_LinearRegressionMomentum for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.LinearRegressionMomentumProcess(window=window, key="LRM", column="close")
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + window
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        lrm_df = process.run(ohlc_df)
+        lrm_df = lrm_df[[process.KEY_MOMENTUM]]
+        lrm_df.columns = ["LRM"]
+        lrm_df = lrm_df.iloc[-length:]
+        lrm_df = lrm_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(lrm_df.index, pd.DatetimeIndex):
+            lrm_df.index = lrm_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = lrm_df.to_csv()
+        return csv_data
+
+    # idcprocess.RenkoProcess
+    def get_Renko(self, symbol:str, length: int, frame:str, window:int):
+        """ get Renko values based on close values. Brick size is calculated by ATR of specified window.
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            window (int): window for ATR to calculate brick size
+
+        Returns:
+            str: CSV format data with index, Renko columns
+        """
+        logger.debug(f"tool: get_Renko for {symbol}, {length}, {frame}, {window}")
+        process = idcprocess.RenkoProcess(window=window, key="Renko", ohlc_column=("open", "high", "low", "close"))
+        # clip length by max_length
+        if length > self.max_length:
+            length = self.max_length
+
+        query_length = length + process.get_minimum_required_length()
+        ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+        renko_df = process.run(ohlc_df)
+        renko_df = renko_df[[process.KEY_BRICK_NUM]]
+        renko_df.columns = ["Renko"]
+        renko_df = renko_df.iloc[-length:]
+        renko_df = renko_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(renko_df.index, pd.DatetimeIndex):
+            renko_df.index = renko_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        csv_data = renko_df.to_csv()
+        return csv_data
+    
+        
 class PriceMonitor:
 
     def __init__(self, client_tool, event_queue):
