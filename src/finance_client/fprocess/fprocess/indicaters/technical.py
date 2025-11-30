@@ -566,128 +566,89 @@ def update_RSI(pre_data: pd.Series, new_data: pd.Series, columns=("avgGain", "av
     return avgGain, avgLoss, rsi
 
 
-def RenkoFromSeries(data_sr: pd.Series, brick_size, total_brick_name="Renko", brick_num_name="Brick"):
+def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick_value_name="BrickValue"):
     """Caliculate brick number of Renko
 
     Args:
-        data_sr (pd.Series): time series data like close values of a sygnal
-        brick_size (pd.Series|float, optional): brick_size to caliculate the Renko. If None, ATR is used. Defaults to None.
+        data_sr (pd.Series): time series data like close values of a symbol
+        brick_size (pd.Series|float): brick_size to caliculate the Renko.
 
     Returns:
         pd.Series: brick_num
     """
 
-    def get_check_df_from_series(data_sr, brick_sr, start_index, to_index, criteria_value):
-        return (data_sr.iloc[start_index:to_index] - criteria_value) / brick_sr.iloc[start_index:to_index]
-
-    def get_check_df_from_scalar(data_sr, brick_size, start_index, to_index, criteria_value):
-        return (data_sr.iloc[start_index:to_index] - criteria_value) / brick_size
-
-    if type(brick_size) == pd.Series:
-        if len(data_sr) != len(brick_size):
-            raise Exception(f"sr and brick_size_sr should have same length.")
-        brick_size = brick_size.copy().reset_index(drop=True)
-        get_check_df = get_check_df_from_series
+        # --- prepare brick_size as series ---
+    if isinstance(brick_size, pd.Series):
+        if len(brick_size) != len(data):
+            raise Exception("brick_size must have same length as data")
+        bs = brick_size.reset_index(drop=True).astype(float)
     else:
-        get_check_df = get_check_df_from_scalar
+        bs = pd.Series(float(brick_size), index=data.index)
 
-    org_index = data_sr.index
-    sr = data_sr.copy().reset_index(drop=True)
+    prices = data.reset_index(drop=True).astype(float)
+    n = len(prices)
 
-    def trendy(uptrend, downtrend):
-        if len(uptrend) > 0 and len(downtrend) > 0:
-            if uptrend.index[0] > downtrend.index[0]:
-                # mark down until criteria_index to downtrend.index[0]
-                trend = -1
-                brick_size = int(downtrend.iloc[0])
-                next_criteria_index = downtrend.index[0]
-            else:
-                # mark up until criteria_index to uptrend.index[0]
-                trend = 1
-                brick_size = int(uptrend.iloc[0])
-                next_criteria_index = uptrend.index[0]
-        elif len(uptrend) > 0:
-            trend = 1
-            brick_size = int(uptrend.iloc[0])
-            next_criteria_index = uptrend.index[0]
-        elif len(downtrend) > 0:
-            trend = -1
-            brick_size = int(downtrend.iloc[0])
-            next_criteria_index = downtrend.index[0]
-        else:
-            trend = None
-            brick_size = None
-            next_criteria_index = None
-        return trend, brick_size, next_criteria_index
+    # output series
+    renko_bricks = pd.Series(0, index=prices.index, dtype=float)
+    brick_values = pd.Series(0.0, index=prices.index, dtype=float)
 
-    CONST_INDEX_PLUS = 30
-    total_brick_num_sr = pd.Series(0, index=sr.index, dtype=float)
-    brick_value_sr = pd.Series(0, index=sr.index, dtype=float)
-
+    # --- find first valid starting price ---
     try:
-        criteria_index = sr[pd.notna(sr)].index[0]
+        idx0 = prices[pd.notna(prices)].index[0]
     except IndexError:
-        renko_df = pd.DataFrame.from_dict({total_brick_name: total_brick_num_sr, brick_num_name: brick_value_sr})
-        renko_df.index = org_index
-        return renko_df
-    current_criteria = sr.iloc[criteria_index]
+        return pd.DataFrame({total_brick_name: renko_bricks, brick_value_name: brick_values})
 
-    trend = None
-    start_index = criteria_index
-    to_index = criteria_index + CONST_INDEX_PLUS
-    while trend is None and to_index < len(sr):
-        temp_brick_num_sr = get_check_df(sr, brick_size, start_index, to_index, current_criteria)
-        brick_value_sr.iloc[start_index:to_index] = temp_brick_num_sr
-        uptrend = temp_brick_num_sr[temp_brick_num_sr >= 1]
-        downtrend = temp_brick_num_sr[temp_brick_num_sr <= -1]
-        # if trend is None:
-        if len(uptrend) == 0 and len(downtrend) == 0:
-            start_index = to_index
-            to_index = start_index + CONST_INDEX_PLUS
-        else:
-            trend, block_num, next_criteria_index = trendy(uptrend, downtrend)
-    if trend is None:
-        renko_df = pd.DataFrame.from_dict({total_brick_name: total_brick_num_sr, brick_num_name: brick_value_sr})
-        renko_df.index = org_index
-        return renko_df
+    # initial reference
+    ref_price = prices.iloc[idx0]
+    current_brick = 0  # cumulative brick count
 
-    global_trend = trend
-    while True:
-        trend, new_brick_num, next_criteria_index = trendy(uptrend, downtrend)
-        if trend is None:  # didn't changed renko value
-            brick_num = total_brick_num_sr.iloc[criteria_index]
-            total_brick_num_sr.iloc[criteria_index:to_index] = brick_num
-            next_criteria_index = criteria_index
-            next_start_index = to_index
-        else:
-            brick_num = total_brick_num_sr.iloc[criteria_index]
-            if global_trend / trend >= 0:  # continuaus trend
-                next_brick_num = brick_num + new_brick_num
-            else:
-                next_brick_num = brick_num + new_brick_num
+    # --- main loop ---
+    for i in range(idx0, n):
+        price = prices.iloc[i]
+        bsize = bs.iloc[i]
 
-            total_brick_num_sr.iloc[criteria_index:next_criteria_index] = brick_num
-            total_brick_num_sr.iloc[next_criteria_index] = next_brick_num
-            criteria_index = next_criteria_index
-            next_start_index = next_criteria_index + 1
-            global_trend = trend
+        if np.isnan(price):
+            renko_bricks.iloc[i] = current_brick
+            brick_values.iloc[i] = np.nan
+            continue
 
-        if next_start_index < len(sr):
-            to_index = next_start_index + CONST_INDEX_PLUS
-            if to_index > len(sr):
-                to_index = len(sr)
+        # --- continuous brick value ---
+        brick_values.iloc[i] = (price - ref_price) / bsize
+        diff = price - ref_price
 
-            current_criteria = sr.iloc[next_criteria_index]
-            temp_brick_num_sr = get_check_df(sr, brick_size, next_start_index, to_index, current_criteria)
-            brick_value_sr.iloc[next_start_index:to_index] = temp_brick_num_sr
-            uptrend = temp_brick_num_sr[temp_brick_num_sr >= -global_trend / 2 + 3 / 2]
-            downtrend = temp_brick_num_sr[temp_brick_num_sr <= -global_trend / 2 - 3 / 2]
-        else:
-            break
-    # total_brick_num_sr.index = org_index
-    renko_df = pd.DataFrame.from_dict({total_brick_name: total_brick_num_sr, brick_num_name: brick_value_sr})
-    renko_df.index = org_index
-    return renko_df
+        if diff >= bsize:
+            bricks_up = int(diff // bsize)
+            for _ in range(bricks_up):
+                current_brick += 1
+                ref_price += bsize
+
+        elif diff <= -bsize:
+            bricks_down = int((-diff) // bsize)
+            for _ in range(bricks_down):
+                if current_brick >= 0:  # upward
+                    if current_brick == 0:
+                        # reverse direction: 0 -> -1 brick
+                        if diff <= -2 * bsize:
+                            current_brick = -1
+                            ref_price -= 2 * bsize
+                    else:
+                        # reverse direction: +n -> -n brick
+                        current_brick -= 1
+                        ref_price -= bsize
+                else:
+                    # reverse direction: already downward → continue stacking
+                    current_brick -= 1
+                    ref_price -= bsize
+
+        # update output
+        renko_bricks.iloc[i] = current_brick
+
+    # restore index
+    out = pd.DataFrame({
+        total_brick_name: renko_bricks.set_axis(data.index),
+        brick_value_name: brick_values.set_axis(data.index)
+    })
+    return out
 
 
 def RenkoFromOHLC(
@@ -721,11 +682,11 @@ def RenkoFromOHLC(
             else:
                 brick_size = df[brick_column_name]
             renko_df = RenkoFromSeries(
-                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_num_name=brick_num_name
+                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_value_name=brick_num_name
             )
         else:
             renko_df = RenkoFromSeries(
-                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_num_name=brick_num_name
+                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_value_name=brick_num_name
             )
         return renko_df
     else:
