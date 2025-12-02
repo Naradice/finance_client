@@ -31,7 +31,7 @@ def plot_candle(ax, ohlc_df, ohlc_columns, x=None, tip_size=None, bull="#2CA453"
         index += 1
 
 
-def overlap_bolinger_band(ax, data_df, width_column, mean_column, x=None, alpha=2, color="#4daf4a"):
+def overlap_bollinger_band(ax, data_df, width_column, mean_column, x=None, alpha=2, color="#4daf4a"):
     if x is None:
         x = data_df.index
     std = data_df[width_column] / alpha
@@ -108,7 +108,7 @@ class Rendere:
         self.__is_shown = False
         self.__indicater_process_info = {
             fprocess.BBANDProcess.kinds: {
-                "function": self.overlap_bolinger_band,
+                "function": self.overlap_bollinger_band,
                 "option": ("alpha",),
             },
             fprocess.MACDProcess.kinds: {
@@ -388,11 +388,11 @@ class Rendere:
         else:
             print(f"{index} is not registered.")
 
-    def overlap_bolinger_band(self, x, data, index, columns, color_index=0, alpha=2):
+    def overlap_bollinger_band(self, x, data, index, columns, color_index=0, alpha=2):
         mean_column, _, _, width_column = columns
         ax = self.__get_ax(index)
         color = get_color(color_index)
-        overlap_bolinger_band(ax, data, width_column, mean_column, x, alpha, color)
+        overlap_bollinger_band(ax, data, width_column, mean_column, x, alpha, color)
 
     def overlap_macd(self, x, data, index, columns, color_index=0, column="Close"):
         s_ema, l_ema, macd, sig = columns

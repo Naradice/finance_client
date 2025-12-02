@@ -371,7 +371,7 @@ class BBANDProcess(ProcessBase):
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
                 symbols = get_symbols(data, grouped_by_symbol)
-            bb_df = technical.BolingerFromOHLCMulti(
+            bb_df = technical.BollingerFromOHLCMulti(
                 symbols,
                 data,
                 column=target_column,
@@ -385,7 +385,7 @@ class BBANDProcess(ProcessBase):
                 std_name=self.KEY_STD_VALUE
             )
         else:
-            bb_df = technical.BolingerFromOHLC(
+            bb_df = technical.BollingerFromOHLC(
                 data,
                 target_column,
                 window=window,
@@ -957,7 +957,7 @@ class RangeTrendProcess(ProcessBase):
 
             # caliculate slope by mean value
             window_for_slope = self.slope_window
-            # window_for_slope = 14#bolinger window size
+            # window_for_slope = 14#bollinger window size
             shifted = data_[mean_column].shift(periods=window_for_slope)
             slope = (data_[mean_column] - shifted) / window_for_slope
             smean = params["bband"]["slope_mean"][symbol]

@@ -74,25 +74,39 @@ def update_EMA(last_ema_value: float, new_value, window: int, a=None):
 
 def EMA(data, interval, alpha=None):
     """
-    return list of EMA. remove interval -1 length from the data
-    if data length is less than interval, return EMA with length of data as interval
+    Calculate EMA.
+    Args:
+        data (list or np.ndarray or pd.Series or pd.DataFrame): input data
+        interval (int): window size
+        alpha (float, optional): smoothing factor. Defaults to None.
+
+    Raises:
+        Exception: data list has no value
+
+    Returns:
+        list or pd.Series or pd.DataFrame: EMA of input data. return same type as input data
     """
-    if len(data) >= interval:
-        if type(data) == pd.DataFrame or type(data) == pd.Series:
-            data_cp = data.copy()
+    if isinstance(data, (pd.Series, pd.DataFrame)):
+        data_cp = data.copy()
+        if alpha is None:
             return data_cp.ewm(span=interval, adjust=False).mean()
-        # ema = [np.nan for i in range(0,interval-1)]
-        lastValue = data[0]
-        ema = [lastValue]
-        _alpha = 2 / (interval + 1)
-        if alpha is not None:
-            _alpha = alpha
-        for i in range(1, len(data)):
-            lastValue = lastValue * (1 - _alpha) + data[i] * _alpha
-            ema.append(lastValue)
-        return ema
-    else:
+        else:
+            return data_cp.ewm(alpha=alpha, adjust=False).mean()
+
+    # list or similar
+    if len(data) == 0:
         raise Exception("data list has no value")
+
+    # Even if len(data) < interval, EMA can still be computed.
+    last = data[0]
+    ema = [last]
+    _alpha = alpha if alpha is not None else 2 / (interval + 1)
+
+    for i in range(1, len(data)):
+        last = last * (1 - _alpha) + data[i] * _alpha
+        ema.append(last)
+
+    return ema
 
 
 def EMAMulti(
@@ -111,58 +125,109 @@ def EMAMulti(
     return ema_df
 
 
-def EWA(data: pd.DataFrame, window: int, alpha=None, adjust=True):
-    """Caliculate Exponential Weighted Moving Average
+def EWA(data, window: int, alpha=None, adjust=True):
+    """
+    Exponential Weighted Moving Average (EWA)
+    maintain the specification of returning list → list, pandas → pandas.
 
     Args:
-        data (pd.DataFrame): ohlc data
+        data (list or np.ndarray or pd.Series or pd.DataFrame): input data
         window (int): window size
-        alpha(float, optional): specify weight value. Defaults to 2/(1+window). 0 < alpha <= 1.
-        adjust(bool, optional): same as pandas. Detauls to True
+        alpha (float, optional): smoothing factor. Defaults to None.
+        adjust (bool, optional): Defaults to True. see pandas ewm adjust parameter.
+    Raises:
+        Exception: data list has no value
+    Returns:
+        list or pd.Series or pd.DataFrame: EWA of input data. return same type as input data
     """
-    if len(data) > window:
-        if type(data) == pd.DataFrame or type(data) == pd.Series:
-            data_cp = data.copy()
-            if alpha is None:
-                return data_cp.ewm(span=window, adjust=adjust).mean()
-            else:
-                return data_cp.ewa(adjust=adjust, alpha=alpha)
-        ema = []
-        alp = 2 / (window + 1)
-        if alpha is not None:
-            alp = alpha
-        if adjust:
-            for y_index in range(0, len(data)):
-                nume = [data[x_index] * (1 - alp) ** (y_index - x_index) for x_index in range(0, y_index + 1)]
-                denom = [(1 - alp) ** (y_index - x_index) for x_index in range(0, y_index + 1)]
-                y_t = nume / denom
-                ema.append(y_t)
+    # --- pandas case ---
+    if isinstance(data, (pd.Series, pd.DataFrame)):
+        if alpha is None:
+            return data.ewm(span=window, adjust=adjust).mean()
         else:
-            raise NotImplemented
-        return ema
-    else:
+            return data.ewm(alpha=alpha, adjust=adjust).mean()
+
+    # --- list/array case ---
+    data = np.asarray(data, dtype=float)
+    n = len(data)
+
+    if n == 0:
         raise Exception("data list has no value")
+
+    # determine alpha
+    alp = alpha if alpha is not None else 2 / (window + 1)
+
+    # adjust=False → usual EMA (recursive formula)
+    if not adjust:
+        ema = [data[0]]
+        for i in range(1, n):
+            ema.append(ema[-1] * (1 - alp) + data[i] * alp)
+        return ema
+
+    # adjust=True → same weighted average calculation as pandas
+    ema = []
+    for t in range(n):
+        weights = (1 - alp) ** np.arange(t, -1, -1)  # t→0
+        numerator = np.sum(data[:t+1] * weights)
+        denominator = np.sum(weights)
+        ema.append(numerator / denominator)
+
+    return ema
 
 
 def SMA(data, window):
     """
-    return list of Simple Moving Average.
-    if data length is less than interval, return EMA with length of data as interval
+    Calculate Simple Moving Average (SMA).
+
+    Args:
+        data (list | pd.Series | pd.DataFrame):
+            Time-series data. If a list is provided, a list is returned.
+            If a pandas Series/DataFrame is provided, the same type is returned.
+
+        window (int):
+            Window size for the SMA. Must be >= 2.
+
+    Returns:
+        list | pd.Series | pd.DataFrame:
+            SMA values. For list input, returns a list with the first (window-1)
+            values padded with NaN to align length with the input.
+            For pandas input, returns a rolling mean using pandas.
+
+    Raises:
+        Exception: If window < 2 or len(data) < window when list is provided.
     """
+
+    # --- validate window ---
     if window < 2:
         raise Exception(f"window size should be greater than 2. specified {window}")
-    if len(data) < window:
-        raise Exception(f"data length should be greater than window. currently {len(data)} < {window}")
-    if type(data) == pd.DataFrame or type(data) == pd.Series:
+
+    # --- pandas case: return pandas result directly ---
+    if isinstance(data, (pd.Series, pd.DataFrame)):
         return data.rolling(window).mean()
-    sma = [np.nan for i in range(0, window - 1)]
-    # TODO: improve the loop
-    for i in range(window, len(data) + 1):
-        start_index = i - window
-        sma_value = 0
-        for j in range(start_index, start_index + window):
-            sma_value += data[j]
-        sma.append(sma_value / window)
+
+    # --- list case ---
+    if len(data) < window:
+        raise Exception(
+            f"data length should be greater than window. currently {len(data)} < {window}"
+        )
+
+    # Convert to numpy array for faster computation
+    arr = np.asarray(data, dtype=float)
+
+    # Prepare output list with leading NaNs
+    sma = [np.nan] * (window - 1)
+
+    # --- use cumulative sum for O(n) SMA ---
+    # cumsum[i] = data[0] + data[1] + ... + data[i]
+    csum = np.cumsum(arr)
+
+    # Compute SMA from index "window-1" onward
+    for i in range(window - 1, len(arr)):
+        # sum of last "window" values:
+        # csum[i] - csum[i-window]   except when i==window-1
+        total = csum[i] - (csum[i - window] if i >= window else 0)
+        sma.append(total / window)
+
     return sma
 
 
@@ -201,38 +266,71 @@ def update_ema(new_tick, ema_value, window, column="Close"):
 
 
 def MACDFromOHLC(
-    data,
-    column="Close",
-    short_window=12,
-    long_window=26,
-    signal_window=9,
-    short_ema_name="ShortEMA",
-    long_ema_name="LongEMA",
-    macd_name="MACD",
-    signal_name="Signal",
+    data: pd.DataFrame,
+    column: str = "Close",
+    short_window: int = 12,
+    long_window: int = 26,
+    signal_window: int = 9,
+    short_ema_name: str = "ShortEMA",
+    long_ema_name: str = "LongEMA",
+    macd_name: str = "MACD",
+    signal_name: str = "Signal",
 ):
-    """caliculate MACD and Signal indicaters from OHLC. Close is used by default.
+    """
+    Calculate MACD and Signal indicators from OHLC data using EMA.
 
     Args:
-        data (pd.DataFrame): ohlc data of a symbol
-        column (str, optional): target column name. Defaults to 'Close'.
-        short_window (int, optional): window size for short EMA. Defaults to 12.
-        long_window (int, optional): window size for long EMA. Defaults to 26.
-        signal_window (int, optional): window size for Signals. Defaults to 9.
+        data (pd.DataFrame): OHLC data containing the target column.
+        column (str, optional): Column name used for MACD calculation. Defaults to "Close".
+        short_window (int, optional): Window size for short EMA (MACD fast line). Defaults to 12.
+        long_window (int, optional): Window size for long EMA (MACD slow line). Defaults to 26.
+        signal_window (int, optional): Window size for Signal EMA. Defaults to 9.
+        short_ema_name (str, optional): Output column name for short EMA. Defaults to "ShortEMA".
+        long_ema_name (str, optional): Output column name for long EMA. Defaults to "LongEMA".
+        macd_name (str, optional): Output column name for MACD line. Defaults to "MACD".
+        signal_name (str, optional): Output column name for Signal line. Defaults to "Signal".
 
     Returns:
-        pd.DataFrame: DataFrame of ShortEMA, LongEMA, MACD and Signal
+        pd.DataFrame: A DataFrame containing ShortEMA, LongEMA, MACD, and Signal columns.
     """
+
+    # --- Calculate EMA values (list or pandas Series depending on EMA implementation) ---
     short_ema = EMA(data[column], short_window)
     long_ema = EMA(data[column], long_window)
-    MACD, Signal = MACDFromEMA(short_ema, long_ema, signal_window)
 
-    elements, columns = __create_out_lists(
-        [short_ema, long_ema, MACD, Signal], [short_ema_name, long_ema_name, macd_name, signal_name]
+    # --- Compute MACD and Signal lines ---
+    # MACD = ShortEMA - LongEMA
+    macd = []
+    for s, l in zip(short_ema, long_ema):
+        macd.append(s - l)
+
+    # Signal line = EMA(MACD)
+    signal = EMA(macd, signal_window)
+
+    # --- Normalize to pandas Series ---
+    # If EMA returned a list, convert to Series with the same index
+    def to_series(obj):
+        if isinstance(obj, (pd.Series, pd.DataFrame)):
+            return obj
+        return pd.Series(obj, index=data.index)
+
+    short_ema_s = to_series(short_ema)
+    long_ema_s = to_series(long_ema)
+    macd_s = to_series(macd)
+    signal_s = to_series(signal)
+
+    # --- Create DataFrame ---
+    macd_df = pd.concat(
+        [short_ema_s, long_ema_s, macd_s, signal_s],
+        axis=1
     )
+    macd_df.columns = [
+        short_ema_name,
+        long_ema_name,
+        macd_name,
+        signal_name,
+    ]
 
-    macd_df = pd.concat(elements, axis=1)
-    macd_df.columns = columns
     return macd_df
 
 
@@ -295,25 +393,54 @@ def MACDFromOHLCMulti(
     return macd_df
 
 
-def BolingerFromSeries(data: pd.Series, window=14, alpha=2):
+def BollingerFromSeries(data: pd.Series, window=14, alpha=2):
+    """
+    Calculate Bollinger Bands from a pandas Series.
+
+    Args:
+        data (pd.Series): Target time series.
+        window (int, optional): Window size for moving average and standard deviation. Defaults to 14.
+        alpha (float, optional): Number of standard deviations for upper/lower bands. Defaults to 2.
+
+    Returns:
+        tuple: (middle_band, upper_band, lower_band, width, std)
+    """
+    # rolling std and mean (ddof=0 matches pandas TA convention)
     stds = data.rolling(window).std(ddof=0)
     mas = data.rolling(window).mean()
+
+    # Bollinger bands
     b_high = mas + stds * alpha
     b_low = mas - stds * alpha
-    # width = stds*alpha*2 #deleted for test purpose as there is small error compared with diff
+
+    # band width (difference between upper and lower)
     width = b_high - b_low
+
     return mas, b_high, b_low, width, stds
 
 
-def BolingerFromArray(data, window=14, alpha=2):
-    if type(data) == list:
+def BollingerFromArray(data, window=14, alpha=2):
+    """
+    Calculate Bollinger Bands from a list-like object.
+
+    Args:
+        data (list): List of numeric values.
+        window (int, optional): Window size. Defaults to 14.
+        alpha (float, optional): Number of std deviations. Defaults to 2.
+
+    Returns:
+        tuple: (middle_band, upper_band, lower_band, width, std)
+    """
+    # Convert to pandas Series
+    if isinstance(data, list):
         data = pd.Series(data)
     else:
-        raise Exception(f"data type {type(data)} is not supported in BolingerFromArray")
-    return BolingerFromSeries(data, window=window, alpha=alpha)
+        raise Exception(f"Unsupported type {type(data)} in BollingerFromArray")
+
+    return BollingerFromSeries(data, window=window, alpha=alpha)
 
 
-def BolingerFromOHLC(
+def BollingerFromOHLC(
     data: pd.DataFrame,
     column="Close",
     window=14,
@@ -324,24 +451,36 @@ def BolingerFromOHLC(
     width_name="B_Width",
     std_name="B_Std",
 ):
-    """Caliculate Bolinger band from ohlc dataframe for a symbol
+    """
+    Calculate Bollinger Bands from an OHLC DataFrame.
 
     Args:
-        data (pd.DataFrame): ohlc data of a symbol
-        column (str, optional): target column name. Defaults to 'Close'.
-        window (int, optional): window size for bolinger band. Defaults to 14.
-        alpha (int, optional): alph to caliculate band. Defaults to 2.
+        data (pd.DataFrame): OHLC data for a symbol.
+        column (str, optional): Column name to calculate the bands from. Defaults to 'Close'.
+        window (int, optional): Window size. Defaults to 14.
+        alpha (float, optional): Number of std deviations. Defaults to 2.
+        mean_name (str, optional): Output column name for middle band.
+        upper_name (str, optional): Output column name for upper band.
+        lower_name (str, optional): Output column name for lower band.
+        width_name (str, optional): Output column name for band width.
+        std_name (str, optional): Output column name for std.
 
     Returns:
-        pd.DataFrame: B_MA, B_Hig, B_Low, B_Width, B_Std for a symbol
+        pd.DataFrame: DataFrame containing Bollinger Bands.
     """
-    ma, b_high, b_low, width, stds = BolingerFromSeries(data[column], window=window, alpha=alpha)
+    # Calculate Bollinger Bands from the selected column
+    ma, b_high, b_low, width, stds = BollingerFromSeries(
+        data[column], window=window, alpha=alpha
+    )
+
+    # Combine results into a DataFrame
     b_df = pd.concat([ma, b_high, b_low, width, stds], axis=1)
     b_df.columns = (mean_name, upper_name, lower_name, width_name, std_name)
+
     return b_df
 
 
-def BolingerFromOHLCMulti(
+def BollingerFromOHLCMulti(
     symbols: list,
     data: pd.DataFrame,
     column="Close",
@@ -354,13 +493,13 @@ def BolingerFromOHLCMulti(
     width_name="B_Width",
     std_name="B_Std",
 ):
-    """Caliculate Bolinger band from ohlc dataframe for symbols
+    """Calculate Bollinger band from ohlc dataframe for symbols
 
     Args:
         symbols (list<str>): symbol list. Each element should match with column.
         data (pd.DataFrame): ohlc data of symbols
         column (str, optional): target column name. Defaults to 'Close'.
-        window (int, optional): window size for bolinger band. Defaults to 14.
+        window (int, optional): window size for bollinger band. Defaults to 14.
         alpha (int, optional): alph to caliculate band. Defaults to 2.
         grouped_by_symbol (bool, optional): If True, return a result with (symbol, column). Defaults to False.
 
@@ -373,7 +512,7 @@ def BolingerFromOHLCMulti(
 
     ohlc_dfs = df[[(symbol, column) for symbol in symbols]]
 
-    ma, b_high, b_low, width, stds = BolingerFromSeries(ohlc_dfs, window=window, alpha=alpha)
+    ma, b_high, b_low, width, stds = BollingerFromSeries(ohlc_dfs, window=window, alpha=alpha)
     elements, columns = create_multi_out_lists(
         symbols, [ma, b_high, b_low, width, stds], [mean_name, upper_name, lower_name, width_name, std_name], grouped_by_symbol
     )
@@ -418,33 +557,59 @@ def ATRFromMultiOHLC(
     return out_df
 
 
-def ATRFromOHLC(data: pd.DataFrame, ohlc_columns=("Open", "High", "Low", "Close"), window=14, tr_name="TR", atr_name="ATR"):
+def ATRFromOHLC(
+    data: pd.DataFrame,
+    ohlc_columns=("Open", "High", "Low", "Close"),
+    window=14,
+    tr_name="TR",
+    atr_name="ATR"
+):
     """
-    function to calculate True Range and Average True Range
+    Calculate True Range (TR) and Average True Range (ATR).
 
     Args:
-        data (pd.DataFrame): ohlc data
-        ohlc_columns (tuple, optional): Defaults to ('Open', 'High', 'Low', 'Close').
-        window (int, optional): Defaults to 14.
+        data (pd.DataFrame): OHLC data.
+        ohlc_columns (tuple, optional): Column names for (Open, High, Low, Close). 
+                                        Defaults to ('Open', 'High', 'Low', 'Close').
+        window (int, optional): Window size for ATR. Defaults to 14.
+        tr_name (str, optional): Output column name for True Range. Defaults to "TR".
+        atr_name (str, optional): Output column name for ATR. Defaults to "ATR".
 
     Returns:
-        pd.Series: Name:ATR, dtype:float64. inlucdes Null till window size
+        pd.DataFrame or pd.Series:
+            If tr_name is not None:
+                Returns DataFrame containing TR and ATR.
+            Otherwise:
+                Returns ATR as a Series.
     """
     high_cn = ohlc_columns[1]
     low_cn = ohlc_columns[2]
     close_cn = ohlc_columns[3]
 
     df = data.copy()
+
+    # --- True Range components ---
+    # High - Low
     df["H-L"] = df[high_cn] - df[low_cn]
+
+    # |High - Previous Close|
     df["H-PC"] = abs(df[high_cn] - df[close_cn].shift(1))
+
+    # |Low - Previous Close|
     df["L-PC"] = abs(df[low_cn] - df[close_cn].shift(1))
+
+    # True Range = max(H-L, H-PC, L-PC)
     df[tr_name] = df[["H-L", "H-PC", "L-PC"]].max(axis=1)
+
+    # --- ATR using EMA (Wilder's method uses alpha = 1/window) ---
+    # Your EMA function is used here.
     df[atr_name] = EMA(df[tr_name], interval=window)
+
+    # --- Return result ---
     if tr_name is not None:
         return df[[tr_name, atr_name]].copy()
     else:
         return df[atr_name].copy()
-    
 
 
 def update_ATR(
@@ -496,8 +661,9 @@ def RSIFromOHLC(
         df["gain"].ewm(alpha=1 / window, adjust=False).mean()
     )  # tradeview said exponentially weighted moving average with aplpha = 1/length is used
     avgloss_df = df["loss"].ewm(alpha=1 / window, adjust=False).mean()
-    rs_df = avgain_df / avgloss_df
+    rs_df = avgain_df / avgloss_df.replace(0, np.nan)
     rsi_df = 100 - (100 / (1 + rs_df))
+    rsi_df = rsi_df.fillna(100)  # avgloss=0 → RS=∞ → RSI=100
     elements, columns = __create_out_lists([avgain_df, avgloss_df, rsi_df], [mean_gain_name, mean_loss_name, rsi_name])
     out_df = pd.concat(elements, axis=1)
     out_df.columns = columns
@@ -799,27 +965,13 @@ def SlopeFromSeries(ser: pd.Series, window: int):
     Returns:
         pd.Series: slope values
     """
-    # slopes = [0 for i in range(window - 1)]
     index = ser.index
-
-    # for i in range(window, len(ser) + 1):
-    #     y = ser.iloc[i - window : i]
-    #     x = np.array(range(window))
-    #     y_scaled = (y - y.min()) / (y.max() - y.min())
-    #     x_scaled = (x - x.min()) / (x.max() - x.min())
-    #     x_scaled = sm.add_constant(x_scaled)
-    #     model = sm.OLS(y_scaled, x_scaled)
-    #     results = model.fit()
-    #     slopes.append(results.params[-1])
-    # slope_angle = np.rad2deg(np.arctan(np.array(slopes)))
-    # slope_ser = pd.Series(np.array(slope_angle))
     def calc_slope(x):
         slope = np.polyfit(range(len(x)), x, 1)[0]
         return slope
-
-    # set min_periods=2 to allow subsets less than 60.
-    # use [4::5] to select the results you need.
-    slope_ser = ser.rolling(window=window).apply(calc_slope)
+    
+    # raw=True to pass numpy array to calc_slope fast
+    slope_ser = ser.rolling(window=window).apply(calc_slope, raw=True)
     slope_ser.index = index
     return slope_ser
 
@@ -867,33 +1019,53 @@ def SlopeFromOHLCMulti(
     return slope_dfs
 
 
-def __CCI(ohlc: pd.DataFrame, window=14, ohlc_columns=("Open", "High", "Low", "Close")):
-    close_column = ohlc_columns[3]
-    low_column = ohlc_columns[2]
-    high_column = ohlc_columns[1]
-
-    tp = (ohlc[high_column] + ohlc[low_column] + ohlc[close_column]) / 3
-    ma = EMA(ohlc[close_column], window)
-    md = (tp - ma).std()
-    cci = (tp - ma) / (0.015 * md)
+def __CCI(ohlc: pd.DataFrame, window=14, ohlc_columns=("Open", "High", "Low", "Close")) -> pd.Series:
+    """
+    Internal function to calculate Commodity Channel Index (CCI)
+    
+    Args:
+        ohlc (pd.DataFrame): OHLC data
+        window (int, optional): window size for moving average. Defaults to 14.
+        ohlc_columns (tuple, optional): names of OHLC columns. Defaults to ("Open", "High", "Low", "Close")
+    
+    Returns:
+        pd.Series: CCI values
+    """
+    # Typical Price: (High + Low + Close) / 3
+    tp = (ohlc[ohlc_columns[1]] + ohlc[ohlc_columns[2]] + ohlc[ohlc_columns[3]]) / 3
+    
+    # SMA of typical price
+    ma_tp = tp.rolling(window).mean()
+    
+    # Mean deviation
+    md = tp.rolling(window).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
+    
+    # CCI calculation
+    cci = (tp - ma_tp) / (0.015 * md)
     return cci
 
-
 def CommodityChannelIndex(
-    ohlc: pd.DataFrame, window=14, ohlc_columns=("Open", "High", "Low", "Close"), cci_name="CCI"
+    ohlc: pd.DataFrame,
+    window: int = 14,
+    ohlc_columns: tuple = ("Open", "High", "Low", "Close"),
+    cci_name: str = "CCI"
 ) -> pd.DataFrame:
-    """represents how much close value is far from mean value. If over 100, strong long trend for example.
-
-    Args:
-        ohlc (pd.DataFrame): Open High Low Close values
-        window (int, optional): window size to caliculate EMA. Defaults to 14.
-        ohlc_columns (tuple, optional): tuple of Open High Low Close column names. Defaults to ('Open', 'High', 'Low', 'Close').
-
-    Returns:
-        pd.DataFrame: CCI value on CCI column
     """
-    cci = __CCI(ohlc, window, ohlc_columns)
-    return pd.DataFrame(cci, columns=[cci_name])
+    Calculate Commodity Channel Index (CCI) for a symbol.
+    CCI measures how far the typical price deviates from its moving average.
+    Typically, CCI > 100 indicates strong uptrend, CCI < -100 indicates strong downtrend.
+    
+    Args:
+        ohlc (pd.DataFrame): OHLC data
+        window (int, optional): window size for CCI. Defaults to 14.
+        ohlc_columns (tuple, optional): names of OHLC columns. Defaults to ("Open", "High", "Low", "Close").
+        cci_name (str, optional): output column name for CCI. Defaults to "CCI".
+    
+    Returns:
+        pd.DataFrame: DataFrame with single column for CCI
+    """
+    cci_series = __CCI(ohlc, window, ohlc_columns)
+    return pd.DataFrame(cci_series, columns=[cci_name])
 
 
 def CommodityChannelIndexMulti(
@@ -929,6 +1101,128 @@ def CommodityChannelIndexMulti(
         cci.columns = cci.columns.swaplevel(0, 1)
 
     return cci
+
+
+def ADXFromOHLC(data: pd.DataFrame, window=14, ohlc_columns=("Open","High","Low","Close"),
+                plus_di_name="+DI", minus_di_name="-DI", adx_name="ADX") -> pd.DataFrame:
+    """
+    Calculate ADX (Average Directional Index) and +DI / -DI indicators.
+
+    Args:
+        data (pd.DataFrame): OHLC time series
+        window (int, optional): lookback window for calculation. Defaults to 14.
+        ohlc_columns (tuple, optional): OHLC column names. Defaults to ("Open","High","Low","Close").
+        plus_di_name (str, optional): output column name for +DI. Defaults to "+DI".
+        minus_di_name (str, optional): output column name for -DI. Defaults to "-DI".
+        adx_name (str, optional): output column name for ADX. Defaults to "ADX".
+
+    Returns:
+        pd.DataFrame: +DI, -DI, ADX
+    """
+    high = data[ohlc_columns[1]]
+    low = data[ohlc_columns[2]]
+
+    # True Range
+    tr = ATRFromOHLC(data, ohlc_columns=ohlc_columns, window=1, tr_name="TR", atr_name="TR_temp")["TR_temp"]
+
+    # directional movements
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+    # smooth DM and TR
+    plus_di = 100 * EMA(pd.Series(plus_dm), window) / EMA(tr, window)
+    minus_di = 100 * EMA(pd.Series(minus_dm), window) / EMA(tr, window)
+
+    # DX and ADX
+    dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
+    adx = EMA(pd.Series(dx), window)
+
+    return pd.DataFrame({plus_di_name: plus_di, minus_di_name: minus_di, adx_name: adx})
+
+def StochasticOscillatorFromOHLC(data: pd.DataFrame, k_window=14, d_window=3,
+                                 ohlc_columns=("Open","High","Low","Close"),
+                                 k_name="%K", d_name="%D") -> pd.DataFrame:
+    """
+    Calculate Stochastic Oscillator (%K and %D) from OHLC data.
+
+    Args:
+        data (pd.DataFrame): OHLC time series
+        k_window (int, optional): lookback window for %K. Defaults to 14.
+        d_window (int, optional): moving average window for %D. Defaults to 3.
+        ohlc_columns (tuple, optional): OHLC column names. Defaults to ("Open","High","Low","Close").
+        k_name (str, optional): column name for %K. Defaults to "%K".
+        d_name (str, optional): column name for %D. Defaults to "%D".
+
+    Returns:
+        pd.DataFrame: %K and %D
+    """
+    high = data[ohlc_columns[1]]
+    low = data[ohlc_columns[2]]
+    close = data[ohlc_columns[3]]
+
+    lowest_low = low.rolling(k_window).min()
+    highest_high = high.rolling(k_window).max()
+
+    k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+    d = k.rolling(d_window).mean()
+
+    return pd.DataFrame({k_name: k, d_name: d})
+
+def ParabolicSARFromOHLC(data: pd.DataFrame, ohlc_columns=("Open","High","Low","Close"),
+                          af_start=0.02, af_increment=0.02, af_max=0.2,
+                          sar_name="ParabolicSAR") -> pd.DataFrame:
+    """
+    Calculate Parabolic SAR for OHLC data.
+
+    Args:
+        data (pd.DataFrame): OHLC time series
+        ohlc_columns (tuple, optional): OHLC column names. Defaults to ("Open","High","Low","Close").
+        af_start (float, optional): initial acceleration factor. Defaults to 0.02.
+        af_increment (float, optional): step increment for AF. Defaults to 0.02.
+        af_max (float, optional): maximum AF. Defaults to 0.2.
+        sar_name (str, optional): output column name. Defaults to "ParabolicSAR".
+
+    Returns:
+        pd.DataFrame: Parabolic SAR series
+    """
+    high = data[ohlc_columns[1]].values
+    low = data[ohlc_columns[2]].values
+    n = len(data)
+    sar = np.zeros(n)
+
+    # initial trend
+    uptrend = True if high[1] > high[0] else False
+    ep = low[0] if not uptrend else high[0]  # extreme point
+    af = af_start
+    sar[0] = low[0] if uptrend else high[0]
+
+    for i in range(1, n):
+        sar[i] = sar[i-1] + af * (ep - sar[i-1])
+        if uptrend:
+            if low[i] < sar[i]:
+                uptrend = False
+                sar[i] = ep
+                ep = low[i]
+                af = af_start
+            else:
+                if high[i] > ep:
+                    ep = high[i]
+                    af = min(af + af_increment, af_max)
+        else:
+            if high[i] > sar[i]:
+                uptrend = True
+                sar[i] = ep
+                ep = high[i]
+                af = af_start
+            else:
+                if low[i] < ep:
+                    ep = low[i]
+                    af = min(af + af_increment, af_max)
+
+    return pd.DataFrame({sar_name: sar}, index=data.index)
+
 
 def bearish_engulfing(df, open_column, close_column):
     prev = df.shift(1)
