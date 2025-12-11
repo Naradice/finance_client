@@ -2,6 +2,8 @@ from . import frames as Frame
 from .client_base import ClientBase
 from .coincheck.client import CoinCheckClient
 from .csv.client import CSVClient
+from .fprocess import fprocess
+from .fprocess.fprocess import indicaters
 from .logger import setup_logging
 from .position import ORDER_TYPE, POSITION_TYPE
 from .tool import AgentTool

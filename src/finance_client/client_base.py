@@ -402,8 +402,14 @@ class ClientBase(metaclass=ABCMeta):
         position = self.wallet.storage.get_position(id)
         return position
 
-    def get_positions(self) -> list:
-        long_positions, short_positions = self.wallet.storage.get_positions()
+    def get_positions(self, symbols=None) -> list:
+        """get all positions
+        Args:
+            symbols (list, optional): list of symbols to filter positions. Defaults to None.
+        Returns:
+            list: list of Position
+        """
+        long_positions, short_positions = self.wallet.storage.get_positions(symbols=symbols)
         long_positions = list(long_positions)
         short_positions = list(short_positions)
         long_positions.extend(short_positions)

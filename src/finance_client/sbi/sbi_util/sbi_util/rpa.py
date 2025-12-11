@@ -397,7 +397,7 @@ class STOCK:
     def open_ordered_position_page(self):
         return self.__trade_page_handler(sbi_enum.TRADE_HEADER.ORDER_INQUIRY)
 
-    def get_positions(self):
+    def get_positions(self, symbols=None) -> list:
         if self.open_position_page():
             positions = []
             li_eles = self.driver.find_elements(By.CLASS_NAME, "seeds-table-row")
@@ -469,7 +469,15 @@ class STOCK:
                 position["buy_link"] = buy_ele
                 position["sell_link"] = sell_ele
 
-                positions.append(position)
+                if symbols is not None:
+                    if isinstance(symbols, list):
+                        if symbol_name in symbols or str(symbol_index) in symbols or int(symbol_index) in symbols:
+                            positions.append(position)
+                    else:
+                        if symbol_name == symbols or str(symbol_index) == symbols or int(symbol_index) == symbols:
+                            positions.append(position)
+                else:
+                    positions.append(position)
             return positions
         else:
             return []

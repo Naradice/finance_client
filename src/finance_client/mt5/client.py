@@ -5,7 +5,7 @@ import random
 import threading
 import traceback
 from time import sleep
-from typing import Union
+from typing import List, Union
 
 import MetaTrader5 as mt5
 import numpy
@@ -1096,18 +1096,23 @@ class MT5Client(ClientBase):
     def _update_client_positions(self, actual_positions):
         self._sync_positions(actual_positions=actual_positions)
 
-    def get_positions(self):
+    def get_positions(self, symbols: Union[str, List[str]] = None):
         if self.__ignore_order:
-            return super().get_positions()
+            return super().get_positions(symbols=symbols)
         else:
             mt5_positions = mt5.positions_get()
             positions = []
             positions_by_order = []
             # convert mt5 position to client position
+            if symbols is not None:
+                if isinstance(symbols, str):
+                    symbols = [symbols]
             for m_position in mt5_positions:
                 if self.user_name is not None:
                     if self.user_name != m_position.comment:
                         continue
+                if symbols is not None and m_position.symbol not in symbols:
+                    continue
                 for order in self._open_orders:
                     if order == m_position.magic and order.symbol == m_position.symbol:
                         positions_by_order.append(order.id)
