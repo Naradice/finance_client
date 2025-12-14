@@ -102,7 +102,7 @@ class Position:
                     self.timestamp = timestamp
 
     def __str__(self):
-        return f"(position_type:{self.position_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol})"
+        return f"(position_type:{self.position_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, resilt: {self.result}, time_index:{self.index}, id:{self.id})"
 
     def __repr__(self):
         return self.__str__()
@@ -164,13 +164,14 @@ class Order:
             "sl": self.sl,
             "id": self.id,
         }
-    
+
     def __str__(self):
         return f"Order(id={self.id}, order_type={self.order_type}, position_type={self.position_type}, symbol={self.symbol}, price={self.price}, amount={self.amount}, tp={self.tp}, sl={self.sl})"
 
+
 class ClosedResult:
 
-    def __init__(self, id=None, price=0.0, entry_price=0.0, amount=0, price_diff=0.0, profit=0.0, msg=""):
+    def __init__(self, id=None, price=0.0, entry_price=0.0, amount=0, price_diff=0.0, profit=0.0, msg="undefined error"):
         self.id = id
         self.price = price
         self.entry_price = entry_price
@@ -178,7 +179,7 @@ class ClosedResult:
         self.price_diff = price_diff
         self.profit = profit
         self.msg = msg
-        self.error = False
+        self.error = True
 
     def update(self, id=None, price=None, entry_price=None, price_diff=None, amount=None, profit=None, msg=None):
         if id is not None:
@@ -205,6 +206,6 @@ class ClosedResult:
             "profit": self.profit,
             "msg": self.msg,
         }
-    
+
     def __str__(self):
         return f"ClosedResult(id={self.id}, price={self.price}, entry_price={self.entry_price}, amount={self.amount}, price_diff={self.price_diff}, profit={self.profit}, msg={self.msg})"

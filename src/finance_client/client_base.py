@@ -271,13 +271,21 @@ class ClientBase(metaclass=ABCMeta):
                 return closed_result
             if position is None:
                 position = self.wallet.storage.get_position(id)
-            if amount is None:
+            if amount is None or amount == 0:
                 if position is not None:
                     amount = position.amount
                 else:
                     logger.error(f"both amount and position is None: {id}")
                     default_closed_result.msg = "both amount and position is None"
                     return default_closed_result
+            if symbol is None:
+                if position is None:
+                    logger.error(f"position is None for id: {id}")
+                    default_closed_result.msg = "position is None"
+                    return default_closed_result
+                symbol = position.symbol
+            if position.result is None:
+                position.result = position.id
         else:
             if symbol is None or position_type is None:
                 error_msg = "Either id or symbol and position_type should be specified."
@@ -305,6 +313,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 price = self.get_current_bid(position.symbol)
                 logger.debug(f"order close with current ask rate {price}")
+            logger.debug(f"close long position is ordered for {position}")
             result = self._sell_to_close(position.symbol, price, amount, option_info=position.option, result=position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
@@ -313,8 +322,9 @@ class ClientBase(metaclass=ABCMeta):
         elif position.position_type == POSITION_TYPE.short:
             logger.debug(f"close short position is ordered for {id}")
             if price is None:
-                logger.debug(f"order close with current bid rate {price}")
                 price = self.get_current_ask(position.symbol)
+                logger.debug(f"order close with current bid rate {price}")
+            logger.debug(f"close short position is ordered for {position}")
             result = self._buy_to_close(position.symbol, price, amount, option_info=position.option, result=position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
@@ -324,9 +334,7 @@ class ClientBase(metaclass=ABCMeta):
             logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
-        closed_result = self.wallet.close_position(
-            position.id, price, amount=amount, position=position, index=self.get_current_datetime()
-        )
+        closed_result = self.wallet.close_position(position.id, price, amount=amount, position=position, index=self.get_current_datetime())
         return closed_result
 
     def close_all_positions(self, symbols: list = None):
@@ -389,7 +397,7 @@ class ClientBase(metaclass=ABCMeta):
             results.append(result)
         num_results = len(results)
         return results
-    
+
     def get_position(self, id) -> Union[Position, None]:
         """get position by id
 
@@ -408,7 +416,7 @@ class ClientBase(metaclass=ABCMeta):
         short_positions = list(short_positions)
         long_positions.extend(short_positions)
         return long_positions
-    
+
     def get_unit_size(self, symbol: str) -> float:
         return 1.0
 
