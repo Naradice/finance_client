@@ -1,4 +1,4 @@
-from . import indicaters, ohlc, standalization, validation
+from . import indicaters, ohlc, regime, standalization, validation
 from .addprocess import get_indicater
 from .idcprocess import *
 from .preprocess import *

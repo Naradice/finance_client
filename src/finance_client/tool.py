@@ -747,7 +747,7 @@ class AgentTool:
         query_length = length + process.get_minimum_required_length()
         ohlc_df = self.__get_ohlc(symbol, query_length, frame)
         renko_df = process.run(ohlc_df)
-        renko_df = renko_df[[process.KEY_BRICK_NUM]]
+        renko_df = renko_df[[process.KEY_VALUE]]
         renko_df.columns = ["Renko"]
         renko_df = renko_df.iloc[-length:]
         renko_df = renko_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))

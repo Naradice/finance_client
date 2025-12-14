@@ -732,7 +732,7 @@ def update_RSI(pre_data: pd.Series, new_data: pd.Series, columns=("avgGain", "av
     return avgGain, avgLoss, rsi
 
 
-def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick_value_name="BrickValue"):
+def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick_size_name="BrickSize"):
     """Caliculate brick number of Renko
 
     Args:
@@ -740,7 +740,7 @@ def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick
         brick_size (pd.Series|float): brick_size to caliculate the Renko.
 
     Returns:
-        pd.Series: brick_num
+        pd.DataFrame: renko bricks and brick values
     """
 
         # --- prepare brick_size as series ---
@@ -754,7 +754,7 @@ def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick
     prices = data.reset_index(drop=True).astype(float)
     n = len(prices)
 
-    # output series
+    # output series     
     renko_bricks = pd.Series(0, index=prices.index, dtype=float)
     brick_values = pd.Series(0.0, index=prices.index, dtype=float)
 
@@ -762,7 +762,7 @@ def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick
     try:
         idx0 = prices[pd.notna(prices)].index[0]
     except IndexError:
-        return pd.DataFrame({total_brick_name: renko_bricks, brick_value_name: brick_values})
+        return pd.DataFrame({total_brick_name: renko_bricks, brick_size_name: brick_values})
 
     # initial reference
     ref_price = prices.iloc[idx0]
@@ -779,8 +779,8 @@ def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick
             continue
 
         # --- continuous brick value ---
-        brick_values.iloc[i] = (price - ref_price) / bsize
         diff = price - ref_price
+        brick_values.iloc[i] = diff / bsize
 
         if diff >= bsize:
             bricks_up = int(diff // bsize)
@@ -812,7 +812,7 @@ def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick
     # restore index
     out = pd.DataFrame({
         total_brick_name: renko_bricks.set_axis(data.index),
-        brick_value_name: brick_values.set_axis(data.index)
+        brick_size_name: brick_values.set_axis(data.index)
     })
     return out
 
@@ -824,7 +824,7 @@ def RenkoFromOHLC(
     brick_size=None,
     atr_window=14,
     total_brick_name="Renko",
-    brick_num_name="Brick",
+    brick_size_name="Brick",
 ):
     """Caliculate Renko from Close column of ohlc dataframe
 
@@ -848,11 +848,11 @@ def RenkoFromOHLC(
             else:
                 brick_size = df[brick_column_name]
             renko_df = RenkoFromSeries(
-                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_value_name=brick_num_name
+                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_size_name=brick_size_name
             )
         else:
             renko_df = RenkoFromSeries(
-                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_value_name=brick_num_name
+                df[ohlc_columns[3]], brick_size=brick_size, total_brick_name=total_brick_name, brick_size_name=brick_size_name
             )
         return renko_df
     else:

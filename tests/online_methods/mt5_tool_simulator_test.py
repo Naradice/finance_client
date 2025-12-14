@@ -82,6 +82,18 @@ class TestMT5ClientWithSQL(unittest.TestCase):
             self.assertTrue(res)
         orders = self.tool.get_orders()
         self.assertEqual(len(orders), 0)
+    
+    def test_open_positions(self):
+        position = self.tool.order(is_buy=True, symbol=tgt_symbol, price=155.0, volume=0.01, order_type=0, tp=160.0, sl=150.0)
+        self.assertIn("id", position)
+        positions = self.tool.get_positions()
+        self.assertIn(position["id"], positions)
+        self.assertEqual(positions[position["id"]]["volume"], '0.01')
+        sec_position = self.tool.order(is_buy=False, symbol="EURUSD", volume=0.02, order_type=0)
+        self.assertIn("id", sec_position)
+        positions = self.tool.get_positions()
+        self.assertIn(sec_position["id"], positions)
+        self.assertEqual(positions[sec_position["id"]]["volume"], '0.02')
         
     def test_get_ask_rate(self):
         ask_rate = self.tool.get_ask_rate(tgt_symbol)
@@ -161,6 +173,226 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         self.tool.close_all_positions()
         positions = self.tool.get_positions()
         self.assertEqual(len(positions), 0)
+
+    def test_get_MACD(self):
+        """test get_MACD method"""
+        length = 10
+        short_window = 12
+        long_window = 26
+        signal_window = 9
+        frame = "30min"
+        macd = self.tool.get_MACD(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            short_window=short_window,
+            long_window=long_window,
+            signal_window=signal_window,
+        )
+        self.assertIsInstance(macd, str)   
+        lines = macd.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 3)  # index, MACD, SIGNAL
+            try:
+                float_macd = float(parts[1])
+                float_signal = float(parts[2])
+            except Exception:
+                self.fail("MACD or SIGNAL is not a valid float string")
+
+    def test_get_ATR(self):
+        """test get_ATR method"""
+        length = 10
+        period = 14
+        frame = "30min"
+        atr = self.tool.get_ATR(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=period,
+        )
+        self.assertIsInstance(atr, str)   
+        lines = atr.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 2)  # index, ATR
+            try:
+                float_atr = float(parts[1])
+            except Exception:
+                self.fail("ATR is not a valid float string")
+
+    def test_get_BollingerBands(self):
+        """test get_BollingerBands method"""
+        length = 10
+        window = 20
+        num_std_dev = 2
+        frame = "30min"
+        bb = self.tool.get_BollingerBands(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+            alpha=num_std_dev,
+        )
+        print(bb)
+        self.assertIsInstance(bb, str)   
+        lines = bb.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 5)  # index, UB, LB, Width, StdDev
+            try:
+                float_ub = float(parts[1])
+                float_lb = float(parts[2])
+                float_width = float(parts[3])
+                float_stddev = float(parts[4])
+            except Exception:
+                self.fail("MB, UB, or LB is not a valid float string")
+    
+    def test_get_RSI(self):
+        """test get_RSI method"""
+        length = 10
+        window = 14
+        frame = "30min"
+        rsi = self.tool.get_RSI(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+        )
+        print(rsi)
+        self.assertIsInstance(rsi, str)   
+        lines = rsi.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 4)  # index, RSI, Gain, Loss
+            try:
+                float_rsi = float(parts[1])
+                float_gain = float(parts[2])
+                float_loss = float(parts[3])
+            except Exception:
+                self.fail("RSI is not a valid float string")
+
+    def test_get_MA(self):
+        """test get_MA method"""
+        length = 10
+        window = 14
+        frame = "30min"
+        ma = self.tool.get_SMA(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+        )
+        print(ma)
+        self.assertIsInstance(ma, str)   
+        lines = ma.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 2)  # index, MA
+            try:
+                float_ma = float(parts[1])
+            except Exception:
+                self.fail("MA is not a valid float string")
+    
+    def test_get_EMA(self):
+        """test get_EMA method"""
+        length = 10
+        window = 14
+        frame = "30min"
+        ema = self.tool.get_EMA(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+        )
+        print(ema)
+        self.assertIsInstance(ema, str)   
+        lines = ema.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 2)  # index, EMA
+            try:
+                float_ema = float(parts[1])
+            except Exception:
+                self.fail("EMA is not a valid float string")
+
+    # def test_get_CCI(self):
+    #     """test get_CCI method"""
+    #     length = 10
+    #     window = 14
+    #     frame = "30min"
+    #     cci = self.tool.get_CCI(
+    #         symbol=tgt_symbol,
+    #         length=length,
+    #         frame=frame,
+    #         window=window,
+    #     )
+    #     print(cci)
+    #     self.assertIsInstance(cci, str)   
+    #     lines = cci.splitlines()
+    #     self.assertEqual(len(lines), length + 1)  # header + length
+    #     for line in lines[1:]:
+    #         parts = line.split(",")
+    #         self.assertEqual(len(parts), 2)  # index, CCI
+    #         try:
+    #             float_cci = float(parts[1])
+    #         except Exception:
+    #             self.fail("CCI is not a valid float string")
+    
+    def test_get_LinearRegressionMomentum(self):
+        """test get_LinearRegressionMomentum method"""
+        length = 10
+        window = 14
+        frame = "30min"
+        lrm = self.tool.get_LinearRegressionMomentum(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+        )
+        print(lrm)
+        self.assertIsInstance(lrm, str)   
+        lines = lrm.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 2)  # index, LRM
+            try:
+                float_lrm = float(parts[1])
+            except Exception:
+                self.fail("LRM is not a valid float string")
+            
+    def test_get_Renko(self):
+        """test get_Renko method"""
+        length = 10
+        window = 14
+        frame = "30min"
+        renko = self.tool.get_Renko(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+        )
+        print(renko)
+        self.assertIsInstance(renko, str)   
+        lines = renko.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 2)  # index, Renko
+            try:
+                float_renko = float(parts[1])
+            except Exception:
+                self.fail("Renko is not a valid float string")
+
+    def tearDown(self) -> None:
+        self.client.close_client()
 
 
 if __name__ == "__main__":

@@ -72,13 +72,34 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         suc, position = self.client.open_trade(is_buy=True, amount=1, symbol=tgt_symbol, price=155.0, tp=160.0, sl=50.0, order_type=ORDER_TYPE.limit)
         self.assertTrue(suc, "order placement failed")
         self.assertIsNotNone(position)
-        suc = self.client.cancel_order(position=position)
+        suc = self.client.cancel_order(position=position.id)
         self.assertTrue(suc, "canceling order failed")
 
 
     def test_05_order_cancel_invalid(self):
         suc = self.client.cancel_order(position=99999999)
         self.assertTrue(not suc, "canceling invalid order should fail")
+
+    def test_06_get_positions(self):
+        suc, position1 = self.client.open_trade(is_buy=True, amount=1, symbol=tgt_symbol)
+        self.assertTrue(suc, "please check if market opens")
+        self.assertIsNotNone(position1)
+
+        suc, position2 = self.client.open_trade(is_buy=False, amount=1, symbol="EURJPY")
+        self.assertTrue(suc, "please check if market opens")
+        self.assertIsNotNone(position2)
+
+        positions = self.client.get_positions(symbols=[tgt_symbol])
+        self.assertTrue(len(positions) == 1, "getting positions failed")
+
+        positions = self.client.get_positions()
+        self.assertTrue(len(positions) >= 2, "getting all positions failed")
+
+        result = self.client.close_position(position=position1)
+        self.assertTrue(not result.error, "please check if market opens")
+
+        result = self.client.close_position(position=position2)
+        self.assertTrue(not result.error, "please check if market opens")
 
     @classmethod
     def tearDownClass(self) -> None:

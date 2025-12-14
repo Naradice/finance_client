@@ -113,7 +113,7 @@ class TestPositionWithSQLite(unittest.TestCase):
         position = manager.storage.get_position(position.id)
         self.assertTrue(isinstance(position, Position))
 
-    def get_positions(self):
+    def get_positions(self, symbols=None):
         key = "test"
         storage = db.SQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)

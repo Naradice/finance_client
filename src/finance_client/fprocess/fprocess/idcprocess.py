@@ -584,23 +584,40 @@ class RenkoProcess(ProcessBase):
         self,
         key: str = "renko",
         ohlc_column=("Open", "High", "Low", "Close"),
-        window=10,
+        window=None,
+        brick_size=None,
         is_input=True,
         is_output=True,
         option=None,
     ):
+        """Process to calculate Renko Brick
+
+        Args:
+            key (str, optional): key value to indicate in column of output. Defaults to "renko".
+            ohlc_column (tuple, optional): tuple of column names for OHLC data. Defaults to ("Open", "High", "Low", "Close").
+            window (int, optional): window size to calculate ATR for brick size. Defaults to None.
+            brick_size (float, optional): size of each Renko brick. Defaults to None.
+            is_input (bool, optional): whether this process is an input. Defaults to True.
+            is_output (bool, optional): whether this process is an output. Defaults to True.
+            option (dict, optional): additional options. Defaults to None.
+        Exception: either window or brick_size must be specified, but not both.
+        """
         super().__init__(key)
-        self.option = {"ohlc_column": ohlc_column, "window": window}
+        if window is None and brick_size is None:
+            raise Exception("either window or brick_size must be specified")
+        if window is not None and brick_size is not None:
+            raise Exception("only one of window or brick_size must be specified")
+        self.option = {"ohlc_column": ohlc_column, "window": window, "brick_size": brick_size}
         if option is not None:
             self.option.update(option)
         self.is_input = is_input
         self.is_output = is_output
-        self.KEY_BRICK_NUM = f"{key}_BrickNum"
+        self.KEY_BRICK_SIZE = f"{key}_BrickSize"
         self.KEY_VALUE = f"{key}_Value"
 
     @property
     def columns(self):
-        return [self.KEY_BRICK_NUM, self.KEY_VALUE]
+        return [self.KEY_BRICK_SIZE, self.KEY_VALUE]
 
     @classmethod
     def load(self, key: str, params: dict):
@@ -614,8 +631,9 @@ class RenkoProcess(ProcessBase):
         option = self.option
         ohlc_column = option["ohlc_column"]
         window = option["window"]
+        brick_size = option["brick_size"]
 
-        renko_block_num = self.KEY_BRICK_NUM
+        renko_brick_size = self.KEY_BRICK_SIZE
         renko_value = self.KEY_VALUE
 
         if type(data.columns) == pd.MultiIndex:
@@ -626,13 +644,15 @@ class RenkoProcess(ProcessBase):
                 data,
                 ohlc_columns=ohlc_column,
                 atr_window=window,
+                brick_size=brick_size,
                 grouped_by_symbol=grouped_by_symbol,
                 total_brick_name=renko_value,
-                brick_num_name=renko_block_num,
+                brick_num_name=renko_brick_size,
             )
         else:
             renko_df = technical.RenkoFromOHLC(
-                data, ohlc_columns=ohlc_column, atr_window=window, total_brick_name=renko_value, brick_num_name=renko_block_num
+                data, ohlc_columns=ohlc_column, brick_size=brick_size, atr_window=window,
+                total_brick_name=renko_value, brick_size_name=renko_brick_size
             )
         return pd.concat([data, renko_df], axis=1)
 
@@ -640,6 +660,8 @@ class RenkoProcess(ProcessBase):
         raise Exception("update is not implemented yet on renko process")
 
     def get_minimum_required_length(self):
+        if self.option["brick_size"] is not None:
+            return 2
         return self.option["window"] + 30
 
 
