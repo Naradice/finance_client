@@ -8,7 +8,7 @@ Caliculate Technical Indicater from OHLC DataFrame
 
 1. MACD
 2. EMA
-3. Bolinger BAND
+3. Bollinger BAND
 4. ATR
 5. RSI
 6. Renko

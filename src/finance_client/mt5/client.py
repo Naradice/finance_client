@@ -1151,8 +1151,10 @@ class MT5Client(ClientBase):
             if sl is not None:
                 request["sl"] = float(sl)
             suc, _ = self.__request_order(request)
+            super().update_position(position, tp=tp, sl=sl)
             return suc
         else:
+            super().update_position(position, tp=tp, sl=sl)
             return True
         
     def get_ohlc_columns(self, symbol: str = slice(None), out_type="dict", ignore=None) -> dict:

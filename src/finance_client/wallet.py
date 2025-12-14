@@ -67,7 +67,7 @@ class Manager:
             return position
         else:
             # check if budget has enough amount
-            # required_budget = self.trade_unit * amount * price
+            required_budget = self.trade_unit * amount * price
             # if enough, add position
             # if required_budget <= self.budget:
             position = Position(
@@ -83,7 +83,7 @@ class Manager:
             )
             self.storage.store_position(position)
             # then reduce budget
-            # self.budget -= required_budget
+            self.budget -= required_budget
             # check if tp/sl exists
             if tp is not None or sl is not None:
                 self.listening_positions[position.id] = position
@@ -92,6 +92,30 @@ class Manager:
             # else:
             #     logger.info(f"current budget {self.budget} is less than required {required_budget}")
             #     return None
+
+    def update_position(self, position: Position, tp=None, sl=None):
+        """update tp/sl of a position
+
+        Args:
+            position (Position): position to update
+            tp (float, optional): new take profit value. Defaults to None.
+            sl (float, optional): new stop loss value. Defaults to None.
+
+        Returns:
+            bool: True if update is successful
+        """
+        if tp is not None:
+            position.tp = tp
+        if sl is not None:
+            position.sl = sl
+        self.storage.update_position(position)
+        # check if tp/sl exists
+        if position.tp is not None or position.sl is not None:
+            self.listening_positions[position.id] = position
+            logger.debug("position is stored to listening list")
+        else:
+            self.remove_position_from_listening(position.id)
+        return True
 
     def close_position(self, id, price: float, amount: float = None, position=None, index=None):
         """close a position based on the id generated when the positions is opened.

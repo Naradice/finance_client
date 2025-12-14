@@ -51,8 +51,9 @@ def plot_macd(ax, data_df, macd_column, signal_column, x=None, color="#ff7f00"):
         width = (x[1:] - x[:-1]).min() / 3
     except Exception:
         width = 0.05
-    ax.bar(x, data_df[macd_column], width, color=color)
-    ax.plot(x, data_df[signal_column], color=color)
+    # print(f"plot signal with {signal_column} and macd with {macd_column}")
+    ax.bar(x, data_df[signal_column], width, color=color)
+    ax.plot(x, data_df[macd_column], color=color)
 
 
 def plot_renko(ax, data_df, renko_column, x=None, color="#a65628"):

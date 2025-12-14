@@ -104,7 +104,7 @@ class TestIndicaters(unittest.TestCase):
     def test_renko_process(self):
         client = CSVClient(files=file_path, columns=ohlc_columns, date_column=date_column, start_index=200)
         prc = fprocess.RenkoProcess(window=120, ohlc_column=ohlc_columns)
-        column = prc.KEY_BRICK_NUM
+        column = prc.KEY_VALUE
         start_time = datetime.datetime.now()
         data = client.get_ohlc(length=300, idc_processes=[prc])
         end_time = datetime.datetime.now()

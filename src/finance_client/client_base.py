@@ -415,6 +415,25 @@ class ClientBase(metaclass=ABCMeta):
         long_positions.extend(short_positions)
         return long_positions
     
+    def update_position(self, position: Union[int, Position], tp:float=None, sl:float=None):
+        """update position's take profit and stop loss
+
+        Args:
+            position (Union[int, Position]): position id or Position object
+            tp (float, optional): take profit price. Defaults to None.
+            sl (float, optional): stop loss price. Defaults to None.
+
+        Returns:
+            bool: True if update is successful
+        """
+        if isinstance(position, int) or isinstance(position, str):
+            position = self.wallet.storage.get_position(position)
+            if position is None:
+                logger.error(f"position {position} is not found.")
+                return False
+        suc = self.wallet.update_position(position, tp=tp, sl=sl)
+        return suc
+    
     def get_unit_size(self, symbol: str) -> float:
         return 1.0
 
