@@ -120,6 +120,9 @@ class BaseStorage:
 
     def __init__(self, provider: str, username: str) -> None:
         self.provider = provider
+        if isinstance(username, str) is False:
+            raise ValueError("username must be str")
+
         self.username = username
         self._positions = {POSITION_TYPE.long: {}, POSITION_TYPE.short: {}}
 
