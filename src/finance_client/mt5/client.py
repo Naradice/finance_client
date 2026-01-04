@@ -255,6 +255,7 @@ class MT5Client(ClientBase):
         user_name=None,
         idc_process=None,
         std_processes=None,
+        start_index:int=None
     ):
         """Trade Client for MT5 server
 
@@ -275,6 +276,7 @@ class MT5Client(ClientBase):
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             idc_process (list[fprocess.ProcessBase], optional): list of indicator process to apply them when get_ohlc is called. Defaults to None.
             std_processes (list[fprocess.ProcessBase], optional): list of standalization process to apply them when get_ohlc is called. Defaults to None.
+            start_index (int, optional): start index for backtest. If None, default index is used. Defaults to None.
         """
         super().__init__(
             budget=budget,
@@ -326,13 +328,20 @@ class MT5Client(ClientBase):
             else:
                 random.seed(1017)
             # self._step_index = random.randrange(int(12*24*347*0.2), 12*24*347 - 30) ##only for M5
-            if frame >= Frame.H2:
-                if frame in self.LAST_IDX:
-                    self._step_index = self.LAST_IDX[frame]
+            if start_index is None:
+                if frame >= Frame.H2:
+                    if frame in self.LAST_IDX:
+                        self._step_index = self.LAST_IDX[frame]
+                    else:
+                        raise ValueError(f"unexpected Frame is specified: {frame}")
                 else:
-                    raise ValueError(f"unexpected Frame is specified: {frame}")
+                    self._step_index = 12 * 24 * 345
             else:
-                self._step_index = 12 * 24 * 345
+                if back_test is False:
+                    logger.warning("start_index is available only when back_test is True")
+                if start_index <= 0:
+                    raise ValueError("start_index should be non-negative integer")
+                self._step_index = start_index
             self.sim_initial_index = self._step_index
             self.auto_index = auto_index
             if auto_index:
@@ -840,25 +849,28 @@ class MT5Client(ClientBase):
             return True
 
     def _check_position(self, position: Position, **kwargs):
-        position_id = position.result
-        deals = mt5.history_deals_get(position=position_id)
-        if deals is None:
-            return None
-        if len(deals) > 1:
-            # if the deals has 2 length, it would have closed result
-            for deal in deals:
-                entry_type = deal.entry
-                if entry_type == mt5.DEAL_ENTRY_IN:
-                    continue
-                if entry_type == mt5.DEAL_ENTRY_OUT:
-                    return deal.price
-                logger.warning(f"{entry_type} is not handled correctly in finance_client")
-                return deal.price
-        elif len(deals) == 0:
-            logger.error("the specified position is not stored in mt5 client.")
-            return None
+        if self.__ignore_order:
+            return super()._check_position(position, **kwargs)
         else:
-            return None
+            position_id = position.result
+            deals = mt5.history_deals_get(position=position_id)
+            if deals is None:
+                return None
+            if len(deals) > 1:
+                # if the deals has 2 length, it would have closed result
+                for deal in deals:
+                    entry_type = deal.entry
+                    if entry_type == mt5.DEAL_ENTRY_IN:
+                        continue
+                    if entry_type == mt5.DEAL_ENTRY_OUT:
+                        return deal.price
+                    logger.warning(f"{entry_type} is not handled correctly in finance_client")
+                    return deal.price
+            elif len(deals) == 0:
+                logger.error("the specified position is not stored in mt5 client.")
+                return None
+            else:
+                return None
 
     def __generate_file_name(self, symbol, frame):
         if frame in self.AVAILABLE_FRAMES_STR:
@@ -1179,6 +1191,14 @@ class MT5Client(ClientBase):
         else:
             columns = [item for key, item in ohlc_columns.items()]
             return columns
+        
+    def get_current_datetime(self):
+        if self.back_test:
+            df = self.__get_ohlc(1, "USDJPY", self.mt5_frame, index=self._step_index -1, grouped_by_symbol=True)
+            date = df.index[-1].to_pydatetime()
+            return date
+        else:
+            return super().get_current_datetime()
 
     def __len__(self):
         if self.frame in self.LAST_IDX:

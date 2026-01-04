@@ -16,21 +16,27 @@ class TradeHistory:
     AVAILABLE_PAIRS = ["btc_jpy", "plt_jpy", "etc_jpy", "mona_jpy"]
 
     def __format_trade_msg(self, message):
-        # sample message: [228133744,"btc_jpy","3284400.0","0.05","buy"]
-        elements = message.split(",")
-        trade = {
-            "time": datetime.datetime.now(tz=datetime.timezone.utc),
-            # "id": int(elements[0][1:-1]),
-            "symbol": elements[1][1:-1],
-            "price": float(elements[2][1:-1]),
-            "volume": float(elements[3][1:-1]),
-            "type": elements[4][1:-2],
-        }
-        return trade
+        # sample message: [["1766657632","298235446","btc_jpy","13694831.0","0.0053","sell","8490989854","8490989767",null]]
+        elements = json.loads(message)
+        try:
+            trades = [
+                {
+                    "time": datetime.datetime.fromtimestamp(float(element[0]), tz=datetime.timezone.utc),
+                    # id: int(element[1]),
+                    "symbol": element[2],
+                    "price": float(element[3]),
+                    "volume": float(element[4]),
+                    "type": element[5][1:-1],
+                } for element in elements
+            ]
+        except Exception as e:
+            print(f"failed to format trade msg: {message} with {e}")
+            return None
+        return trades
 
     def __on_message(self, ws, message):
-        trade = self.__format_trade_msg(message)
-        self.on_tick(trade)
+        trades = self.__format_trade_msg(message)
+        self.on_tick(trades)
 
     def __on_error(self, ws, error):
         print(f"ws error: {error}")
@@ -100,7 +106,7 @@ class Orders:
         print(message)
 
     def __on_error(self, ws, error):
-        print(f"ws error: {error}")
+        print(f"ws error(order): {error}")
 
     def __on_close(self, ws, close_status_code, close_msg):
         print("### closed ###")

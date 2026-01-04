@@ -733,6 +733,8 @@ class CSVClient(CSVClientBase):
     def _get_ohlc_from_client(self, length=None, symbols: list = None, frame: int = None, columns=None, index=None, grouped_by_symbol: bool = False):
         if symbols is None or symbols == slice(None):
             symbols = []
+        if isinstance(symbols, str):
+            symbols = [symbols]
         missing_data = pd.DataFrame()
         target_symbols = []
         try:

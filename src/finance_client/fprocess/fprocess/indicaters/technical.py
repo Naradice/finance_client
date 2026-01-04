@@ -783,7 +783,12 @@ def RenkoFromSeries(data: pd.Series, brick_size, total_brick_name="Renko", brick
         brick_values.iloc[i] = diff / bsize
 
         if diff >= bsize:
-            bricks_up = int(diff // bsize)
+            try:
+                bricks_up = int(diff // bsize)
+            except ZeroDivisionError:
+                bricks_up = 0
+            except ValueError:
+                bricks_up = 0
             for _ in range(bricks_up):
                 current_brick += 1
                 ref_price += bsize

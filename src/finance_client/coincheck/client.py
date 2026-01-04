@@ -23,44 +23,45 @@ class CoinCheckClient(ClientBase):
     kinds = "cc"
     provider = "CoinCheck"
 
-    def __store_ticks(self, tick):
-        tick_time = tick["time"]
-        tick_price = tick["price"]
-        tick_volume = tick["volume"]
+    def __store_ticks(self, ticks):
+        for tick in ticks:
+            tick_time = tick["time"]
+            tick_price = tick["price"]
+            tick_volume = tick["volume"]
 
-        if self.frame_ohlcv is None:
-            # update frame if frame is changed before this method is called
+            if self.frame_ohlcv is None:
+                # update frame if frame is changed before this method is called
+                if tick_time >= self.next_frame:
+                    self.current_frame = self.next_frame
+                    self.__update_next_frame()
+                # initialization at start script
+                self.frame_ohlcv = pd.DataFrame(
+                    {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume},
+                    index=[self.current_frame],
+                )
+                self.frame_ohlcv.index.name = self.time_column_name
+
             if tick_time >= self.next_frame:
+                # self.frame_ohlcv.close = self.last_tick.price
+                # concat frame_data to data
+                self.data = pd.concat([self.data, self.frame_ohlcv])
                 self.current_frame = self.next_frame
                 self.__update_next_frame()
-            # initialization at start script
-            self.frame_ohlcv = pd.DataFrame(
-                {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume},
-                index=[self.current_frame],
-            )
-            self.frame_ohlcv.index.name = self.time_column_name
+                # initialization on frame
+                self.frame_ohlcv = pd.DataFrame(
+                    {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume},
+                    index=[self.current_frame],
+                )
+                self.frame_ohlcv.index.name = self.time_column_name
+            else:
+                if self.frame_ohlcv.iloc[-1].high < tick_price:
+                    self.frame_ohlcv.high = tick_price
+                if self.frame_ohlcv.iloc[-1].low > tick_price:
+                    self.frame_ohlcv.low = tick_price
 
-        if tick_time >= self.next_frame:
-            # self.frame_ohlcv.close = self.last_tick.price
-            # concat frame_data to data
-            self.data = pd.concat([self.data, self.frame_ohlcv])
-            self.current_frame = self.next_frame
-            self.__update_next_frame()
-            # initialization on frame
-            self.frame_ohlcv = pd.DataFrame(
-                {"open": tick_price, "high": tick_price, "low": tick_price, "close": tick_price, "volume": tick_volume},
-                index=[self.current_frame],
-            )
-            self.frame_ohlcv.index.name = self.time_column_name
-        else:
-            if self.frame_ohlcv.iloc[-1].high < tick_price:
-                self.frame_ohlcv.high = tick_price
-            if self.frame_ohlcv.iloc[-1].low > tick_price:
-                self.frame_ohlcv.low = tick_price
-
-            self.frame_ohlcv.volume += tick_volume
-            self.frame_ohlcv.close = tick_price
-        # self.last_tick = tick
+                self.frame_ohlcv.volume += tick_volume
+                self.frame_ohlcv.close = tick_price
+            # self.last_tick = tick
 
     def __update_next_frame(self):
         if self.frame_delta is None:
@@ -92,6 +93,7 @@ class CoinCheckClient(ClientBase):
         do_render=False,
         user_name=None,
         enable_trade_log=False,
+        storage=None,
     ):
         """CoinCheck Client. Create OHLCV data from tick data obtained from websocket.
         Create order with API. Need to specify the credentials
@@ -113,7 +115,8 @@ class CoinCheckClient(ClientBase):
             observation_length=observation_length,
             do_render=do_render,
             enable_trade_log=enable_trade_log,
-            user_name=user_name
+            user_name=user_name,
+            storage=storage
         )
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
 
@@ -252,7 +255,7 @@ class CoinCheckClient(ClientBase):
     def get_additional_params(self):
         return {}
 
-    def _get_ohlc_from_client(self, length: int = None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol=True):
+    def _get_ohlc_from_client(self, length: int = None, symbols: list = None, columns=None, frame: int = None, index=None, grouped_by_symbol=True):
         try:
             write_df_to_csv(self.data, self.provider, f"CC_BTC_{self.frame}.csv")
         except Exception as e:
@@ -355,4 +358,14 @@ class CoinCheckClient(ClientBase):
         print("Need to implement min")
         return -1
 
-    ###
+    def __len__(self):
+        return len(self.data)
+    
+    def get_ohlc_columns(self) -> dict:
+        return {
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "volume",
+        }

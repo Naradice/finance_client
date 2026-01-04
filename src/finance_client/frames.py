@@ -63,6 +63,9 @@ def to_freq(freq_str_value: str):
     for freq, key in freq_str.items():
         if key == freq_str_value:
             return freq
+    for freq, key in min_str.items():
+        if key == freq_str_value:
+            return freq
 
 
 def to_freq_str(mins: int):

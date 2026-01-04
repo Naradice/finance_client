@@ -755,8 +755,21 @@ class AgentTool:
             renko_df.index = renko_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = renko_df.to_csv()
         return csv_data
-    
-        
+
+    def get_budget(self):
+        """return current budget
+
+        Returns:
+            budget (str)
+        """
+        logger.debug(f"tool: get_budget")
+        budget, _, _ = self.client.get_budget()
+        logger.debug(f"get_budget result: {budget}")
+        try:
+            budget = str(budget)
+        except Exception:
+            budget = "failed to get budget"
+        return budget
 class PriceMonitor:
 
     def __init__(self, client_tool, event_queue):
