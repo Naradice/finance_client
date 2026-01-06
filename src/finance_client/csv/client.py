@@ -323,6 +323,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             observation_length=observation_length,
             provider=provider,
             enable_trade_log=enable_trade_log,
+            user_name=user_name,
             storage=storage,
         )
         random.seed(seed)

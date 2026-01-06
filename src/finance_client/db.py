@@ -120,6 +120,8 @@ class BaseStorage:
 
     def __init__(self, provider: str, username: str) -> None:
         self.provider = provider
+        if username is None:
+            username = "__none__"
         if isinstance(username, str) is False:
             raise ValueError("username must be str")
 
