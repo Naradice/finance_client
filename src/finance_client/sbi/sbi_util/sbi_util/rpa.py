@@ -69,6 +69,7 @@ class STOCK:
     
     def _check_device_verification(self):
         try:
+            sleep(3)  # wait for device verification element to load
             device_element = self.driver.find_element(By.ID, "deviceButton")
             if device_element:
                 self.logger.debug("need to pass device verification")

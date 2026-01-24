@@ -35,7 +35,7 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds)
 
 
-def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=10):
+def get_latest_email_by_subject(subject_keyword: list, from_email=None, search_from_min_before=1,retry=10):
     service = get_gmail_service()
 
     date = None
@@ -48,7 +48,7 @@ def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=10
         query_parts.append(f"from:{from_email}")
     # filter with current time - 1 minute to avoid fetching old emails
     current_time = datetime.now(timezone.utc)
-    one_minute_ago = current_time - timedelta(minutes=1)
+    one_minute_ago = current_time - timedelta(minutes=search_from_min_before)
     query_parts.append(f"after:{int(one_minute_ago.timestamp())}")
     query = " ".join(query_parts)
     results = (
@@ -121,7 +121,7 @@ def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=10
 
 def extract_auth_code_from_body(body: str) -> str | None:
     # 改行や空白を挟んだ「認証コード」の後の英数字（例: A0123）を抽出
-    match = re.search(r".*認証コードはこちら.*?(\d{6})", body.replace("\n", ""), re.DOTALL)
+    match = re.search(r"(?<!#)(\d{6})\b", body.replace("\n", ""), re.DOTALL)
     if match:
         return match.group(1)
     print(f"no match in {body[:100]}")
