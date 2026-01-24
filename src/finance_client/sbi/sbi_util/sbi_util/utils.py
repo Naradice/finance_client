@@ -13,8 +13,8 @@ def setup_logger():
 
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
-    file_handler.setLevel(logging.INFO)
     file_handler = logging.FileHandler(os.path.join(log_dir, "rpa.log"))
+    file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     return logger
