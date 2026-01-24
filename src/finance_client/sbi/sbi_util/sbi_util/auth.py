@@ -12,14 +12,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from .mail import gmail
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sbirpa.auth")
 
-def _get_device_code_element(driver: webdriver.Chrome):
+def _get_device_auth_element(driver: webdriver.Chrome):
     try:
-        logger.debug("getting device element")
-        element = driver.find_element(By.NAME, "ACT_deviceotpcall")
+        logger.debug("checking device authorization element")
+        element = driver.find_element(By.ID, "sendEmailButton")
         return element
     except Exception:
+        logger.debug("device authorization element is not found")
         return None
     
 def input_device_code(driver: webdriver.Chrome, code: str):
@@ -56,22 +57,24 @@ def input_device_code(driver: webdriver.Chrome, code: str):
 def handle_otp(driver: webdriver.Chrome) -> bool:
     try:
         logger.debug("start input device code with gmail")
-        device_element = driver.find_element(By.ID, "code-display")
+        wait = WebDriverWait(driver, 10)
+        wait.until(EC.presence_of_element_located((By.ID, "authCode")))
+        device_element = driver.find_element(By.ID, "authCode")
         device_code = device_element.text
-        checkbox = driver.find_element(By.ID, "device-checkbox")
+        checkbox = driver.find_element(By.ID, "authCheckBox")
         if checkbox and checkbox.is_selected() is False:
-            checkbox.click()
+            checkbox.send_keys(Keys.SPACE)
         if input_device_code(driver, device_code):
-            register_button = driver.find_element(By.ID, "device-auth-otp")
+            register_button = driver.find_element(By.ID, "otpRegisterButton")
             register_button.click()
             return True
         logger.error("failed to get device code")
         return False
     except exceptions.NoSuchElementException as e:
-        logger.error(e)
+        logger.exception(e)
         return is_logged_in(driver)
     except Exception as e:
-        logger.error(e)
+        logger.exception(e)
         return False
 
 def is_logged_in(driver: webdriver.Chrome) -> bool:
@@ -82,19 +85,19 @@ def is_logged_in(driver: webdriver.Chrome) -> bool:
         # If user_password is not found, it means logged in
         return True
     except Exception as e:
-        print(f"error happened on is_logged_in: {e}")
+        logger.exception(f"error happened on is_logged_in: {e}")
         return False
 
 
 def login(driver: webdriver.Chrome, id: str, password: str) -> bool:
     try:
-        id_ele = driver.find_element(By.NAME, "user_id")
+        id_ele = driver.find_element(By.NAME, "username")
         id_ele.send_keys(id)
-        pa_ele = driver.find_element(By.NAME, "user_password")
+        pa_ele = driver.find_element(By.NAME, "password")
         pa_ele.send_keys(password)
-        log_ele = driver.find_element(By.NAME, "ACT_login")
+        log_ele = driver.find_element(By.ID, "pw-btn")
         log_ele.click()
-        device_element = _get_device_code_element(driver)
+        device_element = _get_device_auth_element(driver)
         if device_element is None:
             logger.debug(
                 "no device element. check logged in or encountered an error."
@@ -111,16 +114,15 @@ def login(driver: webdriver.Chrome, id: str, password: str) -> bool:
         else:
             # wait to receive device code
             device_element.click()
-            time.sleep(3)
             if handle_otp(driver=driver):
                 logger.debug("device code was available. check login state.")
-                if is_logged_in():
+                if is_logged_in(driver=driver):
                     return True
                 else:
-                    logger.warning("Failed to login. Please try again.")
+                    logger.warning("Failed to handle OTP. Please try again.")
                     return False
             else:
                 logger.warning("Failed to login. Please try again.")
     except Exception as e:
-        logger.error(e)
+        logger.exception(e)
         return False

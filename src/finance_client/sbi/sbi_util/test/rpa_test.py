@@ -1,16 +1,18 @@
+import logging
 import os
 import sys
 import unittest
 from functools import wraps
 
 import dotenv
-
 import setup
 
 setup.set_debug_console_logging("sbirpa")
 base_dir = os.path.dirname(__file__)
 env_file = os.path.join(base_dir, ".env")
 dotenv.load_dotenv(env_file)
+
+# logging.basicConfig(level=logging.DEBUG)
 
 
 if "sbi_id" not in os.environ:

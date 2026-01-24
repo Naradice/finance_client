@@ -111,14 +111,6 @@ class STOCK:
         self.logger.error("failed to get device code")
         return False
 
-    def get_device_code_element(self):
-        try:
-            self.logger.debug("getting device element")
-            element = self.driver.find_element(By.NAME, "ACT_deviceotpcall")
-            return element
-        except Exception:
-            return None
-
     def __open_symbol_page(self, symbol: str) -> bool:
         try:
             wait = WebDriverWait(self.driver, 5)

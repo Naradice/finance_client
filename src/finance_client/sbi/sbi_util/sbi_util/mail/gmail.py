@@ -35,7 +35,7 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds)
 
 
-def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=3):
+def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=10):
     service = get_gmail_service()
 
     date = None
@@ -62,8 +62,8 @@ def get_latest_email_by_subject(subject_keyword: list, from_email=None, retry=3)
     if not messages:
         logger.warning("該当するメールは見つかりませんでした。")
         if retry > 0:
-            logger.info("1分待って再試行します...")
-            time.sleep(60)
+            logger.info("10秒待って再試行します...")
+            time.sleep(10)
             return get_latest_email_by_subject(
                 subject_keyword, from_email, retry=retry - 1
             )
