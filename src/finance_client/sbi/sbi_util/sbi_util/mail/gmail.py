@@ -150,7 +150,7 @@ def retrieve_code_input_url() -> str | None:
     """retrieve URL for inputting authentication code from latest email"""
     logger.debug("start retrieving URL for inputting authentication code")
     date, subject, sender, body = get_latest_email_by_subject(
-        subject_keyword=["認証コード入力画面"], from_email="info@sbisec.co.jp"
+        subject_keyword=["認証コード入力画面"], from_email="info@sbisec.co.jp", search_from_min_before=4
     )
     logger.debug(f"email subject: {subject}, from: {sender}, date: {date}")
     if body:

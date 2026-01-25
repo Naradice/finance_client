@@ -38,6 +38,43 @@ MARKET_OPTION_JP = {
 
 ERROR_BUDGET_IS_SHORT = "WECEK00210"
 
+AVAILABLE_SECTOR_OPTIONS = {
+    0: "水産・農林業",
+    1: "鉱業",
+    2: "建設業",
+    3: "食料品",
+    4: "繊維製品",
+    5: "パルプ・紙",
+    6: "化学",
+    7: "医薬品",
+    8: "石油・石炭製品",
+    9: "ゴム製品",
+    10: "ガラス・土石製品",
+    11: "鉄鋼",
+    12: "非鉄金属",
+    13: "金属製品",
+    14: "機械",
+    15: "電気機器",
+    16: "輸送用機器",
+    17: "精密機器",
+    18: "その他製品",
+    19: "電気・ガス業",
+    20: "陸運業",
+    21: "海運業",
+    22: "空運業",
+    23: "倉庫・運輸関連業",
+    24: "通信業",
+    25: "卸売業",
+    26: "小売業",
+    27: "銀行業",
+    28: "証券業",
+    29: "保険業",
+    30: "その他の金融業",
+    31: "不動産業",
+    32: "サービス業",
+    33: "その他"
+}
+
 
 class COMMON_HEADER(Enum):
     HOME = 0
@@ -54,7 +91,6 @@ class COMMON_HEADER(Enum):
     IDECO = 11
     OTHER = 12
 
-
 class TRADE_HEADER(Enum):
     TRADE_EXCHANGE = 0  # 新規注文取引所
     TRADE_PTS = 1  # 新規注文PTS
@@ -66,7 +102,6 @@ class TRADE_HEADER(Enum):
     OFF_HOURS_TRADING = 7  # 立会外
     FRACTIONAL_STOCK = 8  # 単元未満株
     THEME_INVESTMENT = 9  # テーマ投資
-
 
 class BASIC_SEARCH_CATEGORY(Enum):
     MARKET = 0

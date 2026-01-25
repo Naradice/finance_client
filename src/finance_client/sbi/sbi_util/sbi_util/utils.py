@@ -3,6 +3,7 @@ import os
 
 BASE_PATH = os.path.dirname(__file__)
 URL = "https://login.sbisec.co.jp/login/entry"
+domain = "sbisec.co.jp"
 
 def setup_logger():
     logger = logging.getLogger("sbirpa")

@@ -35,7 +35,7 @@ class StatefulScreening:
             self.driver = driver
         
         # check opened page and logged in or not
-        if self.driver.current_url.startswith(utils.URL):
+        if utils.domain in self.driver.current_url:
             logger.debug("is in sbi page")
         else:
             logger.error("failed to open sbi page")
@@ -148,13 +148,94 @@ class StatefulScreening:
                 checkbox.click()
                 return not target.is_selected()
 
-    def filter_size(self, size: SIZE_OPTIONS, enable=True):
+    def filter_size(self, size: SIZE_OPTIONS, enable: bool=True):
+        """Apply filter by stock size.
+
+        Args:
+            size (SIZE_OPTIONS): size option
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
         index = size.value if isinstance(size, SIZE_OPTIONS) else size
         return self.__option_select(BASIC_SEARCH_CATEGORY.SIZE, index, enable=enable)
 
-    def filter_indicator(self, indicator: INDICATOR_OPTIONS, enable=True):
+    def filter_large_size(self, enable: bool=True):
+        """Apply filter by large size stocks.
+
+        Args:
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
+        return self.filter_size(SIZE_OPTIONS.LARGE, enable=enable)
+
+    def filter_medium_size(self, enable: bool=True):
+        """Apply filter by medium size stocks.
+
+        Args:
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
+        return self.filter_size(SIZE_OPTIONS.MID, enable=enable)
+    
+    def filter_small_size(self, enable: bool=True):
+        """Apply filter by small size stocks.
+
+        Args:
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
+        return self.filter_size(SIZE_OPTIONS.SMALL, enable=enable)
+
+    def filter_indicator(self, indicator: INDICATOR_OPTIONS, enable: bool=True):
+        """Apply filter by indicater like nikkei225. 
+
+        Args:
+            indicator (INDICATOR_OPTIONS): Enumeration of indicator options
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
         index = indicator.value if isinstance(indicator, INDICATOR_OPTIONS) else indicator
         return self.__option_select(BASIC_SEARCH_CATEGORY.INDICATOR, index, enable=enable)
+    
+    def filter_with_Nikkei225(self, enable: bool=True):
+        """Apply filter by Nikkei 225 index.
+        Args:
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
+        return self.filter_indicator(INDICATOR_OPTIONS.NIKKEI_225, enable=enable)
+    
+    def filter_with_Topix(self, enable: bool=True):
+        """Apply filter by Topix index.
+        Args:
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
+        return self.filter_indicator(INDICATOR_OPTIONS.TOPIX, enable=enable)
+    
+    def filter_with_JPX400(self, enable: bool=True):
+        """Apply filter by JPX400 index.
+        Args:
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
+        return self.filter_indicator(INDICATOR_OPTIONS.JPX400, enable=enable)
 
     def __open_sector_selection(self):
         try:
@@ -194,8 +275,35 @@ class StatefulScreening:
             print("No apply button found in the dialog.")
             return False
         return False
+    
+    def get_available_sectors(self):
+        """ get available sectors in the sector selection dialog.
+
+        Returns:
+            list[str]: list of sector names
+        """
+        self.__open_sector_selection()
+        sector_container = WebDriverWait(self.driver, 10).until(
+            lambda d: d.find_element(By.CLASS_NAME, "SectorPopup")
+        )
+        sector_checkboxes = sector_container.find_elements(By.CLASS_NAME, "SelectionBox")
+        sector_names = []
+        for checkbox in sector_checkboxes[:-1]:  # exclude the last "select all" option
+            label = checkbox.find_element(By.TAG_NAME, "label")
+            sector_names.append(label.text)
+        self.__close_to_cancel_sector()
+        return sector_names
 
     def filter_sector(self, sectors: list[int], enable=True):
+        """ filter sector by given sector option indices.
+
+        Args:
+            sectors (list[int]): list of sector option indices to be set
+            enable (bool, optional): Whether to enable or disable the filter. Defaults to True.
+
+        Returns:
+            bool: True if the filter was successfully applied, False otherwise.
+        """
         self.__open_sector_selection()
         sector_container = WebDriverWait(self.driver, 10).until(
             lambda d: d.find_element(By.CLASS_NAME, "SectorPopup")
