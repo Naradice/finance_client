@@ -22,7 +22,16 @@ class STOCK:
         options = Options()
         options.add_argument(f"--user-data-dir={os.path.join(utils.BASE_PATH, "profile")}")
         options.add_argument("user-agent=Mozilla/5.0 ... Chrome/114.0.0.0 Safari/537.36")
+        prefs = {
+            # disable images to speed up loading
+            "profile.managed_default_content_settings.images": 2,
+        }
+        options.add_experimental_option("prefs", prefs)
         self.driver = webdriver.Chrome(options=options)
+        self.driver.execute_cdp_cmd("Network.setBlockedURLs", {
+            "urls": ["*analytics.tiktok.com*"]
+        })
+        self.driver.execute_cdp_cmd("Network.enable", {})
         self.driver.implicitly_wait(5)
         self.driver.get(utils.URL)
         self.logger.debug("start initial login process.")
