@@ -453,7 +453,7 @@ class MT5Client(ClientBase):
             return enum.TRADE_ERROR
         if result.order == 0:
             # order failed
-            logger.error(f"order failed due to {result.comment}")
+            logger.error(f"order failed due to {result.comment}, retcode={result.retcode}")
             retcode = result.retcode
             if retcode in [mt5.TRADE_RETCODE_REQUOTE, mt5.TRADE_RETCODE_PRICE_CHANGED]:
                 # if client changed order price, it may be accepted
@@ -476,7 +476,7 @@ class MT5Client(ClientBase):
                 return enum.TRADE_PARTIAL_DONE
             else:
                 # unkown state
-                logger.error(f"order failed due to unkown reason: {result.comment}")
+                logger.error(f"order failed due to unkown reason: {result.comment}, retcode={result.retcode}")
                 return enum.TRADE_ERROR
 
     def __request_order(self, request):
