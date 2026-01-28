@@ -741,7 +741,7 @@ class ClientBase(metaclass=ABCMeta):
         if isinstance(ohlc_df.index, pd.DatetimeIndex) and data_freq is not None:
             # drop duplicates
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
-            ohlc_df.dropna(thresh=len(ohlc_df.columns), inplace=True)
+            ohlc_df.dropna(how="all", inplace=True)
 
         t = threading.Thread(target=self.__check_pending_positions_completion, args=(ohlc_df, symbols), daemon=True)
         t.start()
@@ -770,7 +770,7 @@ class ClientBase(metaclass=ABCMeta):
                         indicaters_df.index = pd.to_datetime(indicaters_df.index, utc=True)
                 indicaters_df = indicaters_df.ffill()
             data = pd.concat([data, indicaters_df], axis=1)
-            data.dropna(thresh=len(data.columns), inplace=True)
+            data.dropna(how="all", inplace=True)
 
         if length is None:
             return data

@@ -19,7 +19,7 @@ import pandas as pd
 import finance_client.frames as Frame
 from finance_client import db, fprocess
 from finance_client.csv.client import CSVClient
-from finance_client.position import ORDER_TYPE
+from finance_client.position import ORDER_TYPE, ClosedResult
 
 file_base = "L:/data/yfinance"
 symbols = ["1333.T", "1332.T", "1605.T", "1963.T", "1812.T", "1801.T", "1928.T", "1802.T", "1925.T", "1808.T", "1803.T", "1721.T"]
@@ -545,7 +545,7 @@ class TestCSVClientMultiWOInit(unittest.TestCase):
 
 class TestCCSVClientMultiTrade(unittest.TestCase):
     def test_trade_symbol(self):
-        storage = db.FileStorage(provider="csv_multi_1")
+        storage = db.FileStorage(provider="csv_multi_1", username="test_user")
         files = csv_files[:2]
         target_symbols = symbols[:2]
         client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, storage=storage)
@@ -554,11 +554,12 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         for i in range(0, 5):
             df = client.get_ohlc(length=10)
         results = client.close_long_positions(symbols[1])
-        self.assertEqual(len(results[0]), 5)
-        self.assertNotEqual(results[0][0], results[0][1])
+        self.assertEqual(len(results), 1)
+        self.assertIsInstance(results[0], ClosedResult)
+        self.assertNotEqual(results[0].entry_price, results[0].price)
 
     def test_trade_symbols(self):
-        storage = db.FileStorage(provider="csv_multi_2")
+        storage = db.FileStorage(provider="csv_multi_2", username="test_user")
         files = csv_files[:3]
         target_symbols = symbols[:3]
         client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, storage=storage)
@@ -571,12 +572,8 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
             df = client.get_ohlc(length=10)
         results = client.close_long_positions(symbols[2])
         self.assertEqual(len(results), 1)
-        self.assertNotEqual(results[0][0], results[0][1])
-        for i in range(0, 5):
-            df = client.get_ohlc(length=10)
-        self.assertEqual(len(results), 1)
-        self.assertNotEqual(results[0][0], results[0][1])
-
+        self.assertIsInstance(results[0], ClosedResult)
+        self.assertNotEqual(results[0].entry_price, results[0].price)
 
 """
 

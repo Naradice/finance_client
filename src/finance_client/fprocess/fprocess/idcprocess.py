@@ -647,7 +647,7 @@ class RenkoProcess(ProcessBase):
                 brick_size=brick_size,
                 grouped_by_symbol=grouped_by_symbol,
                 total_brick_name=renko_value,
-                brick_num_name=renko_brick_size,
+                brick_size_name=renko_brick_size,
             )
         else:
             renko_df = technical.RenkoFromOHLC(

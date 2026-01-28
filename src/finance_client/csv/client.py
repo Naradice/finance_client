@@ -1,5 +1,6 @@
 import datetime
 import difflib
+import inspect
 import logging
 import math
 import os
@@ -213,7 +214,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             return pd.Index([i for i in range(0, data_length)])
 
     # functions for get_ohlc
-    def _get_target_symbols(self, symbols):
+    def _get_target_symbols(self, symbols, frame):
         """separate symbols to available and missing"""
         target_symbols = []
         missing_symbols = []
@@ -260,9 +261,13 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
                     logger.warning(f"{missing_files} are ignored")
                 else:
                     for symbol in missing_symbols:
-                        file = self.file_name_generator(symbol)
+                        sig = inspect.signature(self.file_name_generator)
+                        if "frame" in sig.parameters:
+                            file = self.file_name_generator(symbol, frame=frame)
+                        else:
+                            file = self.file_name_generator(symbol)
                         missing_files.append(os.path.abspath(file))
-        return target_symbols, missing_files
+        return target_symbols, missing_files, missing_symbols
 
     def __generate_symbol(self, file_name: str, sps: list):
         symbol = file_name
@@ -607,9 +612,13 @@ class CSVClient(CSVClientBase):
             self.data = self.run_processes(self.data, self._symbols, [], pre_process, True)
             self.pre_process = []
 
-    def _read_csv(self, files, symbols=[], columns=[], date_col=None, skiprows=None, start_date=None, frame=None):
+    def _read_csv(self, files, symbols=None, columns=None, date_col=None, skiprows=None, start_date=None, frame=None):
         DFS = {}
         __symbols = []
+        if symbols is None:
+            symbols = []
+        if columns is None:
+            columns = []
         is_multi_mode = False
         if len(files) > 1:
             is_multi_mode = True
@@ -673,14 +682,14 @@ class CSVClient(CSVClientBase):
         args = {"file": self.files}
         return args
 
-    def __read_missing_symbol_data(self, symbols):
-        target_symbols, missing_files = self._get_target_symbols(symbols)
+    def __read_missing_symbol_data(self, symbols, frame):
+        target_symbols, missing_files, missing_symbols = self._get_target_symbols(symbols, frame)
         if len(missing_files) > 0:
             date_column = None
             if "Time" in self.ohlc_columns:
                 date_column = self.ohlc_columns["Time"]
             columns = self._args["columns"]
-            data, __symbols = self._read_csv(missing_files, [], columns, date_column)
+            data, __symbols = self._read_csv(missing_files, missing_symbols, columns, date_column)
             self.files.extend(list(__symbols))
             if self.data is not None:
                 start_date = self.data.index[0]
@@ -739,7 +748,7 @@ class CSVClient(CSVClientBase):
         missing_data = pd.DataFrame()
         target_symbols = []
         try:
-            target_symbols, missing_data = self.__read_missing_symbol_data(symbols)
+            target_symbols, missing_data = self.__read_missing_symbol_data(symbols, frame=frame)
         except Exception:
             logger.exception("Filed to read csv on get_ohlc_data of CSV client")
 
@@ -1250,13 +1259,13 @@ class CSVChunkClient(CSVClientBase):
                 self._step_index += 1
         return rates
 
-    def _get_ohlc_from_client(self, length=None, symbols: list = [], frame: int = None, index=None, grouped_by_symbol: bool = False):
+    def _get_ohlc_from_client(self, length=None, symbols: list = None, frame: int = None, index=None, grouped_by_symbol: bool = False):
         if symbols is None or symbols == slice(None):
             symbols = []
-        target_symbols, missing_files = self._get_target_symbols(symbols)
+        target_symbols, missing_files, missing_symbols = self._get_target_symbols(symbols)
         if len(missing_files) > 0:
             try:
-                missing_DFS, __symbols = self._read_csv(list(set(missing_files)), [], self._args["columns"], self._args["date_column"])
+                missing_DFS, __symbols = self._read_csv(list(set(missing_files)), missing_symbols, self._args["columns"], self._args["date_column"])
                 self._symbols.extend(list(__symbols))
             except Exception as e:
                 logger.error(f"Filed to read csv on get_ohlc_data of CSV client by {e}")

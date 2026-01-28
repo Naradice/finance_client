@@ -873,7 +873,7 @@ def RenkoFromMultiOHLC(
     atr_window=14,
     grouped_by_symbol=False,
     total_brick_name="Renko",
-    brick_num_name="Brick",
+    brick_size_name="Brick",
 ):
     """Caliculate Renko from Close column of ohlc dataframe of symbols
 
@@ -921,7 +921,7 @@ def RenkoFromMultiOHLC(
                     ohlc_columns,
                     brick_size=brick_sizes[symbol],
                     total_brick_name=total_brick_name,
-                    brick_num_name=brick_num_name,
+                    brick_size_name=brick_size_name,
                 )
             else:
                 DFS[symbol] = RenkoFromOHLC(
@@ -929,7 +929,7 @@ def RenkoFromMultiOHLC(
                     ohlc_columns,
                     brick_size=brick_size,
                     total_brick_name=total_brick_name,
-                    brick_num_name=brick_num_name,
+                    brick_size_name=brick_size_name,
                 )
     else:
         for symbol in symbols:
@@ -941,7 +941,7 @@ def RenkoFromMultiOHLC(
                     _ohlc_columns,
                     brick_size=brick_sizes[symbol],
                     total_brick_name=total_brick_name,
-                    brick_num_name=brick_num_name,
+                    brick_size_name=brick_size_name,
                 )
             else:
                 DFS[symbol] = RenkoFromOHLC(
@@ -949,7 +949,7 @@ def RenkoFromMultiOHLC(
                     _ohlc_columns,
                     brick_size=brick_size,
                     total_brick_name=total_brick_name,
-                    brick_num_name=brick_num_name,
+                    brick_size_name=brick_size_name,
                 )
 
     RenkoDF = pd.concat(DFS.values(), axis=1, keys=DFS.keys())

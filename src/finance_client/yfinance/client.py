@@ -1,4 +1,6 @@
 import datetime
+import logging
+import os
 from time import sleep
 
 import pandas as pd
@@ -13,6 +15,8 @@ try:
 except ImportError:
     from ..fprocess.csvrw import get_file_path, read_csv, write_df_to_csv
 
+
+logger = logging.getLogger("finance_client.yfinance.client")
 
 class YahooClient(CSVClient):
     kinds = "yfinance"
@@ -53,12 +57,21 @@ class YahooClient(CSVClient):
         if frame in availables:
             return availables[frame]
 
-    def _create_filename(self, symbol: str):
-        file_name = f"yfinance_{symbol}_{Frame.to_str(self.frame)}.csv"
+    def _create_filename(self, symbol: str, frame: int = None) -> str:
+        if frame is None:
+            frame_str = Frame.to_str(self.frame)
+        else:
+            if frame not in self.available_frames:
+                logger.warning(f"{frame} is not supported. use frame value as is")
+                frame_str = str(frame)
+            else:
+                frame_str = Frame.to_str(frame)
+            
+        file_name = f"yfinance_{symbol}_{frame_str}.csv"
         return file_name
 
-    def _file_path_generator(self, symbol):
-        file_name = self._create_filename(symbol)
+    def _file_path_generator(self, symbol, frame: int = None):
+        file_name = self._create_filename(symbol, frame)
         file_path = get_file_path(self.kinds, file_name=file_name)
         return file_path
 
@@ -81,6 +94,7 @@ class YahooClient(CSVClient):
         storage=None,
         user_name=None,
         budget=1000000,
+        initialize_rate_after_mins: int = 0,
     ):
         """Get ohlc rate from yfinance
         Args:
@@ -91,7 +105,7 @@ class YahooClient(CSVClient):
             budget (int, optional): budget for the simulation. Defaults to 1000000.
             seed (int, optional): random seed. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
-
+            initialize_rate_after_mins (int, optional): If greather than 0, check if existing data is old when initializing and update data if it's old than specified minutes. Defaults to 0.
         Raises:
             ValueError: other than 1, 5, 15, 30, 60, 60*24, 60*24*7, 60*24*7*30 is specified as frame
             ValueError: length of symbol(tuple) isn't 2 when target is FX or CRYPT_CURRENCY
@@ -100,6 +114,7 @@ class YahooClient(CSVClient):
             TypeError: symbol is neither tuple nor str
         """
         self.OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
+        self.adjust_close = adjust_close
         if adjust_close:
             self.OHLC_COLUMNS[3] = "Adj Close"
         self.VOLUME_COLUMN = ["Volume"]
@@ -121,8 +136,12 @@ class YahooClient(CSVClient):
             else:
                 # TODO: initialize logger
                 raise TypeError("symbol must be str or list.")
-
-            self.__get_rates(self._symbols)
+            
+        # initialize csv data
+        for symbol in self._symbols:
+            if not os.path.exists(self._file_path_generator(symbol)):
+                self.__get_rates([symbol])
+            
         super().__init__(
             auto_step_index=auto_step_index,
             file_name_generator=self._file_path_generator,
@@ -140,7 +159,33 @@ class YahooClient(CSVClient):
             storage=storage,
             enable_trade_log=enable_trade_log,
             budget=budget,
+            user_name=user_name,
         )
+        if initialize_rate_after_mins <= 0:
+            self.__get_rates(self._symbols)
+        else:
+            # check if data is older than specified minutes
+            if self.data is not None:
+                update_symbols = []
+                for symbol in self._symbols:
+                    try:
+                        if symbol in self.data:
+                            last_date = self.data[symbol].dropna(how="all").index[-1]
+                        # check if last date is tz-aware
+                        if last_date.tzinfo is None or last_date.tzinfo.utcoffset(last_date) is None:
+                            last_date = last_date.replace(tzinfo=datetime.timezone.utc)
+                        current_time = datetime.datetime.now(tz=datetime.timezone.utc)
+                        delta = current_time - last_date
+                        if delta > datetime.timedelta(minutes=initialize_rate_after_mins):
+                            update_symbols.append(symbol)
+                    except Exception as e:
+                        update_symbols.append(symbol)
+                        logger.exception(f"failed to check last date of {symbol}: {e}")
+                if len(update_symbols) > 0:
+                    self.__get_rates(update_symbols)
+            else:
+                self.__get_rates(self._symbols)
+
 
     def __tz_convert(self, df):
         if "tz_convert" in dir(df.index):
@@ -150,7 +195,7 @@ class YahooClient(CSVClient):
                 try:
                     df.index = df.index.tz_localize("UTC")
                 except Exception as e:
-                    print(f"failed tz_convert of index: ({type(df.index)}) by {e}")
+                    logger.exception(f"failed tz_convert of index: ({type(df.index)}) by {e}")
         else:
             try:
                 df.index = pd.DatetimeIndex(df.index)
@@ -165,6 +210,7 @@ class YahooClient(CSVClient):
             self.kinds, self._create_filename(symbol), [self.TIME_INDEX_NAME], pandas_option={"index_col": self.TIME_INDEX_NAME}
         )
         if existing_rate_df is not None:
+            existing_rate_df.dropna(how="all", inplace=True)
             if len(existing_rate_df) > 0:
                 if self.frame < Frame.D1:
                     existing_rate_df = self.__tz_convert(existing_rate_df)
@@ -176,7 +222,7 @@ class YahooClient(CSVClient):
 
         end = datetime.datetime.now(tz=datetime.timezone.utc).date()
         delta = None
-        kwargs = {"group_by": "ticker"}
+        kwargs = {"group_by": "ticker", "auto_adjust": self.adjust_close, "prepost": False, "threads": True, "proxy": None}
         isDataRemaining = False
         if interval in self.max_periods:
             delta = self.max_periods[interval]
@@ -203,6 +249,8 @@ class YahooClient(CSVClient):
                 isDataRemaining = False
             print(f"from {start} to {end} of {symbol}")
         df = yf.download(symbol, interval=interval, **kwargs)
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df[symbol]
         ticks_df = df.copy()
         if self.frame < Frame.D1:
             ticks_df = self.__tz_convert(ticks_df)
@@ -216,7 +264,9 @@ class YahooClient(CSVClient):
 
                 print(f"from {start} to {end} of {symbol}")
                 sleep(1)  # to avoid a load
-                df = yf.download(symbol, interval=interval, group_by="ticker", start=start, end=end)
+                df = yf.download(symbol, interval=interval, group_by="ticker", start=start, end=end, auto_adjust=self.adjust_close, prepost=False, threads=True, proxy=None)
+                if isinstance(df.columns, pd.MultiIndex):
+                    df = df[symbol]
                 if len(df) != 0:
                     if self.frame < Frame.D1:
                         df = self.__tz_convert(df)
@@ -266,11 +316,11 @@ class YahooClient(CSVClient):
 
     def _get_ohlc_from_client(self, length, symbols: list, frame: int, index, grouped_by_symbol: bool, columns=None):
         # frame rolling is handled in csv client
-        interval = self.frame_to_str(self.frame)
+        interval = self.frame_to_str(frame)
         for symbol in symbols:
             if symbol not in self._symbols:
                 ticks_df = self.__download(symbol, interval)
-                write_df_to_csv(ticks_df, self.kinds, self._file_path_generator(symbol), panda_option={"index_label": self.TIME_INDEX_NAME})
+                write_df_to_csv(ticks_df, self.kinds, self._create_filename(symbol, frame), panda_option={"index_label": self.TIME_INDEX_NAME})
                 self.__updated_time[symbol] = datetime.datetime.now()
         return super()._get_ohlc_from_client(length, symbols, frame, columns, index, grouped_by_symbol)
 

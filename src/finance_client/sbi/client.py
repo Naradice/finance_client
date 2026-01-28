@@ -8,10 +8,7 @@ import finance_client.frames as Frame
 from finance_client.client_base import ClientBase
 from finance_client.yfinance.client import YahooClient
 
-try:
-    from .sbi_util.sbi_util.rpa import STOCK
-except ImportError:
-    from .sbi_util.rpa import STOCK
+from .sbi_util.sbi_util.rpa import STOCK
 
 logger = logging.getLogger(__name__)
 

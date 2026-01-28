@@ -93,6 +93,7 @@ def read_csv(provider: str, file_name: str, parse_dates_columns: list = None, pa
         if pandas_option is not None:
             kwargs.update(pandas_option)
         df = pd.read_csv(**kwargs)
+        df.dropna(how="all", inplace=True)
         return df
     else:
         # print(f"file not found: {file_path}")
