@@ -29,6 +29,7 @@ def delete_db():
 class TestMT5ClientWithSQL(unittest.TestCase):
     @classmethod
     def setUpClass(self) -> None:
+        self.budget = 100000
         storage = db.SQLiteStorage(test_db_name, provider=provider, username="test_user")
         self.client = MT5Client(
             id=id,
@@ -38,6 +39,7 @@ class TestMT5ClientWithSQL(unittest.TestCase):
             simulation=simulation,
             frame=Frame.MIN30,
             storage=storage,
+            budget=self.budget,
         )
         self.tool = AgentTool(client=self.client)
 
@@ -322,28 +324,28 @@ class TestMT5ClientWithSQL(unittest.TestCase):
             except Exception:
                 self.fail("EMA is not a valid float string")
 
-    # def test_get_CCI(self):
-    #     """test get_CCI method"""
-    #     length = 10
-    #     window = 14
-    #     frame = "30min"
-    #     cci = self.tool.get_CCI(
-    #         symbol=tgt_symbol,
-    #         length=length,
-    #         frame=frame,
-    #         window=window,
-    #     )
-    #     print(cci)
-    #     self.assertIsInstance(cci, str)   
-    #     lines = cci.splitlines()
-    #     self.assertEqual(len(lines), length + 1)  # header + length
-    #     for line in lines[1:]:
-    #         parts = line.split(",")
-    #         self.assertEqual(len(parts), 2)  # index, CCI
-    #         try:
-    #             float_cci = float(parts[1])
-    #         except Exception:
-    #             self.fail("CCI is not a valid float string")
+    def test_get_CCI(self):
+        """test get_CCI method"""
+        length = 10
+        window = 14
+        frame = "30min"
+        cci = self.tool.get_CCI(
+            symbol=tgt_symbol,
+            length=length,
+            frame=frame,
+            window=window,
+        )
+        print(cci)
+        self.assertIsInstance(cci, str)   
+        lines = cci.splitlines()
+        self.assertEqual(len(lines), length + 1)  # header + length
+        for line in lines[1:]:
+            parts = line.split(",")
+            self.assertEqual(len(parts), 2)  # index, CCI
+            try:
+                float_cci = float(parts[1])
+            except Exception:
+                self.fail("CCI is not a valid float string")
     
     def test_get_LinearRegressionMomentum(self):
         """test get_LinearRegressionMomentum method"""
@@ -390,6 +392,15 @@ class TestMT5ClientWithSQL(unittest.TestCase):
                 float_renko = float(parts[1])
             except Exception:
                 self.fail("Renko is not a valid float string")
+
+    def test_get_budget(self):
+        budget = self.tool.get_budget()
+        try:
+            float_budget = float(budget)
+            self.assertTrue(isinstance(budget, str))
+            self.assertEqual(float_budget, self.budget)
+        except Exception:
+            self.fail("get_budget did not return a valid float string")
 
     def tearDown(self) -> None:
         self.client.close_client()
