@@ -119,10 +119,10 @@ class AgentTool:
         return_orders_dict = {}
         if self.client.back_test:
             symbols = set()
-            for order in orders:
-                symbols.add(order.symbol)
             self.__advance_step(list(symbols))
             orders = self.client.get_orders()
+            for order in orders:
+                symbols.add(order.symbol)
         else:
             orders = self.client.get_orders()
         for order in orders:
