@@ -5,15 +5,21 @@ import random
 import threading
 import uuid
 from abc import ABCMeta, abstractmethod
-from typing import Any, Sequence, Union
+from typing import Any, List, Sequence, Union
 
 import numpy as np
 import pandas as pd
 
-from . import db
+from finance_client.config.loader import (load_account_risk_config,
+                                          load_symbol_risk_config)
+from finance_client.config.schema import AccountRiskConfig, SymbolRiskConfig
+from finance_client.risk_manager.model import RiskContext
+from finance_client.risk_manager.risk_options.risk_option import RiskOption
+
+from . import account, db
 from . import frames as Frame
-from . import graph, wallet
-from .position import ORDER_TYPE, POSITION_TYPE, ClosedResult, Order, Position
+from . import graph
+from .position import ORDER_TYPE, POSITION_SIDE, ClosedResult, Order, Position
 
 try:
     from .fprocess import fprocess
@@ -31,9 +37,11 @@ class ClientBase(metaclass=ABCMeta):
     def __init__(
         self,
         budget=1000000.0,
-        provider="Default",
-        symbols=None,
-        out_ohlc_columns=("Open", "High", "Low", "Close"),
+        provider: str="Default",
+        account_risk_config: AccountRiskConfig=None,
+        symbol_risk_config: dict[str, SymbolRiskConfig]=None,
+        symbols: List[str]=None,
+        ohlc_columns: Union[tuple, list] = None,
         idc_process=None,
         pre_process=None,
         economic_keys=None,
@@ -43,15 +51,18 @@ class ClientBase(metaclass=ABCMeta):
         user_name: str = None,
         do_render=False,
         enable_trade_log=False,
-        storage: db.BaseStorage = None,
+        storage: db.PositionStorageBase = None,
+        log_storage: db.LogStorageBase = None,
     ):
         """Base Class of Finance Client. Each Client should overwride required method.
 
         Args:
             budget (float, optional): Available badged in your trade. Defaults to 1000000.0.
             provider (str, optional): Identity of provider. Specify to separate info (e.g. position) in DB. Defaults to "Default".
-            symbols (str or list, optional): list of symbols. Defaults to None.
-            out_ohlc_columns (tuple, optional): column names of historical data. Defaults to ("Open", "High", "Low", "Close").
+            account_risk_config (AccountRiskConfig, optional): risk config to calculate volume in smart order. Defaults to None.
+            symbol_risk_config (dict[str, SymbolRiskConfig], optional): risk config for each symbol. Defaults to None.
+            symbols (List[str], optional): list of symbols. Defaults to None.
+            ohlc_columns (tuple, optional): column names of historical data. Defaults to ("Open", "High", "Low", "Close").
             idc_process (list[process], optional): indicator process to apply it when you get ohlc data. Defaults to None.
             pre_process (list[process], optional): pre process (e.g. standalization) to apply it when you get ohlc data. Defaults to None.
             economic_keys (list[str], optional): key name to add indicator values when you get ohlc data (experimental). Defaults to None.
@@ -61,7 +72,8 @@ class ClientBase(metaclass=ABCMeta):
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             do_render (bool, optional): plot ohlc data with matplotlib or not. Defaults to False.
             enable_trade_log (bool, optional): Store trade log to csv or not. Defaults to False.
-            storage (db.BaseStorage, optional): Specify supported storage. Defaults to None, then use SQLite.
+            storage (db.PositionStorageBase, optional): Specify supported storage. Defaults to None, then use SQLite.
+            log_storage (db.LogStorageBase, optional): Specify supported log storage. Defaults to None, then use CSV.
         """
         self.auto_index = None
         self._step_index = start_index
@@ -70,6 +82,10 @@ class ClientBase(metaclass=ABCMeta):
             symbols = []
         if not hasattr(self, "_symbols"):
             self._symbols = symbols
+        self._default_account_config_path = os.path.join(os.path.dirname(__file__), "config/user.yaml")
+        # TODO: prepare typical symbol config file and load it as default
+        self._default_symbol_config_path = os.path.join(os.path.dirname(__file__), "config/oanda_standard.yaml")
+        self._default_risk_config = None
         self.do_render = do_render
         self.__closed_position_with_exist = {}
         self._open_orders = {}
@@ -81,14 +97,24 @@ class ClientBase(metaclass=ABCMeta):
             self.__rendere = graph.Rendere()
             self.__ohlc_index = -1
             self.__is_graph_initialized = False
+        if ohlc_columns is None:
+            self.ohlc_columns = ("Open", "High", "Low", "Close")
+        else:
+            self.ohlc_columns = tuple(ohlc_columns)
         self.ohlc_columns = None
-        self.out_ohlc_columns = out_ohlc_columns
 
         if storage is None:
             db_path = os.path.join(os.getcwd(), "finance_client.db")
-            storage = db.SQLiteStorage(db_path, provider, user_name)
-            # storage = db.FileStorage(provider)
-        self.wallet = wallet.Manager(budget=budget, storage=storage, provider=provider)
+            storage = db.PositionSQLiteStorage(db_path, provider, user_name)
+        if symbol_risk_config is None:
+            symbol_risk_config = load_symbol_risk_config(self._default_symbol_config_path)
+        self.symbol_risk_config = symbol_risk_config
+        if account_risk_config is None:
+            account_risk_config = load_account_risk_config(self._default_account_config_path)
+        self.account = account.Manager(budget=budget, position_storage=storage, log_storage=log_storage,
+                                       account_risk_config=account_risk_config, provider=provider)
+        # update max_daily_loss when date is changed. This is used to consider max daily loss limit in risk management.
+        self.__last_date = None
 
         if idc_process is None:
             self.idc_process = []
@@ -178,7 +204,7 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.error("price must be specified for limit/stop order.")
                 return False, None
-            p = Position(POSITION_TYPE.long if is_buy is True else POSITION_TYPE.short, price=price, symbol=symbol, amount=amount, tp=tp, sl=sl)
+            p = Position(POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short, price=price, symbol=symbol, amount=amount, tp=tp, sl=sl)
             # number to match position and order
             magic_number = uuid.uuid4().int & (1 << 64) - 1
             if order_type == ORDER_TYPE.limit or order_type == ORDER_TYPE.limit.value:
@@ -197,7 +223,7 @@ class ClientBase(metaclass=ABCMeta):
                     # TODO: persist orders
                     self._open_orders[ticket_id] = Order(
                         ORDER_TYPE.limit,
-                        POSITION_TYPE.long if is_buy else POSITION_TYPE.short,
+                        POSITION_SIDE.long if is_buy else POSITION_SIDE.short,
                         symbol,
                         price,
                         amount,
@@ -223,7 +249,7 @@ class ClientBase(metaclass=ABCMeta):
                     ticket_id = str(ticket_id)
                     self._open_orders[ticket_id] = Order(
                         ORDER_TYPE.stop,
-                        POSITION_TYPE.long if is_buy else POSITION_TYPE.short,
+                        POSITION_SIDE.long if is_buy else POSITION_SIDE.short,
                         symbol,
                         price,
                         amount,
@@ -241,10 +267,100 @@ class ClientBase(metaclass=ABCMeta):
                 logger.error(f"{order_type} is not defined/implemented.")
                 return False, None
 
+    def order(
+        self,
+        is_buy: bool,
+        amount: float,
+        symbol: str,
+        price: float = None,
+        tp: float = None,
+        sl: float = None,
+        order_type: int = 0,
+        *args,
+        **kwargs,
+    ):
+        """alias of open_trade. open_trade is more intuitive name for trading, but order is more common name for trading/order.
+
+        Args:
+            is_buy (bool): buy order or not
+            amount (float): amount of trade unit
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            price (float): order price. If None is specified, use market price to order.
+            order_type (int): 0: Market, 1: Limit, 2: Stop
+            tp (float, optional): specify take profit price. Default is None
+            sl (float, optional): specify stop loss price. Default is None
+        Returns:
+            Success (bool): True if order is completed
+            Position (Position): position or id which is required to close the position
+        """
+        return self.open_trade(
+            is_buy=is_buy,
+            amount=amount,
+            symbol=symbol,
+            price=price,
+            tp=tp,
+            sl=sl,
+            order_type=order_type,
+            *args,
+            **kwargs,
+        )
+
+    def smart_order(
+        self,
+        is_buy: bool,
+        symbol: str,
+        risk_option: RiskOption,
+        entry_price: float = None,
+        tp: float = None,
+        sl: float = None,
+        order_type: int = 0,
+    ):
+        """open or order a position with risk management. volume is calculated by risk_option.
+
+        Args:
+            is_buy (bool): buy order or not
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            risk_option (RiskOption, optional): risk option to calculate volume.
+            entry_price (float): order price. If None is specified, use market price to order.
+            order_type (int): 0: Market, 1: Limit, 2: Stop
+            tp (float, optional): specify take profit price. Default is None
+            sl (float, optional): specify stop loss price. Default is None
+        Returns:
+            Success (bool): True if order is completed
+            Position (Position): position or id which is required to close the position
+        """
+        available_budget, in_use, profit = self.get_budget()
+        equity = available_budget + in_use + profit
+        logger.debug(f"available_budget: {available_budget}, in_use: {in_use}, profit: {profit}, equity: {equity}")
+
+        if self.account.risk_config is None:
+            warning_msg = "risk_config is not specified. load default risk config. If you want to specify risk config, please call update_risk_config method or specify risk_config when initialize the client."
+            logger.warning(warning_msg)
+            risk_config = load_account_risk_config(self._default_account_config_path)
+        else:
+            risk_config = self.account.risk_config
+
+        symbol_risk_config = self.get_symbol_config(symbol)
+        if not symbol_risk_config:
+            error_msg = f"symbol {symbol} is not defined in risk_config. please check risk_config symbols: {risk_config.symbols.keys()}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        risk_context = RiskContext(
+            account_equity=equity,
+            account_balance=available_budget,
+            daily_realized_pnl=self.get_daily_realized_pnl(),  # Replace with actual value
+            open_positions_risk_amount=self.account.get_open_positions_risk_amount(),
+            symbol_risk_config=symbol_risk_config,
+            daily_loss_limit=self.account.daily_max_loss,
+        )
+        volume = risk_option.calculate_volume(risk_context=risk_context)
+        self.open_trade(is_buy=is_buy, amount=volume, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
+
     def _trading_log(self, position: Position, price, amount, is_open):
         pass
 
-    def close_position(self, position: Position = None, id=None, amount=None, symbol=None, position_type=None, price: float = None):
+    def close_position(self, position: Position = None, id=None, amount=None, symbol=None, position_side=None, price: float = None):
         """close open_position. If specified amount is less then position, close the specified amount only
         Either position or id must be specified.
 
@@ -253,7 +369,7 @@ class ClientBase(metaclass=ABCMeta):
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
             amount (float, optional): amount of close position. use all if None. Defaults to None.
             symbols (str, optional): key of symbol
-            position_type (str, optional): 1: long, -1: short. if both symbol and position_type is specified, try to order
+            position_side (str, optional): 1: long, -1: short. if both symbol and position_side is specified, try to order
             price (float, optional): price to close the position. If None is specified, use market price to close.  Defaults to None.
         """
         default_closed_result = ClosedResult()
@@ -270,7 +386,7 @@ class ClientBase(metaclass=ABCMeta):
                 closed_result.error = True
                 return closed_result
             if position is None:
-                position = self.wallet.storage.get_position(id)
+                position = self.account.storage.get_position(id)
             if amount is None or amount == 0:
                 if position is not None:
                     amount = position.amount
@@ -287,15 +403,15 @@ class ClientBase(metaclass=ABCMeta):
             if position.result is None:
                 position.result = position.id
         else:
-            if symbol is None or position_type is None:
-                error_msg = "Either id or symbol and position_type should be specified."
+            if symbol is None or position_side is None:
+                error_msg = "Either id or symbol and position_side should be specified."
                 logger.error(error_msg)
                 default_closed_result.msg = error_msg
                 return default_closed_result
             if amount is None:
                 amount = 1
             position = Position(
-                position_type=position_type,
+                position_side=position_side,
                 symbol=symbol,
                 price=price,
                 amount=amount,
@@ -308,7 +424,7 @@ class ClientBase(metaclass=ABCMeta):
             )
 
         position_plot = 0
-        if position.position_type == POSITION_TYPE.long:
+        if position.position_side == POSITION_SIDE.long:
             logger.debug(f"close long position is ordered for {id}")
             if price is None:
                 price = self.get_current_bid(position.symbol)
@@ -319,7 +435,7 @@ class ClientBase(metaclass=ABCMeta):
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
             position_plot = -2
-        elif position.position_type == POSITION_TYPE.short:
+        elif position.position_side == POSITION_SIDE.short:
             logger.debug(f"close short position is ordered for {id}")
             if price is None:
                 price = self.get_current_ask(position.symbol)
@@ -331,10 +447,10 @@ class ClientBase(metaclass=ABCMeta):
                 return default_closed_result
             position_plot = -1
         else:
-            logger.warning(f"Unkown position_type {position.position_type} is specified on close_position.")
+            logger.warning(f"Unkown position_side {position.position_side} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
-        closed_result = self.wallet.close_position(position.id, price, amount=amount, position=position, index=self.get_current_datetime())
+        closed_result = self.account.close_position(position.id, price, amount=amount, position=position, index=self.get_current_datetime())
         return closed_result
 
     def close_all_positions(self, symbols: list = None):
@@ -347,7 +463,7 @@ class ClientBase(metaclass=ABCMeta):
         if isinstance(symbols, str):
             symbols = [symbols]
 
-        both_positions = self.wallet.storage.get_positions(symbols=symbols)
+        both_positions = self.account.storage.get_positions(symbols=symbols)
         results = []
         for positions in both_positions:
             for position in positions:
@@ -366,7 +482,7 @@ class ClientBase(metaclass=ABCMeta):
         """
         if isinstance(symbols, str):
             symbols = [symbols]
-        positions = self.wallet.storage.get_long_positions(symbols=symbols)
+        positions = self.account.storage.get_long_positions(symbols=symbols)
         results = []
         num_positions = len(positions)
         if num_positions == 0:
@@ -386,7 +502,7 @@ class ClientBase(metaclass=ABCMeta):
         """
         if isinstance(symbols, str):
             symbols = [symbols]
-        positions = self.wallet.storage.get_short_positions(symbols=symbols)
+        positions = self.account.storage.get_short_positions(symbols=symbols)
         results = []
         num_positions = len(positions)
         if num_positions == 0:
@@ -398,6 +514,17 @@ class ClientBase(metaclass=ABCMeta):
         num_results = len(results)
         return results
 
+    def get_daily_realized_pnl(self, date: str=None) -> float:
+        """get daily realized pnl for the date. This is used to consider max daily loss limit in risk management.
+
+        Args:
+            date (str): date in format "YYYY-MM-DD". If None is specified, get today's daily realized pnl.
+
+        Returns:
+            float: daily realized pnl
+        """
+        return self.account.get_daily_realized_pnl(date)
+
     def get_position(self, id) -> Union[Position, None]:
         """get position by id
 
@@ -407,7 +534,7 @@ class ClientBase(metaclass=ABCMeta):
         Returns:
             Position or None: position if found
         """
-        position = self.wallet.storage.get_position(id)
+        position = self.account.storage.get_position(id)
         return position
 
     def get_positions(self, symbols=None) -> list:
@@ -417,9 +544,7 @@ class ClientBase(metaclass=ABCMeta):
         Returns:
             list: list of Position
         """
-        long_positions, short_positions = self.wallet.storage.get_positions(symbols=symbols)
-        long_positions = list(long_positions)
-        short_positions = list(short_positions)
+        long_positions, short_positions = self.account.get_positions(symbols=symbols)
         long_positions.extend(short_positions)
         return long_positions
 
@@ -435,18 +560,30 @@ class ClientBase(metaclass=ABCMeta):
             bool: True if update is successful
         """
         if isinstance(position, int) or isinstance(position, str):
-            position = self.wallet.storage.get_position(position)
+            position = self.account.storage.get_position(position)
             if position is None:
                 logger.error(f"position {position} is not found.")
                 return False
-        suc = self.wallet.update_position(position, tp=tp, sl=sl)
+        suc = self.account.update_position(position, tp=tp, sl=sl)
         return suc
 
     def get_unit_size(self, symbol: str) -> float:
         return 1.0
+    
+    def update_risk_config(self, account_risk_config: AccountRiskConfig = None, symbol_risk_config: dict[str, SymbolRiskConfig] = None):
+        """update risk config
+
+        Args:
+            account_risk_config (AccountRiskConfig, optional): risk config to calculate volume in smart order. Defaults to None.
+            symbol_risk_config (dict[str, SymbolRiskConfig], optional): risk config for each symbol. Defaults to None.
+        """
+        if account_risk_config is not None:
+            self.account.risk_config = account_risk_config
+        if symbol_risk_config is not None:
+            self.symbol_risk_config = symbol_risk_config
 
     def _sync_positions(self, actual_positions):
-        long_positions, short_positions = self.wallet.storage.get_positions()
+        long_positions, short_positions = self.account.storage.get_positions()
         all_our_positions = {}
         for position in long_positions:
             all_our_positions[str(position.id)] = position
@@ -462,13 +599,13 @@ class ClientBase(metaclass=ABCMeta):
                     break
             if not is_found:
                 logger.debug(f"position {repr(id)} is not found in actual positions. remove it from our positions.")
-                self.wallet.storage.delete_position(id)
+                self.account.storage.delete_position(id)
 
         # add missing positions
         for actual_position in actual_positions:
             if str(actual_position.id) not in all_our_positions:
                 logger.debug(f"position {repr(actual_position.id)} is not found in our positions. add it to our positions.")
-                self.wallet.storage.store_position(actual_position)
+                self.account.storage.store_position(actual_position)
 
     def _get_required_length(self, processes: list) -> int:
         required_length_list = [0]
@@ -502,7 +639,7 @@ class ClientBase(metaclass=ABCMeta):
         return pd.DataFrame()
 
     def get_client_params(self):
-        common_args = {"budget": self.wallet.budget, "frame": self.frame, "provider": self.wallet.provider}
+        common_args = {"budget": self.account.budget, "frame": self.frame, "provider": self.account.provider}
         add_params = self.get_additional_params()
         common_args.update(add_params)
         return common_args
@@ -516,31 +653,31 @@ class ClientBase(metaclass=ABCMeta):
         # start checking stop loss at first.
         if position.sl is not None:
             logger.debug(f"sl: {position.tp}, high: {high_price}, low: {low_price}")
-            if position.position_type == POSITION_TYPE.long:
+            if position.position_side == POSITION_SIDE.long:
                 if position.sl >= low_price:
                     closed_price = position.sl
-            elif position.position_type == POSITION_TYPE.short:
+            elif position.position_side == POSITION_SIDE.short:
                 if position.sl <= high_price:
                     closed_price = position.sl
             else:
-                logger.error(f"unkown position_type: {position.position_type}")
+                logger.error(f"unkown position_side: {position.position_side}")
 
         if position.tp is not None:
             logger.debug(f"tp: {position.tp}, high: {high_price}, low: {low_price}")
-            if position.position_type == POSITION_TYPE.long:
+            if position.position_side == POSITION_SIDE.long:
                 if position.tp <= high_price:
                     closed_price = position.tp
-            elif position.position_type == POSITION_TYPE.short:
+            elif position.position_side == POSITION_SIDE.short:
                 if position.tp >= low_price:
                     closed_price = position.tp
             else:
-                logger.error(f"unkown position_type: {position.position_type}")
+                logger.error(f"unkown position_side: {position.position_side}")
         return closed_price
 
     def __check_pending_positions_completion(self, ohlc_df: pd.DataFrame, symbols: list):
-        if len(self.wallet.listening_positions) > 0:
+        if len(self.account.listening_positions) > 0:
             # handle take profit and stop loss
-            positions = self.wallet.listening_positions.copy()
+            positions = self.account.listening_positions.copy()
             logger.debug("start checking the tp and sl of positions")
             if self.ohlc_columns is None:
                 self.ohlc_columns = self.get_ohlc_columns()
@@ -553,7 +690,7 @@ class ClientBase(metaclass=ABCMeta):
             for id, position in positions.items():
                 closed_price = self._check_position(position, low_price=tick[low_column], high_price=tick[high_column])
                 if closed_price is not None:
-                    result = self.wallet.close_position(
+                    result = self.account.close_position(
                         id=position.id,
                         price=closed_price,
                         amount=position.amount,
@@ -567,11 +704,11 @@ class ClientBase(metaclass=ABCMeta):
                         self.__closed_position_with_exist[position.id] = result
                         logger.info(f"Position is closed by limit: {result}")
                         if self.do_render:
-                            if position.position_type == POSITION_TYPE.long:
+                            if position.position_side == POSITION_SIDE.long:
                                 self.__rendere.add_trade_history_to_latest_tick(-2, position.sl, self.__ohlc_index)
                             else:
                                 self.__rendere.add_trade_history_to_latest_tick(-1, position.sl, self.__ohlc_index)
-                    self.wallet.remove_position_from_listening(position.id)
+                    self.account.remove_position_from_listening(position.id)
         if len(self._open_orders) > 0:
             # handle limit and stop orders
             orders = self._open_orders.copy()
@@ -589,23 +726,23 @@ class ClientBase(metaclass=ABCMeta):
                     high_column = self.ohlc_columns["High"]
                     low_column = self.ohlc_columns["Low"]
                     open_price = None
-                    # logger.debug(f"tick: {tick}, order_price: {order.price}, order_type: {order.order_type}, position_type: {order.position_type}")
+                    # logger.debug(f"tick: {tick}, order_price: {order.price}, order_type: {order.order_type}, position_side: {order.position_side}")
                     if order.order_type == ORDER_TYPE.limit:
-                        if order.position_type == POSITION_TYPE.long:
+                        if order.position_side == POSITION_SIDE.long:
                             if tick[low_column] <= order.price:
                                 open_price = order.price
-                        elif order.position_type == POSITION_TYPE.short:
+                        elif order.position_side == POSITION_SIDE.short:
                             if tick[high_column] >= order.price:
                                 open_price = order.price
                     elif order.order_type == ORDER_TYPE.stop:
-                        if order.position_type == POSITION_TYPE.long:
+                        if order.position_side == POSITION_SIDE.long:
                             if tick[high_column] >= order.price:
                                 open_price = order.price
-                        elif order.position_type == POSITION_TYPE.short:
+                        elif order.position_side == POSITION_SIDE.short:
                             if tick[low_column] <= order.price:
                                 open_price = order.price
                     if open_price is not None:
-                        if order.position_type == POSITION_TYPE.long:
+                        if order.position_side == POSITION_SIDE.long:
                             logger.info(f"long position is opened by limit/stop order: {open_price}")
                             if self.__open_long_position(
                                 symbol=order.symbol, bought_rate=open_price, amount=order.amount, tp=order.tp, sl=order.sl, result=None
@@ -776,6 +913,21 @@ class ClientBase(metaclass=ABCMeta):
             return data
         else:
             return data.iloc[-length:]
+    
+    def calculate_mergin(self, symbol: str, price: float, amount: float, position_side: int):
+        """calculate margin for the trade. This function is used for risk management.
+
+        Args:
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            price (float): price of the trade
+            amount (float): amount (volume) of the trade
+            position_side (int): 1 for long, -1 for short
+        Returns:
+            float: margin for the trade
+        """
+
+        self.account.levarage
+        return 0.0
 
     def download(self, symbols, length: int = None, frame: int = None, grouped_by_symbol=True, file_path=None):
         """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
@@ -890,7 +1042,7 @@ class ClientBase(metaclass=ABCMeta):
 
         if index is None or type(index) is int:
             # return DataFrame for trading
-            return self.__get_trading_data(
+            ohlc_df = self.__get_trading_data(
                 length=length,
                 symbols=symbols,
                 frame=frame,
@@ -904,6 +1056,19 @@ class ClientBase(metaclass=ABCMeta):
                 do_add_eco_idc=do_add_eco_idc,
                 data_freq=data_freq,
             )
+            try:
+                index = ohlc_df.index[0]
+                dt = self._index_to_datetime(index)
+                if isinstance(dt, datetime.datetime):
+                    current_date = dt.date()
+                    if self.__last_date is None or current_date > self.__last_date:
+                        self.__last_date = current_date
+                        self.account.update_daily_max_loss()
+                        logger.info(f"date is updated to {self.__last_date}. daily max loss is updated to {self.account.daily_max_loss}")
+            except Exception as e:
+                logger.error(f"Failed to get datetime from index: {e}")
+                dt = None                
+            return ohlc_df
         else:
             # training
             return self.__get_training_data(
@@ -953,6 +1118,19 @@ class ClientBase(metaclass=ABCMeta):
 
     def get_next_tick(self, frame=5):
         print("Need to implement get_next_tick")
+    
+    def get_symbol_config(self, symbol):
+        if self.symbol_risk_config is None:
+            self.symbol_risk_config = load_symbol_risk_config(self._default_symbol_config_path)
+        if self.symbol_risk_config is not None:
+            if symbol in self.symbol_risk_config:
+                return self.symbol_risk_config[symbol]
+            else:
+                logger.warning(f"symbol {symbol} is not found in symbol_risk_config.")
+                return None
+        else:
+            logger.warning("symbol_risk_config is not initialized.")
+            return None
 
     def _get_default_path(self):
         return None
@@ -1024,7 +1202,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def close_client(self):
         try:
-            self.wallet.storage.close()
+            self.account.storage.close()
         except Exception:
             pass
 
@@ -1039,7 +1217,7 @@ class ClientBase(metaclass=ABCMeta):
         return -1
 
     def __get_long_position_diffs(self, standalization="minimax"):
-        positions = self.wallet.storage.get_long_positions()
+        positions = self.account.storage.get_long_positions()
         if len(positions) > 0:
             diffs = []
             if standalization == "minimax":
@@ -1057,7 +1235,7 @@ class ClientBase(metaclass=ABCMeta):
             return []
 
     def __get_short_position_diffs(self, standalization="minimax"):
-        positions = self.wallet.storage.get_short_positions()
+        positions = self.account.storage.get_short_positions()
         if len(positions) > 0:
             diffs = []
             if standalization == "minimax":
@@ -1075,10 +1253,10 @@ class ClientBase(metaclass=ABCMeta):
         else:
             return []
 
-    def get_diffs(self, position_type=None) -> list:
-        if position_type == POSITION_TYPE.long:
+    def get_diffs(self, position_side=None) -> list:
+        if position_side == POSITION_SIDE.long:
             return self.__get_long_position_diffs()
-        elif position_type == POSITION_TYPE.short:
+        elif position_side == POSITION_SIDE.short:
             return self.__get_short_position_diffs()
         else:
             diffs = self.__get_long_position_diffs()
@@ -1087,10 +1265,10 @@ class ClientBase(metaclass=ABCMeta):
                 diffs.append(*bid_diffs)
             return diffs
 
-    def get_diffs_with_minmax(self, position_type=None) -> list:
-        if position_type == POSITION_TYPE.long:
+    def get_diffs_with_minmax(self, position_side=None) -> list:
+        if position_side == POSITION_SIDE.long:
             return self.__get_long_position_diffs(standalization="minimax")
-        elif position_type == POSITION_TYPE.short:
+        elif position_side == POSITION_SIDE.short:
             return self.__get_short_position_diffs(standalization="minimax")
         else:
             diffs = self.__get_long_position_diffs(standalization="minimax")
@@ -1101,8 +1279,8 @@ class ClientBase(metaclass=ABCMeta):
 
     def __open_long_position(self, symbol, bought_rate, amount, tp=None, sl=None, option_info=None, result=None):
         logger.debug(f"open long position is created: {symbol}, {bought_rate}, {amount}, {tp}, {sl}, {option_info}, {result}")
-        p = self.wallet.open_position(
-            position_type=POSITION_TYPE.long,
+        p = self.account.open_position(
+            position_side=POSITION_SIDE.long,
             symbol=symbol,
             price=bought_rate,
             amount=amount,
@@ -1121,8 +1299,8 @@ class ClientBase(metaclass=ABCMeta):
 
     def __open_short_position(self, symbol, sold_rate, amount, option_info=None, tp=None, sl=None, result=None):
         logger.debug(f"open short position is created: {symbol}, {sold_rate}, {amount}, {tp}, {sl}, {option_info}, {result}")
-        p = self.wallet.open_position(
-            position_type=POSITION_TYPE.short,
+        p = self.account.open_position(
+            position_side=POSITION_SIDE.short,
             symbol=symbol,
             price=sold_rate,
             amount=amount,
@@ -1151,6 +1329,34 @@ class ClientBase(metaclass=ABCMeta):
         self.do_render = temp_r
 
         return data.columns
+
+    def _index_to_datetime(self, index):
+        if isinstance(index, pd.Timestamp):
+            return index.to_pydatetime()
+        elif isinstance(index, pd.DatetimeIndex):
+            return index.to_pydatetime()
+        elif isinstance(index, datetime.datetime):
+            return index
+        elif isinstance(index, int) or isinstance(index, float):
+            try:
+                date = datetime.datetime.fromtimestamp(index)
+                return date
+            except Exception as e:
+                logger.error(f"Failed to convert index to datetime: {index}")
+                raise e
+        else:
+            date_str = str(index)
+            try:
+                date = datetime.datetime.fromisoformat(date_str)
+                return date
+            except ValueError:
+                logger.error(f"Failed to convert index to datetime: {index}")
+            try:
+                date = datetime.datetime.fromtimestamp(date_str)
+                return date
+            except Exception as e:
+                logger.error(f"Failed to convert index to datetime: {index}")
+                raise e
 
     def get_ohlc_columns(self, symbol: str = slice(None), out_type="dict", ignore=None) -> dict:
         """returns column names of ohlc data.
@@ -1333,13 +1539,13 @@ class ClientBase(metaclass=ABCMeta):
             profit += state[4]
 
         for state in bid_states:
-            in_use += state[1]
+            in_use += state[1] * state[2]
             profit += state[4]
-        return self.wallet.budget, in_use, profit
+        return self.account.budget, in_use, profit
 
     def get_portfolio(self) -> tuple:
         portfolio = {"long": {}, "short": {}}
-        long_positions, short_positions = self.wallet.storage.get_positions()
+        long_positions, short_positions = self.account.storage.get_positions()
         ask_symbols = []
         ask_position_states = []
         if len(long_positions) > 0:

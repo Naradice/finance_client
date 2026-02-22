@@ -10,7 +10,7 @@ from . import frames as Frame
 from .client_base import ClientBase
 from .fprocess import idcprocess
 from .fprocess.fprocess.indicaters import technical
-from .position import POSITION_TYPE
+from .position import POSITION_SIDE
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ class AgentTool:
                 "volume": str(order.amount),
                 "symbol": order.symbol,
                 "order_type": order.order_type.name,
-                "is_buy": True if order.position_type == POSITION_TYPE.long else False,
+                "is_buy": True if order.position_side == POSITION_SIDE.long else False,
                 "tp": "0" if order.tp is None else str(order.tp),
                 "sl": "0" if order.sl is None else str(order.sl),
                 "mins_from_created": str((datetime.datetime.now(tz=datetime.timezone.utc) - order.created).total_seconds() // 60),
@@ -220,7 +220,7 @@ class AgentTool:
                 "price": str(position.price),
                 "volume": str(position.amount),
                 "symbol": position.symbol,
-                "is_buy": True if position.position_type == POSITION_TYPE.long else False,
+                "is_buy": True if position.position_side == POSITION_SIDE.long else False,
                 "tp": "0" if position.tp is None else str(position.tp),
                 "sl": "0" if position.sl is None else str(position.sl),
             }

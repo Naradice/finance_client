@@ -30,7 +30,7 @@ class TestMT5ClientWithSQL(unittest.TestCase):
     @classmethod
     def setUpClass(self) -> None:
         self.budget = 100000
-        storage = db.SQLiteStorage(test_db_name, provider=provider, username="test_user")
+        storage = db.PositionSQLiteStorage(test_db_name, provider=provider, username="test_user")
         self.client = MT5Client(
             id=id,
             password=os.environ["mt5_password"],

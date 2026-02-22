@@ -7,8 +7,8 @@ import unittest
 module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(module_path)
 from finance_client import db
-from finance_client.position import POSITION_TYPE, ClosedResult, Position
-from finance_client.wallet import Manager
+from finance_client.account import Manager
+from finance_client.position import POSITION_SIDE, ClosedResult, Position
 
 
 class TestPositionWithFile(unittest.TestCase):
@@ -16,48 +16,48 @@ class TestPositionWithFile(unittest.TestCase):
 
     def test_open_a_position(self):
         key = "test"
-        storage = db.FileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
+        storage = db.PositionFileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
         manager = Manager(10000, storage=storage)
         long_positions, short_positions = manager.storage.get_positions()
         pre_positions_count = len(long_positions) + len(short_positions)
-        manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        manager.open_position(POSITION_TYPE.short, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
         long_positions, short_positions = manager.storage.get_positions()
         positions_count = len(long_positions) + len(short_positions)
         self.assertGreater(positions_count, pre_positions_count)
         with open(self.position_file_path, mode="r") as fp:
             positions = json.load(fp)
-        file_positions_count = len(positions[key][POSITION_TYPE.long.name]) + len(positions[key][POSITION_TYPE.short.name])
+        file_positions_count = len(positions[key][POSITION_SIDE.long.name]) + len(positions[key][POSITION_SIDE.short.name])
         # save period is 0. So it should be refrected
         self.assertEqual(positions_count, file_positions_count)
 
     def test_close_a_position(self):
         key = "close_test"
-        storage = db.FileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
+        storage = db.PositionFileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
         manager = Manager(10000, storage=storage)
-        position = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         self.assertNotEqual(position.id, None)
         result = manager.close_position(position.id, price=101.0)
         self.assertEqual(type(result), ClosedResult)
 
         with open(self.position_file_path, mode="r") as fp:
             positions = json.load(fp)
-        file_positions_count = len(positions[key][POSITION_TYPE.long.name]) + len(positions[key][POSITION_TYPE.short.name])
+        file_positions_count = len(positions[key][POSITION_SIDE.long.name]) + len(positions[key][POSITION_SIDE.short.name])
         # default save period is 0. So it should be refrected
         self.assertEqual(0, file_positions_count)
 
     def test_frequent_trade(self):
         key = "freq_test"
-        storage = db.FileStorage(key, save_period=0.1, username=key, positions_path=self.position_file_path)
+        storage = db.PositionFileStorage(key, save_period=0.1, username=key, positions_path=self.position_file_path)
         manager = Manager(10000, storage=storage)
         ids = []
         for i in range(30):
-            position = manager.open_position(POSITION_TYPE.long, "symbol", 100.0, 1)
+            position = manager.open_position(POSITION_SIDE.long, "symbol", 100.0, 1)
             ids.append(position.id)
         time.sleep(10)
         with open(self.position_file_path, mode="r") as fp:
             positions = json.load(fp)
-        file_positions_count = len(positions[key][POSITION_TYPE.long.name]) + len(positions[key][POSITION_TYPE.short.name])
+        file_positions_count = len(positions[key][POSITION_SIDE.long.name]) + len(positions[key][POSITION_SIDE.short.name])
         self.assertEqual(file_positions_count, 30)
         for id in ids:
             manager.close_position(id, 100)
@@ -72,32 +72,32 @@ class TestPositionWithSQLite(unittest.TestCase):
 
     def test_open_a_position(self):
         key = "test"
-        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
+        storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
         long_positions, short_positions = manager.storage.get_positions()
         pre_positions_count = len(long_positions) + len(short_positions)
-        manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        manager.open_position(POSITION_TYPE.short, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
         long_positions, short_positions = manager.storage.get_positions()
         positions_count = len(long_positions) + len(short_positions)
         self.assertGreater(positions_count, pre_positions_count)
 
     def test_close_a_position(self):
         key = "close_test"
-        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
+        storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
-        position = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         self.assertNotEqual(position.id, None)
         result = manager.close_position(position.id, price=101.0)
         self.assertEqual(type(result), ClosedResult)
 
     def test_frequent_trade(self):
         key = "freq_test"
-        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
+        storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
         ids = []
         for i in range(30):
-            position = manager.open_position(POSITION_TYPE.long, "symbol", 100.0, 1)
+            position = manager.open_position(POSITION_SIDE.long, "symbol", 100.0, 1)
             ids.append(position.id)
         long_positions, short_positions = manager.storage.get_positions()
         positions_count = len(long_positions) + len(short_positions)
@@ -107,21 +107,21 @@ class TestPositionWithSQLite(unittest.TestCase):
 
     def get_position(self):
         key = "test"
-        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
+        storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
-        position = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         position = manager.storage.get_position(position.id)
         self.assertTrue(isinstance(position, Position))
 
     def get_positions(self, symbols=None):
         key = "test"
-        storage = db.SQLiteStorage(self.db_file_path, key, username=key)
+        storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
         manager = Manager(10000, storage=storage)
-        id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        id = manager.open_position(POSITION_TYPE.long, "test", 100.0, 1)
-        id = manager.open_position(POSITION_TYPE.short, "test", 100.0, 1)
-        id = manager.open_position(POSITION_TYPE.short, "test", 100.0, 1)
+        id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        id = manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
+        id = manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
         long_positions, short_positions = manager.storage.get_positions()
         self.assertGreaterEqual(len(long_positions), 3)
         self.assertGreaterEqual(len(short_positions), 2)

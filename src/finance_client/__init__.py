@@ -5,7 +5,7 @@ from .csv.client import CSVClient
 from .fprocess import fprocess
 from .fprocess.fprocess import indicaters
 from .logger import setup_logging
-from .position import ORDER_TYPE, POSITION_TYPE
+from .position import ORDER_TYPE, POSITION_SIDE, Position
 from .tool import AgentTool
 from .vantage.client import VantageClient
 from .yfinance.client import YahooClient

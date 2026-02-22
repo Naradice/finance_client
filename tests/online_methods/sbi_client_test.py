@@ -42,7 +42,7 @@ class TestSBIClient(unittest.TestCase):
 
     def test_03_get_rating_w_db(self):
         db_uri = "sbi_test.db"
-        storage = db.SQLiteStorage(db_uri, "sbi")
+        storage = db.PositionSQLiteStorage(db_uri, "sbi")
         client = SBIClient(storage=storage, use_yfinance=False)
         start_time = time.time()
         rate = client.get_rating([self.test_symbol])
@@ -60,7 +60,7 @@ class TestSBIClient(unittest.TestCase):
 
     def test_04_get_ratings(self):
         db_uri = "sbi_test.db"
-        storage = db.SQLiteStorage(db_uri, "sbi")
+        storage = db.PositionSQLiteStorage(db_uri, "sbi")
         client = SBIClient(storage=storage, use_yfinance=False)
         rate = client.get_rating([self.test_symbol, self.test_symbol2])
         self.assertEqual(len(rate), 2)

@@ -1,0 +1,9 @@
+account:
+  base_currency: JPY
+  max_single_trade_percent: 3
+  max_total_risk_percent: 6
+  daily_max_loss_percent: 4
+  allow_aggressive_mode: true
+  aggressive_multiplier: 2.0
+  enforce_volume_reduction: true
+  atr_ratio_min_stop_loss: 3

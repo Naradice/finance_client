@@ -28,13 +28,13 @@ class TestClient(ClientBase):
         if storage is None:
             base_path = os.path.dirname(__file__)
             self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_storage.json"))
-            storage = db.FileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
+            storage = db.PositionFileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
             self.open_orders = []
             self.positions = []
         super().__init__(
             budget=budget,
             provider=provider,
-            out_ohlc_columns=["Open", "High", "Low", "Close"],
+            ohlc_columns=["Open", "High", "Low", "Close"],
             idc_process=indicater_processes,
             pre_process=pre_processes,
             frame=frame,
@@ -135,7 +135,7 @@ class TestMultiClient(TestClient):
     ):
         base_path = os.path.dirname(__file__)
         self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_multi_storage.json"))
-        storage = db.FileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
+        storage = db.PositionFileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
 
         super().__init__(
             budget=budget,

@@ -298,6 +298,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         slip_type="random",
         budget=1000000,
         storage=None,
+        log_storage=None,
         do_render=False,
         seed=1017,
         provider="csv",
@@ -320,7 +321,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             budget=budget,
             do_render=do_render,
             symbols=_symbols,
-            out_ohlc_columns=columns,
+            ohlc_columns=columns,
             idc_process=idc_process,
             pre_process=pre_process,
             economic_keys=economic_keys,
@@ -330,6 +331,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             enable_trade_log=enable_trade_log,
             user_name=user_name,
             storage=storage,
+            log_storage=log_storage,
         )
         random.seed(seed)
         self.data = None
@@ -481,12 +483,11 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
 
     def get_current_datetime(self):
         index = self.data.index[self._step_index - 1]
-        if isinstance(index, pd.Timestamp):
-            return index.to_pydatetime()
-        elif isinstance(index, pd.DatetimeIndex):
-            return index.to_pydatetime()
-        else:
-            return str(index)
+        try:
+            return self._index_to_datetime(index)
+        except Exception as e:
+            logger.error(f"Failed to convert index to datetime: {index}. Error: {e}")
+        return str(index)
 
     @abstractmethod
     def reset(self, mode: str = None, retry=0):

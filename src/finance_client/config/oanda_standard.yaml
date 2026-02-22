@@ -1,0 +1,8 @@
+provider:
+  contract_size: 100000
+  leverage: 25
+symbols:
+  USDJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0

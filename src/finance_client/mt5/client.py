@@ -251,6 +251,7 @@ class MT5Client(ClientBase):
         do_render=False,
         budget=1000000,
         storage=None,
+        log_storage=None,
         seed=1017,
         user_name=None,
         idc_process=None,
@@ -271,7 +272,8 @@ class MT5Client(ClientBase):
             auto_index (bool, optional): automatically step index when backtest is True. Defaults to False.
             do_render (bool, optional): If True, rendere OHLC when it is retrieved by get_ohlc. Defaults to False.
             budget (int, optional): Defaults to 1000000.
-            storage (db.BaseStorage, optional): Storage to store positions. Defaults to None.
+            storage (db.PositionStorageBase, optional): Storage to store positions. Defaults to None.
+            log_storage (db.TradeLogStorageBase, optional): Storage to store trade logs. Defaults to None.
             seed (int, optional): _description_. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             idc_process (list[fprocess.ProcessBase], optional): list of indicator process to apply them when get_ohlc is called. Defaults to None.
@@ -289,6 +291,7 @@ class MT5Client(ClientBase):
             user_name=user_name,
             idc_process=idc_process,
             pre_process=std_processes,
+            log_storage=log_storage,
         )
         self.back_test = back_test
         self.debug = False
@@ -1128,7 +1131,7 @@ class MT5Client(ClientBase):
                 for order in self._open_orders:
                     if order == m_position.magic and order.symbol == m_position.symbol:
                         positions_by_order.append(order.id)
-                position_type = 1 if mt5.POSITION_TYPE_BUY == m_position.type else -1
+                position_side = 1 if mt5.POSITION_SIDE_BUY == m_position.type else -1
                 symbol = m_position.symbol
                 position_price = m_position.price_open
                 amount = m_position.volume
@@ -1137,7 +1140,7 @@ class MT5Client(ClientBase):
                 time_index = datetime.datetime.fromtimestamp(m_position.time)
                 id = m_position.ticket
                 p = Position(
-                    position_type=position_type, symbol=symbol, price=position_price, amount=amount, tp=tp, sl=sl, time_index=time_index, id=id
+                    position_side=position_side, symbol=symbol, price=position_price, amount=amount, tp=tp, sl=sl, time_index=time_index, id=id
                 )
                 positions.append(p)
 

@@ -30,7 +30,7 @@ class TestMT5Client(unittest.TestCase):
     @classmethod
     def setUpClass(self) -> None:
         symbol = [tgt_symbol]
-        storage = db.SQLiteStorage(test_db_name, "mt5")
+        storage = db.PositionSQLiteStorage(test_db_name, "mt5")
         self.client = MT5Client(
             id=id,
             password=os.environ["mt5_password"],

@@ -4,7 +4,7 @@ import uuid
 from enum import Enum
 
 
-class POSITION_TYPE(Enum):
+class POSITION_SIDE(Enum):
     long = 1
     short = -1
 
@@ -15,26 +15,26 @@ class ORDER_TYPE(Enum):
     stop = 2
 
 
-def _value_to_position_type(value: int):
-    if isinstance(value, type(POSITION_TYPE.long)):
+def _value_to_position_side(value: int):
+    if isinstance(value, type(POSITION_SIDE.long)):
         return value
     elif isinstance(value, int):
-        return POSITION_TYPE(value)
+        return POSITION_SIDE(value)
     elif isinstance(value, str):
-        for member in POSITION_TYPE:
+        for member in POSITION_SIDE:
             if member.name == value:
                 return member
         if "ask" == value:
-            return POSITION_TYPE.long
+            return POSITION_SIDE.long
         if "bid" == value:
-            return POSITION_TYPE.short
-    raise ValueError(f"{value} is not supported as POSITION_TYPE")
+            return POSITION_SIDE.short
+    raise ValueError(f"{value} is not supported as POSITION_SIDE")
 
 
 class Position:
     def __init__(
         self,
-        position_type: POSITION_TYPE,
+        position_side: POSITION_SIDE,
         symbol: str,
         price: float,
         amount: float,
@@ -51,7 +51,7 @@ class Position:
             self.id = str(uuid.uuid4())
         else:
             self.id = id
-        self.position_type = _value_to_position_type(position_type)
+        self.position_side = _value_to_position_side(position_side)
         self.price = price
         self.amount = amount
         self.option = option
@@ -102,7 +102,7 @@ class Position:
                     self.timestamp = timestamp
 
     def __str__(self):
-        return f"(position_type:{self.position_type}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, resilt: {self.result}, time_index:{self.index}, id:{self.id})"
+        return f"(position_side:{self.position_side}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, resilt: {self.result}, time_index:{self.index}, id:{self.id})"
 
     def __repr__(self):
         return self.__str__()
@@ -113,7 +113,7 @@ class Position:
         else:
             index = str(self.index)
         return {
-            "position_type": self.position_type.value,
+            "position_side": self.position_side.value,
             "price": self.price,
             "amount": self.amount,
             "option": json.dumps(self.option),
@@ -131,7 +131,7 @@ class Order:
     def __init__(
         self,
         order_type: ORDER_TYPE,
-        position_type: POSITION_TYPE,
+        position_side: POSITION_SIDE,
         symbol: str,
         price: float,
         amount: float,
@@ -145,7 +145,7 @@ class Order:
         else:
             self.id = id
         self.order_type = order_type
-        self.position_type = _value_to_position_type(position_type)
+        self.position_side = _value_to_position_side(position_side)
         self.symbol = symbol
         self.price = price
         self.amount = amount
@@ -156,7 +156,7 @@ class Order:
     def to_dict(self):
         return {
             "order_type": self.order_type.value,
-            "position_type": self.position_type.value,
+            "position_side": self.position_side.value,
             "symbol": self.symbol,
             "price": self.price,
             "amount": self.amount,
@@ -166,7 +166,7 @@ class Order:
         }
 
     def __str__(self):
-        return f"Order(id={self.id}, order_type={self.order_type}, position_type={self.position_type}, symbol={self.symbol}, price={self.price}, amount={self.amount}, tp={self.tp}, sl={self.sl})"
+        return f"Order(id={self.id}, order_type={self.order_type}, position_side={self.position_side}, symbol={self.symbol}, price={self.price}, amount={self.amount}, tp={self.tp}, sl={self.sl})"
 
 
 class ClosedResult:

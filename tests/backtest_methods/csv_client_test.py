@@ -545,7 +545,7 @@ class TestCSVClientMultiWOInit(unittest.TestCase):
 
 class TestCCSVClientMultiTrade(unittest.TestCase):
     def test_trade_symbol(self):
-        storage = db.FileStorage(provider="csv_multi_1", username="test_user")
+        storage = db.PositionFileStorage(provider="csv_multi_1", username="test_user")
         files = csv_files[:2]
         target_symbols = symbols[:2]
         client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, storage=storage)
@@ -559,7 +559,7 @@ class TestCCSVClientMultiTrade(unittest.TestCase):
         self.assertNotEqual(results[0].entry_price, results[0].price)
 
     def test_trade_symbols(self):
-        storage = db.FileStorage(provider="csv_multi_2", username="test_user")
+        storage = db.PositionFileStorage(provider="csv_multi_2", username="test_user")
         files = csv_files[:3]
         target_symbols = symbols[:3]
         client = CSVClient(files=files, start_index=10, symbols=target_symbols, auto_step_index=True, storage=storage)

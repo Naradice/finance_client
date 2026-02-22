@@ -29,7 +29,7 @@ def delete_db():
 class TestMT5ClientWithSQL(unittest.TestCase):
     @classmethod
     def setUpClass(self) -> None:
-        storage = db.SQLiteStorage(test_db_name, "mt5", username="test_user")
+        storage = db.PositionSQLiteStorage(test_db_name, "mt5", username="test_user")
         self.client = MT5Client(
             id=id,
             password=os.environ["mt5_password"],
