@@ -290,17 +290,17 @@ class CoinCheckClient(ClientBase):
         tick = self.ticker.get()
         return tick["bid"]
 
-    def _market_buy(self, symbol, price, amount, tp, sl, option_info):
-        # buy_amount = ask_rate * amount
-        # response = apis.create_market_buy_order(amount=buy_amount, stop_loss_rate=sl)
-        # api don't return amount, so use pending order instead.
-        # TODO: use marketbuy and check amount from trade_history
+    def _market_buy(self, symbol, price, volume, tp, sl, option_info):
+        # buy_volume = ask_rate * volume
+        # response = apis.create_market_buy_order(volume=buy_volume, stop_loss_rate=sl)
+        # api don't return volume, so use pending order instead.
+        # TODO: use marketbuy and check volume from trade_history
         if self.simulation:
             return datetime.datetime.now().timestamp()
         else:
             if ask_rate is None:
                 ask_rate = self.get_current_ask(symbol)
-            response = apis.create_pending_buy_order(rate=ask_rate, amount=amount, stop_loss_rate=sl)
+            response = apis.create_pending_buy_order(rate=ask_rate, volume=volume, stop_loss_rate=sl)
             if response["success"]:
                 return True, response["id"]
             else:
@@ -308,15 +308,15 @@ class CoinCheckClient(ClientBase):
                 print(err_msg)
                 return False, err_msg
 
-    def _market_sell(self, symbol, bid_rate, amount, tp, sl, option_info):
+    def _market_sell(self, symbol, bid_rate, volume, tp, sl, option_info):
         err_meg = "sell is not allowed."
         logger.error(err_meg)
         return False, err_meg
 
-    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, volume, option_info, result):
         logger.error("sell is not allowed, so buy settlement is not available.")
 
-    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result_id):
+    def _sell_to_close(self, symbol, bid_rate, volume, option_info, result_id):
         if self.simulation:
             pass
         else:
@@ -327,13 +327,13 @@ class CoinCheckClient(ClientBase):
                 print("had failed to buy")
                 return cancel_result
             else:
-                result = apis.create_market_sell_order(amount=amount)
+                result = apis.create_market_sell_order(volume=volume)
                 if result["success"]:
                     print(result)
                     return result
                 else:
                     time.sleep(10)
-                    return self._sell_to_close(symbol, bid_rate, amount, option_info, result_id)
+                    return self._sell_to_close(symbol, bid_rate, volume, option_info, result_id)
 
     def get_params(self) -> dict:
         return {}

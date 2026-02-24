@@ -28,12 +28,12 @@ def create_multi_out_lists(symbols, elements, columns, grouped_by_symbol=False):
 
 
 def sum(data):
-    amount = 0
+    volume = 0
     if type(data) == list:
-        amount = sum(data)
+        volume = sum(data)
     else:  # check more
-        amount = data.sum()
-    return amount
+        volume = data.sum()
+    return volume
 
 
 def revert_EMA(data, interval: int):
@@ -305,7 +305,7 @@ def MACDFromOHLC(
         macd.append(s - l)
 
     # Signal line = EMA(MACD)
-    signal = EMA(macd, signal_window)
+    signal = SMA(macd, signal_window)
 
     # --- Normalize to pandas Series ---
     # If EMA returned a list, convert to Series with the same index

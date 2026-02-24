@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 
 class RequestBase:
 
-    def __init__(self, price: float, amount: float):
+    def __init__(self, price: float, volume: float):
         self.price = price
-        self.amount = amount
+        self.volume = volume
 
     @property
     def price(self):
@@ -46,34 +46,34 @@ class RequestBase:
         self._price = value
 
     @property
-    def amount(self):
-        return self._amount
+    def volume(self):
+        return self._volume
     
-    @amount.setter
-    def amount(self, value):
+    @volume.setter
+    def volume(self, value):
         if isinstance(value, float) is False:
             try:
                 value = float(value)
             except Exception:
-                logger.exception(f"amount should be float type: {value}")
-                raise ValueError(f"amount should be float type: {value}")
-        self._amount = value
+                logger.exception(f"volume should be float type: {value}")
+                raise ValueError(f"volume should be float type: {value}")
+        self._volume = value
 
 class OrderRequest(RequestBase):
 
-    def __init__(self, symbol:str, price: float, amount: float, tp:float=None, sl:float=None, dev:int=None):
+    def __init__(self, symbol:str, price: float, volume: float, tp:float=None, sl:float=None, dev:int=None):
         self.symbol = symbol
         info = mt5.symbol_info(symbol)
         if info is None:
             raise ValueError(f"Symbol not found: {symbol}")
         volume_min = info.volume_min
-        if amount < volume_min:
-            raise ValueError(f"amount {amount} is less than minimum volume {volume_min} for symbol {symbol}")
+        if volume < volume_min:
+            raise ValueError(f"volume {volume} is less than minimum volume {volume_min} for symbol {symbol}")
         point = info.point
-        if (amount * point) < volume_min != 0:
-            order_volume = amount
+        if (volume * point) < volume_min != 0:
+            order_volume = volume
         else:
-            order_volume = amount * point
+            order_volume = volume * point
         self.tp = tp
         self.sl = sl
         self.dev = dev
@@ -134,20 +134,20 @@ class OrderRequest(RequestBase):
 
 class CloseRequest(RequestBase):
 
-    def __init__(self, symbol:str, price: float, amount: float, position:int):
+    def __init__(self, symbol:str, price: float, volume: float, position:int):
         self.symbol = symbol
         self.position = position
         info = mt5.symbol_info(symbol)
         if info is None:
             raise ValueError(f"Symbol not found: {symbol}")
         volume_min = info.volume_min
-        if amount < volume_min:
-            raise ValueError(f"amount {amount} is less than minimum volume {volume_min} for symbol {symbol}")
+        if volume < volume_min:
+            raise ValueError(f"volume {volume} is less than minimum volume {volume_min} for symbol {symbol}")
         point = info.point
-        if (amount * point) < volume_min != 0:
-            order_volume = amount
+        if (volume * point) < volume_min != 0:
+            order_volume = volume
         else:
-            order_volume = amount * point
+            order_volume = volume * point
         super().__init__(price, order_volume)
 
     @property
@@ -321,6 +321,9 @@ class MT5Client(ClientBase):
         account_info = mt5.account_info()
         if account_info is None:
             logger.warning("Retreiving account information failed. Please check your internet connection.")
+            self.leverage = 1
+        else:
+            self.leverage = account_info.leverage
         logger.debug(f"Balance: {account_info}")
 
         if self.back_test:
@@ -381,7 +384,7 @@ class MT5Client(ClientBase):
 
         return data.columns
     
-    def __check_args(self, symbol, price, amount, dev=None, sl=None, tp=None, result=None):
+    def __check_args(self, symbol, price, volume, dev=None, sl=None, tp=None, result=None):
         if not isinstance(symbol, str):
             logger.error(f"symbol should be str type: {symbol}")
             return False
@@ -391,11 +394,11 @@ class MT5Client(ClientBase):
             except Exception:
                 logger.exception(f"price should be float type: {price}")
                 return False
-        if not isinstance(amount, float):
+        if not isinstance(volume, float):
             try:
-                amount = float(amount)
+                volume = float(volume)
             except Exception:
-                logger.exception(f"amount should be int or float type: {amount}")
+                logger.exception(f"volume should be int or float type: {volume}")
                 return False
         if dev is not None:
             if not isinstance(dev, int):
@@ -630,13 +633,13 @@ class MT5Client(ClientBase):
                     return False, error_msg
         return True, "success"
 
-    def _market_sell(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
+    def _market_sell(self, symbol, price, volume, tp=None, sl=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
         
         try:
-            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+            order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
             return False, str(e)
 
@@ -645,7 +648,7 @@ class MT5Client(ClientBase):
                 action=mt5.TRADE_ACTION_DEAL,
                 symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_SELL,
-                vol=order_request.amount,
+                vol=order_request.volume,
                 price=order_request.price,
                 dev=20,
                 sl=order_request.sl,
@@ -659,12 +662,12 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
+    def _sell_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg        
         try:
-            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+            order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
             return False, str(e)
 
@@ -673,7 +676,7 @@ class MT5Client(ClientBase):
                 action=mt5.TRADE_ACTION_PENDING,
                 symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_SELL_LIMIT,
-                vol=order_request.amount,
+                vol=order_request.volume,
                 price=order_request.price,
                 dev=20,
                 sl=order_request.sl,
@@ -688,12 +691,12 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
+    def _sell_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
         try:
-            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+            order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
             return False, str(e)
 
@@ -702,7 +705,7 @@ class MT5Client(ClientBase):
                 action=mt5.TRADE_ACTION_PENDING,
                 symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_SELL_STOP,
-                vol=order_request.amount,
+                vol=order_request.volume,
                 price=order_request.price,
                 dev=20,
                 sl=order_request.sl,
@@ -717,9 +720,9 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_to_close(self, symbol, price, amount, result, *args, **kwargs):        
+    def _buy_to_close(self, symbol, price, volume, result, *args, **kwargs):        
         try:
-            order_request = CloseRequest(symbol=symbol, price=price, amount=amount, position=result)
+            order_request = CloseRequest(symbol=symbol, price=price, volume=volume, position=result)
         except Exception as e:
             return False, str(e)
 
@@ -729,7 +732,7 @@ class MT5Client(ClientBase):
                     action=mt5.TRADE_ACTION_DEAL,
                     symbol=order_request.symbol,
                     _type=mt5.ORDER_TYPE_BUY,
-                    vol=order_request.amount,
+                    vol=order_request.volume,
                     price=order_request.price,
                     dev=20,
                     position=order_request.position,
@@ -744,18 +747,18 @@ class MT5Client(ClientBase):
         else:
             return True
 
-    def _market_buy(self, symbol, price, amount, tp=None, sl=None, *args, **kwargs):
+    def _market_buy(self, symbol, price, volume, tp=None, sl=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg        
         try:
-            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+            order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
             return False, str(e)
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
-                action=mt5.TRADE_ACTION_DEAL, symbol=order_request.symbol, _type=mt5.ORDER_TYPE_BUY, vol=order_request.amount, price=order_request.price, dev=20, sl=order_request.sl, tp=order_request.tp
+                action=mt5.TRADE_ACTION_DEAL, symbol=order_request.symbol, _type=mt5.ORDER_TYPE_BUY, vol=order_request.volume, price=order_request.price, dev=20, sl=order_request.sl, tp=order_request.tp
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -765,13 +768,13 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_limit(self, symbol, price, amount, tp=None, sl=None, order_number=None, *args, **kwargs):
+    def _buy_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg
         # validate order request parameters
         try:
-            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+            order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
             return False, str(e)
 
@@ -780,7 +783,7 @@ class MT5Client(ClientBase):
                 action=mt5.TRADE_ACTION_PENDING,
                 symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_BUY_LIMIT,
-                vol=order_request.amount,
+                vol=order_request.volume,
                 price=order_request.price,
                 dev=20,
                 sl=order_request.sl,
@@ -795,13 +798,13 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_stop(self, symbol, price, amount, tp, sl, order_number=None, *args, **kwargs):
+    def _buy_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg        
         # validate order request parameters
         try:
-            order_request = OrderRequest(symbol=symbol, price=price, amount=amount, tp=tp, sl=sl)
+            order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
             return False, str(e)
 
@@ -810,7 +813,7 @@ class MT5Client(ClientBase):
                 action=mt5.TRADE_ACTION_PENDING,
                 symbol=order_request.symbol,
                 _type=mt5.ORDER_TYPE_BUY_STOP,
-                vol=order_request.amount,
+                vol=order_request.volume,
                 price=order_request.price,
                 dev=20,
                 sl=order_request.sl,
@@ -825,9 +828,9 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_to_close(self, symbol, price, amount, result, *args, **kwargs):
+    def _sell_to_close(self, symbol, price, volume, result, *args, **kwargs):
         try:
-            order_request = CloseRequest(symbol=symbol, price=price, amount=amount, position=result)
+            order_request = CloseRequest(symbol=symbol, price=price, volume=volume, position=result)
         except Exception as e:
             return False
         if self.__ignore_order is False:
@@ -836,7 +839,7 @@ class MT5Client(ClientBase):
                     action=mt5.TRADE_ACTION_DEAL,
                     symbol=order_request.symbol,
                     _type=mt5.ORDER_TYPE_SELL,
-                    vol=order_request.amount,
+                    vol=order_request.volume,
                     price=order_request.price,
                     dev=20,
                     position=order_request.position,
@@ -1134,13 +1137,17 @@ class MT5Client(ClientBase):
                 position_side = 1 if mt5.POSITION_SIDE_BUY == m_position.type else -1
                 symbol = m_position.symbol
                 position_price = m_position.price_open
-                amount = m_position.volume
+                volume = m_position.volume
+                symbol_info = mt5.symbol_info(symbol)
+                trade_unit = symbol_info.trade_contract_size if symbol_info is not None else 1
                 tp = None if m_position.tp == 0.0 else m_position.tp
                 sl = None if m_position.sl == 0.0 else m_position.sl
                 time_index = datetime.datetime.fromtimestamp(m_position.time)
                 id = m_position.ticket
                 p = Position(
-                    position_side=position_side, symbol=symbol, price=position_price, amount=amount, tp=tp, sl=sl, time_index=time_index, id=id
+                    position_side=position_side, symbol=symbol, price=position_price, volume=volume, tp=tp, sl=sl, 
+                    trade_unit=trade_unit, leverage=self.leverage,
+                    time_index=time_index, id=id
                 )
                 positions.append(p)
 

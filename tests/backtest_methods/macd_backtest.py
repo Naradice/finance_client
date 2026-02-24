@@ -73,17 +73,17 @@ def MACD_backtest():
             if "close" in signal:
                 if "buy" in signal:
                     client.close_position(id=id)
-                    suc, id = client.open_trade(True, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
+                    suc, id = client.open_trade(True, volume=1, order_type=ORDER_TYPE.market, symbol="forex")
                     position = 1
                 else:
                     client.close_position(id=id)
-                    suc, id = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
+                    suc, id = client.open_trade(False, volume=1, order_type=ORDER_TYPE.market, symbol="forex")
                     position = -1
             elif signal == "buy":
-                suc, id = client.open_trade(True, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
+                suc, id = client.open_trade(True, volume=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = 1
             elif signal == "sell":
-                suc, id = client.open_trade(False, amount=1, order_type=ORDER_TYPE.market, symbol="forex")
+                suc, id = client.open_trade(False, volume=1, order_type=ORDER_TYPE.market, symbol="forex")
                 position = -1
 
         df = client.get_ohlc(length=30)

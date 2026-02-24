@@ -40,7 +40,7 @@ class RiskOption(ABC):
         if context.account_risk_config.max_total_volume is not None:
             remaining_volume = max(
                 0.0,
-                context.account_risk_config.max_total_volume - context.open_positions_risk_amount
+                context.account_risk_config.max_total_volume - context.open_positions_risk_volume
             )
             volume = min(volume, remaining_volume)
         

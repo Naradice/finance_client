@@ -1,3 +1,3 @@
-from .schema import AccountRiskConfig, SymbolRiskConfig
+from .model import AccountRiskConfig, SymbolRiskConfig
 
 __all__ = ["AccountRiskConfig", "SymbolRiskConfig"]

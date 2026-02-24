@@ -138,15 +138,15 @@ class Rendere:
             self.add_subplot()
 
     def __check_subplot(self, index):
-        amount = 0
+        volume = 0
         if len(self.shape) == 2:
-            amount = self.shape[0] * self.shape[1]
+            volume = self.shape[0] * self.shape[1]
         elif len(self.shape) == 1:
-            amount = self.shape[0]
+            volume = self.shape[0]
         else:
             raise Exception(f"unexpected shape: {self.shape}")
 
-        if index < amount:
+        if index < volume:
             return True
         else:
             return False

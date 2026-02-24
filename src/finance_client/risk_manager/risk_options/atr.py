@@ -51,14 +51,14 @@ class ATRRisk(RiskOption):
         else:
             take_profit = context.entry_price - tp_distance
 
-        risk_amount = self._calc_loss(volume, context, stop_loss)
-        reward_amount = risk_amount * self.rr_ratio
+        risk_volume = self._calc_loss(volume, context, stop_loss)
+        reward_volume = risk_volume * self.rr_ratio
 
         return RiskResult(
             volume=volume,
             stop_loss_price=stop_loss,
             take_profit_price=take_profit,
-            risk_amount=risk_amount,
-            reward_amount=reward_amount,
+            risk_volume=risk_volume,
+            reward_volume=reward_volume,
             risk_reward_ratio=self.rr_ratio
         )

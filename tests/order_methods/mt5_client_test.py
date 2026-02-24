@@ -43,7 +43,7 @@ class TestMT5Client(unittest.TestCase):
         )
 
     def test_01_buy(self):
-        self.client.open_trade(is_buy=False, amount=1, symbol=tgt_symbol)
+        self.client.open_trade(is_buy=False, volume=1, symbol=tgt_symbol)
 
     def test_02_close_long(self):
         results = self.client.close_all_positions(tgt_symbol)

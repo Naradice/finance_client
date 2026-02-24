@@ -33,13 +33,13 @@ class ESClient(ClientBase):
     def get_current_spread(self):
         pass
 
-    def _market_sell(self, symbol, price, amount, tp=None, sl=None):
+    def _market_sell(self, symbol, price, volume, tp=None, sl=None):
         return False, None
 
-    def _buy_to_close(self, symbol, price, amount, option, result):
+    def _buy_to_close(self, symbol, price, volume, option, result):
         return True
 
-    def _market_buy(self, symbol, price, amount, tp=None, sl=None):
+    def _market_buy(self, symbol, price, volume, tp=None, sl=None):
         return False, None
 
     def buy_order(self, value, tp=None, sl=None):
@@ -51,7 +51,7 @@ class ESClient(ClientBase):
     def update_order(self, _type, _id, value, tp, sl):
         print("NOT IMPLEMENTED")
 
-    def _sell_to_close(self, symbol, price, amount, option, result):
+    def _sell_to_close(self, symbol, price, volume, option, result):
         return True
 
     def get_rates(self, interval):

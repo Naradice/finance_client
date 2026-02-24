@@ -123,23 +123,23 @@ class SBIClient(ClientBase):
         else:
             return None
 
-    def _market_buy(self, symbol, price=None, amount=1, tp=None, sl=None, option_info=None):
-        suc = self.rpa_client.buy_order(symbol, amount, price)
+    def _market_buy(self, symbol, price=None, volume=1, tp=None, sl=None, option_info=None):
+        suc = self.rpa_client.buy_order(symbol, volume, price)
         if suc:
             return True, None
         else:
             return False, None
 
-    def _market_sell(self, symbol, price, amount, tp, sl, option_info):
+    def _market_sell(self, symbol, price, volume, tp, sl, option_info):
         err_msg = "market_sell is not implemented"
         logger.info(err_msg)
         return False, err_msg
 
-    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, volume, option_info, result):
         return False
 
-    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result):
-        result, err = self.rpa_client.sell_to_close_buy_order(symbol, amount, bid_rate)
+    def _sell_to_close(self, symbol, bid_rate, volume, option_info, result):
+        result, err = self.rpa_client.sell_to_close_buy_order(symbol, volume, bid_rate)
         return result
 
     def get_params(self) -> dict:
@@ -214,12 +214,12 @@ class SBIClient(ClientBase):
         ratings_df = pd.DataFrame.from_dict(ratings_dict)
         del ratings_dict
         reviwer_number = ratings_df.sum()
-        point_amounts = ratings_df.T * ratings_df.index
-        point_amount = point_amounts.T.sum()
-        mean = point_amount / reviwer_number
-        var = point_amounts.T - mean
+        point_volumes = ratings_df.T * ratings_df.index
+        point_volume = point_volumes.T.sum()
+        mean = point_volume / reviwer_number
+        var = point_volumes.T - mean
         var = var.pow(2).sum() / reviwer_number
-        ratings_df = pd.concat([mean, var, point_amount], keys=["mean", "var", "amount"], axis=1)
+        ratings_df = pd.concat([mean, var, point_volume], keys=["mean", "var", "volume"], axis=1)
         return ratings_df
 
     @property

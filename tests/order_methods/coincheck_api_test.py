@@ -37,21 +37,21 @@ class TestCCAPI(unittest.TestCase):
         self.assertEqual(type(tick["bid"]), float)
 
     def test_buy_pending_order(self):
-        response = apis.create_pending_buy_order(rate=2930000, amount=0.01, stop_loss_rate=2900000)
+        response = apis.create_pending_buy_order(rate=2930000, volume=0.01, stop_loss_rate=2900000)
         self.assertTrue(response["success"])
 
     def test_sell_pending_order(self):
-        response = apis.create_pending_sell_order(rate=2920000, amount=0.01)
-        # sample response: {'success': True, 'id': 4914185035, 'amount': '0.01', 'rate': '2920000.0', 'order_type': 'sell', 'pair': 'btc_jpy', 'created_at': '2022-08-20T15:47:18.000Z', 'market_buy_amount': None, 'stop_loss_rate': None}
+        response = apis.create_pending_sell_order(rate=2920000, volume=0.01)
+        # sample response: {'success': True, 'id': 4914185035, 'volume': '0.01', 'rate': '2920000.0', 'order_type': 'sell', 'pair': 'btc_jpy', 'created_at': '2022-08-20T15:47:18.000Z', 'market_buy_volume': None, 'stop_loss_rate': None}
         self.assertTrue(response["success"])
 
     def test_market_buy(self):
-        response = apis.create_market_buy_order(amount=20000, stop_loss_rate=2912000)
-        # sample response: {'success': True, 'id': 4914201508, 'amount': None, 'rate': None, 'order_type': 'market_buy', 'pair': 'btc_jpy', 'created_at': '2022-08-20T15:55:34.000Z', 'market_buy_amount': '20000.0', 'stop_loss_rate': '2912000.0'}
+        response = apis.create_market_buy_order(volume=20000, stop_loss_rate=2912000)
+        # sample response: {'success': True, 'id': 4914201508, 'volume': None, 'rate': None, 'order_type': 'market_buy', 'pair': 'btc_jpy', 'created_at': '2022-08-20T15:55:34.000Z', 'market_buy_volume': '20000.0', 'stop_loss_rate': '2912000.0'}
         self.assertTrue(response["success"])
 
     def test_market_sell(self):
-        response = apis.create_market_sell_order(amount=0.00684241)
+        response = apis.create_market_sell_order(volume=0.00684241)
         self.assertTrue(response["success"])
 
     def test_get_my_orders(self):

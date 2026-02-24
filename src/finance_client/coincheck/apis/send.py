@@ -7,7 +7,7 @@ class Send:
         self.service = ServiceBase()
 
     def create(self, params={}):
-        defaults = {"address": "", "amount": ""}
+        defaults = {"address": "", "volume": ""}
         defaults.update(params)
         params = defaults.copy()
         return self.service.request(ServiceBase.METHOD_POST, self.baseUrl, params)

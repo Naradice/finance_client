@@ -12,7 +12,7 @@ import pandas as pd
 
 from finance_client.config.loader import (load_account_risk_config,
                                           load_symbol_risk_config)
-from finance_client.config.schema import AccountRiskConfig, SymbolRiskConfig
+from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
 from finance_client.risk_manager.model import RiskContext
 from finance_client.risk_manager.risk_options.risk_option import RiskOption
 
@@ -98,10 +98,23 @@ class ClientBase(metaclass=ABCMeta):
             self.__ohlc_index = -1
             self.__is_graph_initialized = False
         if ohlc_columns is None:
-            self.ohlc_columns = ("Open", "High", "Low", "Close")
+            self.ohlc_columns = None
         else:
-            self.ohlc_columns = tuple(ohlc_columns)
-        self.ohlc_columns = None
+            ohlc_dict = {}
+            for col in ohlc_columns:
+                if col.lower() == "open":
+                    ohlc_dict["Open"] = col
+                elif col.lower() == "high":
+                    ohlc_dict["High"] = col
+                elif col.lower() == "low":
+                    ohlc_dict["Low"] = col
+                elif col.lower() == "close":
+                    ohlc_dict["Close"] = col
+                elif col.lower() == "volume":
+                    ohlc_dict["Volume"] = col
+                else:
+                    ohlc_dict[col] = col
+            self.ohlc_columns = ohlc_dict
 
         if storage is None:
             db_path = os.path.join(os.getcwd(), "finance_client.db")
@@ -135,7 +148,7 @@ class ClientBase(metaclass=ABCMeta):
     def open_trade(
         self,
         is_buy: bool,
-        amount: float,
+        volume: float,
         symbol: str,
         price: float = None,
         tp: float = None,
@@ -148,7 +161,7 @@ class ClientBase(metaclass=ABCMeta):
 
         Args:
             is_buy (bool): buy order or not
-            amount (float): amount of trade unit
+            volume (float): volume of trade unit
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             price (float): order price. If None is specified, use market price to order.
             order_type (int): 0: Market, 1: Limit, 2: Stop
@@ -161,6 +174,7 @@ class ClientBase(metaclass=ABCMeta):
         """
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             logger.debug("order is requested.")
+            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1.0
             if self.do_render and self.__ohlc_index == -1:
                 # self.__ohlc_index is initialized when get_ohlc is called. If ohlc_index == -1, it means position is opened before get_ohlc.
                 try:
@@ -175,11 +189,11 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     ask_rate = price
                 logger.debug(f"order price: {ask_rate}")
-                suc, result = self._market_buy(symbol=symbol, price=ask_rate, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                suc, result = self._market_buy(symbol=symbol, price=ask_rate, volume=volume, tp=tp, sl=sl, *args, **kwargs)
                 if suc:
                     logger.info(f"open long position: {ask_rate}")
                     return True, self.__open_long_position(
-                        symbol=symbol, bought_rate=ask_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
+                        symbol=symbol, bought_rate=ask_rate, volume=volume, tp=tp, sl=sl, result=result, trade_unit=trade_unit, *args, **kwargs
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
@@ -190,11 +204,11 @@ class ClientBase(metaclass=ABCMeta):
                 else:
                     bid_rate = price
                 logger.debug(f"order price: {bid_rate}")
-                suc, result = self._market_sell(symbol=symbol, price=bid_rate, amount=amount, tp=tp, sl=sl, *args, **kwargs)
+                suc, result = self._market_sell(symbol=symbol, price=bid_rate, volume=volume, tp=tp, sl=sl, *args, **kwargs)
                 if suc:
                     logger.info(f"open short position: {bid_rate}")
                     return True, self.__open_short_position(
-                        symbol=symbol, sold_rate=bid_rate, amount=amount, tp=tp, sl=sl, result=result, *args, **kwargs
+                        symbol=symbol, sold_rate=bid_rate, volume=volume, tp=tp, sl=sl, result=result, trade_unit=trade_unit, *args, **kwargs
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
@@ -204,18 +218,21 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.error("price must be specified for limit/stop order.")
                 return False, None
-            p = Position(POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short, price=price, symbol=symbol, amount=amount, tp=tp, sl=sl)
+            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1.0
+            leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
+            p = Position(POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short, price=price, symbol=symbol,
+                         volume=volume, tp=tp, sl=sl, trade_unit=trade_unit, leverage=leverage)
             # number to match position and order
             magic_number = uuid.uuid4().int & (1 << 64) - 1
             if order_type == ORDER_TYPE.limit or order_type == ORDER_TYPE.limit.value:
                 logger.debug(f"limit order: is_buy {is_buy}")
                 if is_buy:
                     suc, ticket_id = self._buy_limit(
-                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                        symbol=symbol, price=price, volume=volume, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
                     )
                 else:
                     suc, ticket_id = self._sell_limit(
-                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                        symbol=symbol, price=price, volume=volume, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
                     )
                 if suc:
                     ticket_id = str(ticket_id)
@@ -226,7 +243,7 @@ class ClientBase(metaclass=ABCMeta):
                         POSITION_SIDE.long if is_buy else POSITION_SIDE.short,
                         symbol,
                         price,
-                        amount,
+                        volume,
                         tp,
                         sl,
                         id=ticket_id,
@@ -239,11 +256,11 @@ class ClientBase(metaclass=ABCMeta):
                 logger.debug(f"stop order: is_buy {is_buy}")
                 if is_buy:
                     suc, ticket_id = self._buy_stop(
-                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                        symbol=symbol, price=price, volume=volume, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
                     )
                 else:
                     suc, ticket_id = self._sell_stop(
-                        symbol=symbol, price=price, amount=amount, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
+                        symbol=symbol, price=price, volume=volume, tp=tp, sl=sl, order_number=magic_number, *args, **kwargs
                     )
                 if suc:
                     ticket_id = str(ticket_id)
@@ -252,7 +269,7 @@ class ClientBase(metaclass=ABCMeta):
                         POSITION_SIDE.long if is_buy else POSITION_SIDE.short,
                         symbol,
                         price,
-                        amount,
+                        volume,
                         tp,
                         sl,
                         id=ticket_id,
@@ -270,7 +287,7 @@ class ClientBase(metaclass=ABCMeta):
     def order(
         self,
         is_buy: bool,
-        amount: float,
+        volume: float,
         symbol: str,
         price: float = None,
         tp: float = None,
@@ -283,7 +300,7 @@ class ClientBase(metaclass=ABCMeta):
 
         Args:
             is_buy (bool): buy order or not
-            amount (float): amount of trade unit
+            volume (float): volume of trade unit
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             price (float): order price. If None is specified, use market price to order.
             order_type (int): 0: Market, 1: Limit, 2: Stop
@@ -295,7 +312,7 @@ class ClientBase(metaclass=ABCMeta):
         """
         return self.open_trade(
             is_buy=is_buy,
-            amount=amount,
+            volume=volume,
             symbol=symbol,
             price=price,
             tp=tp,
@@ -350,24 +367,24 @@ class ClientBase(metaclass=ABCMeta):
             account_equity=equity,
             account_balance=available_budget,
             daily_realized_pnl=self.get_daily_realized_pnl(),  # Replace with actual value
-            open_positions_risk_amount=self.account.get_open_positions_risk_amount(),
+            open_positions_risk_volume=self.account.get_open_positions_risk_volume(),
             symbol_risk_config=symbol_risk_config,
             daily_loss_limit=self.account.daily_max_loss,
         )
         volume = risk_option.calculate_volume(risk_context=risk_context)
-        self.open_trade(is_buy=is_buy, amount=volume, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
+        self.open_trade(is_buy=is_buy, volume=volume, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
 
-    def _trading_log(self, position: Position, price, amount, is_open):
+    def _trading_log(self, position: Position, price, volume, is_open):
         pass
 
-    def close_position(self, position: Position = None, id=None, amount=None, symbol=None, position_side=None, price: float = None):
-        """close open_position. If specified amount is less then position, close the specified amount only
+    def close_position(self, position: Position = None, id=None, volume=None, symbol=None, position_side=None, price: float = None):
+        """close open_position. If specified volume is less then position, close the specified volume only
         Either position or id must be specified.
 
         Args:
             position (Position, optional): Position returned by open_trade. Defaults to None.
             id (uuid, optional): Position.id. Ignored if position is specified. Defaults to None.
-            amount (float, optional): amount of close position. use all if None. Defaults to None.
+            volume (float, optional): volume of close position. use all if None. Defaults to None.
             symbols (str, optional): key of symbol
             position_side (str, optional): 1: long, -1: short. if both symbol and position_side is specified, try to order
             price (float, optional): price to close the position. If None is specified, use market price to close.  Defaults to None.
@@ -387,12 +404,12 @@ class ClientBase(metaclass=ABCMeta):
                 return closed_result
             if position is None:
                 position = self.account.storage.get_position(id)
-            if amount is None or amount == 0:
+            if volume is None or volume == 0:
                 if position is not None:
-                    amount = position.amount
+                    volume = position.volume
                 else:
-                    logger.error(f"both amount and position is None: {id}")
-                    default_closed_result.msg = "both amount and position is None"
+                    logger.error(f"both volume and position is None: {id}")
+                    default_closed_result.msg = "both volume and position is None"
                     return default_closed_result
             if symbol is None:
                 if position is None:
@@ -408,13 +425,17 @@ class ClientBase(metaclass=ABCMeta):
                 logger.error(error_msg)
                 default_closed_result.msg = error_msg
                 return default_closed_result
-            if amount is None:
-                amount = 1
+            if volume is None:
+                volume = 1
+            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1
+            leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
             position = Position(
                 position_side=position_side,
                 symbol=symbol,
                 price=price,
-                amount=amount,
+                volume=volume,
+                trade_unit=trade_unit,
+                leverage=leverage,
                 tp=None,
                 sl=None,
                 option=None,
@@ -430,7 +451,7 @@ class ClientBase(metaclass=ABCMeta):
                 price = self.get_current_bid(position.symbol)
                 logger.debug(f"order close with current ask rate {price}")
             logger.debug(f"close long position is ordered for {position}")
-            result = self._sell_to_close(position.symbol, price, amount, option_info=position.option, result=position.result)
+            result = self._sell_to_close(position.symbol, price, volume, option_info=position.option, result=position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
@@ -441,7 +462,7 @@ class ClientBase(metaclass=ABCMeta):
                 price = self.get_current_ask(position.symbol)
                 logger.debug(f"order close with current bid rate {price}")
             logger.debug(f"close short position is ordered for {position}")
-            result = self._buy_to_close(position.symbol, price, amount, option_info=position.option, result=position.result)
+            result = self._buy_to_close(position.symbol, price, volume, option_info=position.option, result=position.result)
             if result is False:
                 default_closed_result.msg = "Failed to close position"
                 return default_closed_result
@@ -450,7 +471,7 @@ class ClientBase(metaclass=ABCMeta):
             logger.warning(f"Unkown position_side {position.position_side} is specified on close_position.")
         if self.do_render:
             self.__rendere.add_trade_history_to_latest_tick(position_plot, price, self.__ohlc_index)
-        closed_result = self.account.close_position(position.id, price, amount=amount, position=position, index=self.get_current_datetime())
+        closed_result = self.account.close_position(position.id, price, volume=volume, position=position, index=self.get_current_datetime())
         return closed_result
 
     def close_all_positions(self, symbols: list = None):
@@ -693,7 +714,7 @@ class ClientBase(metaclass=ABCMeta):
                     result = self.account.close_position(
                         id=position.id,
                         price=closed_price,
-                        amount=position.amount,
+                        volume=position.volume,
                         position=position,
                         index=self.get_current_datetime(),
                     )
@@ -745,13 +766,13 @@ class ClientBase(metaclass=ABCMeta):
                         if order.position_side == POSITION_SIDE.long:
                             logger.info(f"long position is opened by limit/stop order: {open_price}")
                             if self.__open_long_position(
-                                symbol=order.symbol, bought_rate=open_price, amount=order.amount, tp=order.tp, sl=order.sl, result=None
+                                symbol=order.symbol, bought_rate=open_price, volume=order.volume, tp=order.tp, sl=order.sl, result=None
                             ):
                                 closed_orders.append(id)
                         else:
                             logger.info(f"short position is opened by limit/stop order: {open_price}")
                             if self.__open_short_position(
-                                symbol=order.symbol, sold_rate=open_price, amount=order.amount, tp=order.tp, sl=order.sl, result=None
+                                symbol=order.symbol, sold_rate=open_price, volume=order.volume, tp=order.tp, sl=order.sl, result=None
                             ):
                                 closed_orders.append(id)
             # remove closed orders
@@ -914,13 +935,13 @@ class ClientBase(metaclass=ABCMeta):
         else:
             return data.iloc[-length:]
     
-    def calculate_mergin(self, symbol: str, price: float, amount: float, position_side: int):
+    def calculate_mergin(self, symbol: str, price: float, volume: float, position_side: int):
         """calculate margin for the trade. This function is used for risk management.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             price (float): price of the trade
-            amount (float): amount (volume) of the trade
+            volume (float): volume (volume) of the trade
             position_side (int): 1 for long, -1 for short
         Returns:
             float: margin for the trade
@@ -1159,28 +1180,28 @@ class ClientBase(metaclass=ABCMeta):
         return self.get_symbols()
 
     # define wallet client
-    def _market_buy(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _market_buy(self, symbol, price, volume, tp, sl, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _market_sell(self, symbol, price, amount, tp, sl, *args, **kwargs):
+    def _market_sell(self, symbol, price, volume, tp, sl, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _buy_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _buy_limit(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _sell_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _sell_limit(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _buy_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _buy_stop(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _sell_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _sell_stop(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, uuid.uuid4().hex
 
-    def _buy_to_close(self, symbol, ask_rate, amount, option_info, result):
+    def _buy_to_close(self, symbol, ask_rate, volume, option_info, result):
         return True
 
-    def _sell_to_close(self, symbol, bid_rate, amount, option_info, result):
+    def _sell_to_close(self, symbol, bid_rate, volume, option_info, result):
         return True
 
     def cancel_order(self, id: str):
@@ -1277,13 +1298,14 @@ class ClientBase(metaclass=ABCMeta):
                 diffs.append(*bid_diffs)
             return diffs
 
-    def __open_long_position(self, symbol, bought_rate, amount, tp=None, sl=None, option_info=None, result=None):
-        logger.debug(f"open long position is created: {symbol}, {bought_rate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+    def __open_long_position(self, symbol, bought_rate, volume, trade_unit, tp=None, sl=None, option_info=None, result=None):
+        logger.debug(f"open long position is created: {symbol}, {bought_rate}, {volume}, {tp}, {sl}, {option_info}, {result}")
         p = self.account.open_position(
             position_side=POSITION_SIDE.long,
             symbol=symbol,
             price=bought_rate,
-            amount=amount,
+            volume=volume,
+            trade_unit=trade_unit,
             tp=tp,
             sl=sl,
             index=self.get_current_datetime(),
@@ -1294,16 +1316,17 @@ class ClientBase(metaclass=ABCMeta):
             if self.do_render:
                 self.__rendere.add_trade_history_to_latest_tick(1, bought_rate, self.__ohlc_index)
             if self.enable_trade_log:
-                self._trading_log(p.id, bought_rate, amount, True)
+                self._trading_log(p.id, bought_rate, volume, True)
         return p
 
-    def __open_short_position(self, symbol, sold_rate, amount, option_info=None, tp=None, sl=None, result=None):
-        logger.debug(f"open short position is created: {symbol}, {sold_rate}, {amount}, {tp}, {sl}, {option_info}, {result}")
+    def __open_short_position(self, symbol, sold_rate, volume, trade_unit, option_info=None, tp=None, sl=None, result=None):
+        logger.debug(f"open short position is created: {symbol}, {sold_rate}, {volume}, {tp}, {sl}, {option_info}, {result}")
         p = self.account.open_position(
             position_side=POSITION_SIDE.short,
             symbol=symbol,
             price=sold_rate,
-            amount=amount,
+            volume=volume,
+            trade_unit=trade_unit,
             tp=tp,
             sl=sl,
             index=self.get_current_datetime(),
@@ -1314,7 +1337,7 @@ class ClientBase(metaclass=ABCMeta):
             if self.do_render:
                 self.__rendere.add_trade_history_to_latest_tick(2, sold_rate, self.__ohlc_index)
             if self.enable_trade_log:
-                self._trading_log(p.id, sold_rate, amount, True)
+                self._trading_log(p.id, sold_rate, volume, True)
         return p
 
     def _get_columns_from_data(self, symbol=slice(None)):
@@ -1564,9 +1587,9 @@ class ClientBase(metaclass=ABCMeta):
             for symbol, positions in portfolio["long"].items():
                 bid_rate = get_bid_rate(symbol)
                 for position in positions:
-                    profit = (bid_rate - position.price) * position.amount
+                    profit = (bid_rate - position.price) * position.volume
                     profit_rate = bid_rate / position.price
-                    ask_position_states.append((symbol, position.price, position.amount, bid_rate, profit, profit_rate))
+                    ask_position_states.append((symbol, position.price, position.volume, bid_rate, profit, profit_rate))
 
         bid_symbols = []
         bid_position_states = []
@@ -1586,9 +1609,9 @@ class ClientBase(metaclass=ABCMeta):
             for symbol, positions in portfolio["short"].items():
                 ask_rate = get_ask_rate(symbol)
                 for position in positions:
-                    profit = (position.price - ask_rate) * position.amount
+                    profit = (position.price - ask_rate) * position.volume
                     profit_rate = position.price / ask_rate
-                    bid_position_states.append((symbol, position.price, position.amount, ask_rate, profit, profit_rate))
+                    bid_position_states.append((symbol, position.price, position.volume, ask_rate, profit, profit_rate))
         return ask_position_states, bid_position_states
 
     def seed(self, seed=None):

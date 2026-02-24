@@ -43,7 +43,7 @@ class AgentTool:
         Args:
             is_buy (bool): buy order or not
             price (float): order price for limit or stop order. Specify 0 if you order with market price
-            volume (float): amount of trade volume. base_unit (e.g. lot) * volume will be ordered.
+            volume (float): volume of trade volume. base_unit (e.g. lot) * volume will be ordered.
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             order_type (int): 0: Market, 1: Limit, 2: Stop
             tp (float): specify take profit price. if less than 0 is specified, order without tp
@@ -87,7 +87,7 @@ class AgentTool:
                     order_type = 2
                     logger.debug("Changed order type to Stop")
 
-        suc, position = self.client.open_trade(is_buy=is_buy, price=price, symbol=symbol, order_type=order_type, amount=volume, tp=tp, sl=sl)
+        suc, position = self.client.open_trade(is_buy=is_buy, price=price, symbol=symbol, order_type=order_type, volume=volume, tp=tp, sl=sl)
         if suc and position is not None:
             result = {"price": str(position.price), "id": str(position.id)}
             self._step_index = 0
@@ -128,7 +128,7 @@ class AgentTool:
         for order in orders:
             return_orders_dict[str(order.id)] = {
                 "price": str(order.price),
-                "volume": str(order.amount),
+                "volume": str(order.volume),
                 "symbol": order.symbol,
                 "order_type": order.order_type.name,
                 "is_buy": True if order.position_side == POSITION_SIDE.long else False,
@@ -154,7 +154,7 @@ class AgentTool:
         """
         logger.debug(f"close_position with {id}, {volume}")
         try:
-            closed_result = self.client.close_position(id=id, amount=volume)
+            closed_result = self.client.close_position(id=id, volume=volume)
         except Exception as e:
             logger.exception(f"Error in close_position")
             return {"closed_price": "0", "profit": "0", "msg": str(e)}
@@ -218,7 +218,7 @@ class AgentTool:
         for position in positions:
             return_positions_dict[str(position.id)] = {
                 "price": str(position.price),
-                "volume": str(position.amount),
+                "volume": str(position.volume),
                 "symbol": position.symbol,
                 "is_buy": True if position.position_side == POSITION_SIDE.long else False,
                 "tp": "0" if position.tp is None else str(position.tp),

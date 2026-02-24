@@ -42,7 +42,7 @@ class TestSBIClient(unittest.TestCase):
     """
 
     def test_buy(self):
-        self.client.open_trade(True, symbol="4042", amount=1, tp=None, sl=None, option_info=None)
+        self.client.open_trade(True, symbol="4042", volume=1, tp=None, sl=None, option_info=None)
 
 
 if __name__ == "__main__":

@@ -36,8 +36,10 @@ class Position:
         self,
         position_side: POSITION_SIDE,
         symbol: str,
+        trade_unit: int,
+        leverage: float,
         price: float,
-        amount: float,
+        volume: float,
         tp: float,
         sl: float,
         time_index=None,
@@ -53,8 +55,10 @@ class Position:
             self.id = id
         self.position_side = _value_to_position_side(position_side)
         self.price = price
-        self.amount = amount
+        self.volume = volume
         self.option = option
+        self.trade_unit = trade_unit
+        self.leverage = leverage
         if option == "null":
             self.option = None
         if result == "null" or result is None:
@@ -102,7 +106,7 @@ class Position:
                     self.timestamp = timestamp
 
     def __str__(self):
-        return f"(position_side:{self.position_side}, price:{self.price}, amount:{self.amount}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, resilt: {self.result}, time_index:{self.index}, id:{self.id})"
+        return f"(position_side:{self.position_side}, price:{self.price}, volume:{self.volume}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, resilt: {self.result}, time_index:{self.index}, id:{self.id})"
 
     def __repr__(self):
         return self.__str__()
@@ -115,15 +119,18 @@ class Position:
         return {
             "position_side": self.position_side.value,
             "price": self.price,
-            "amount": self.amount,
+            "volume": self.volume,
             "option": json.dumps(self.option),
             "result": json.dumps(self.result),
             "symbol": self.symbol,
             "tp": self.tp,
             "sl": self.sl,
+            "trade_unit": self.trade_unit,
+            "leverage": self.leverage,
             "time_index": index,
             "timestamp": self.timestamp.isoformat(),
             "id": self.id,
+            "trade_unit": self.trade_unit,
         }
 
 
@@ -134,7 +141,7 @@ class Order:
         position_side: POSITION_SIDE,
         symbol: str,
         price: float,
-        amount: float,
+        volume: float,
         tp: float,
         sl: float,
         magic_number: int,
@@ -148,7 +155,7 @@ class Order:
         self.position_side = _value_to_position_side(position_side)
         self.symbol = symbol
         self.price = price
-        self.amount = amount
+        self.volume = volume
         self.tp = tp
         self.sl = sl
         self.created = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -159,29 +166,29 @@ class Order:
             "position_side": self.position_side.value,
             "symbol": self.symbol,
             "price": self.price,
-            "amount": self.amount,
+            "volume": self.volume,
             "tp": self.tp,
             "sl": self.sl,
             "id": self.id,
         }
 
     def __str__(self):
-        return f"Order(id={self.id}, order_type={self.order_type}, position_side={self.position_side}, symbol={self.symbol}, price={self.price}, amount={self.amount}, tp={self.tp}, sl={self.sl})"
+        return f"Order(id={self.id}, order_type={self.order_type}, position_side={self.position_side}, symbol={self.symbol}, price={self.price}, volume={self.volume}, tp={self.tp}, sl={self.sl})"
 
 
 class ClosedResult:
 
-    def __init__(self, id=None, price=0.0, entry_price=0.0, amount=0, price_diff=0.0, profit=0.0, msg="undefined error"):
+    def __init__(self, id=None, price=0.0, entry_price=0.0, volume=0, price_diff=0.0, profit=0.0, msg="undefined error"):
         self.id = id
         self.price = price
         self.entry_price = entry_price
-        self.amount = amount
+        self.volume = volume
         self.price_diff = price_diff
         self.profit = profit
         self.msg = msg
         self.error = True
 
-    def update(self, id=None, price=None, entry_price=None, price_diff=None, amount=None, profit=None, msg=None):
+    def update(self, id=None, price=None, entry_price=None, price_diff=None, volume=None, profit=None, msg=None):
         if id is not None:
             self.id = id
         if price is not None:
@@ -194,8 +201,8 @@ class ClosedResult:
             self.profit = profit
         if msg is not None:
             self.msg = msg
-        if amount is not None:
-            self.amount = amount
+        if volume is not None:
+            self.volume = volume
 
     def to_dict(self):
         return {
@@ -208,4 +215,4 @@ class ClosedResult:
         }
 
     def __str__(self):
-        return f"ClosedResult(id={self.id}, price={self.price}, entry_price={self.entry_price}, amount={self.amount}, price_diff={self.price_diff}, profit={self.profit}, msg={self.msg})"
+        return f"ClosedResult(id={self.id}, price={self.price}, entry_price={self.entry_price}, volume={self.volume}, price_diff={self.price_diff}, profit={self.profit}, msg={self.msg})"

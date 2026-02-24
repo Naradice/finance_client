@@ -13,7 +13,7 @@ from websockets import Side
 
 from finance_client import POSITION_SIDE, ClientBase
 from finance_client.account import Manager as AccountManager
-from finance_client.config.schema import RiskConfig
+from finance_client.config.model import RiskConfig
 from finance_client.risk_manager.model import RiskResult
 from finance_client.risk_manager.risk_options.atr import ATRRisk
 from finance_client.risk_manager.risk_options.fixed_loss import FixedAmountRisk

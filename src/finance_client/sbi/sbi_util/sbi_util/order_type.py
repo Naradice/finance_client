@@ -18,7 +18,7 @@ TOKUTEI_DEPOSIT = "sp_deposit"
 class PendingOrder:
     def __init__(
         self,
-        amount_of_stock_unit: int,
+        volume_of_stock_unit: int,
         price: float,
         condition: str = CONDITION_NO,
         SOR: bool = True,
@@ -39,14 +39,14 @@ class PendingOrder:
 
         self.condition = condition
         self.price = price
-        self.amount = amount_of_stock_unit
+        self.volume = volume_of_stock_unit
         self.period = period
 
 
 class MarketOrder:
     def __init__(
         self,
-        amount_of_stock_unit: int,
+        volume_of_stock_unit: int,
         condition: str = CONDITION_NO,
         SOR: bool = True,
         period: str = PERIOD_TODAY,
@@ -65,13 +65,13 @@ class MarketOrder:
             period = PERIOD_TODAY
 
         self.condition = condition
-        self.amount = amount_of_stock_unit
+        self.volume = volume_of_stock_unit
         self.period = period
 
 
 class LessUnitOrder:
-    def __init__(self, amount_of_stock_unit: int, deposit_type: str = TOKUTEI_DEPOSIT) -> None:
-        self.amount = amount_of_stock_unit
+    def __init__(self, volume_of_stock_unit: int, deposit_type: str = TOKUTEI_DEPOSIT) -> None:
+        self.volume = volume_of_stock_unit
 
 
 # PendingStopOrder(逆値指)、OCO, IFD、IFDOCOは利用しないため実装せず。必要になったら作成。
@@ -99,7 +99,7 @@ class UpdateOrderWithMarket:
 
 
 class SettlementPendingOrder:
-    def __init__(self, amount_of_stock_unit: int, price: float, condition: str = CONDITION_NO, SOR: bool = True, period: str = PERIOD_TODAY) -> None:
+    def __init__(self, volume_of_stock_unit: int, price: float, condition: str = CONDITION_NO, SOR: bool = True, period: str = PERIOD_TODAY) -> None:
         if condition not in PendingOrderConditions:
             print(f"{condition} is not recognaized as condition for Pending Order. Will use no condition instead.")
             condition = CONDITION_NO
@@ -114,12 +114,12 @@ class SettlementPendingOrder:
 
         self.condition = condition
         self.price = price
-        self.amount = amount_of_stock_unit
+        self.volume = volume_of_stock_unit
         self.period = period
 
 
 class SettlementMarketOrder:
-    def __init__(self, amount_of_stock_unit: int, condition: str = CONDITION_NO, SOR: bool = True, period: str = PERIOD_TODAY) -> None:
+    def __init__(self, volume_of_stock_unit: int, condition: str = CONDITION_NO, SOR: bool = True, period: str = PERIOD_TODAY) -> None:
         if condition not in MarketOrderConditions:
             print(f"{condition} is not recognaized as condition for Pending Order. Will use no condition instead.")
             condition = CONDITION_NO
@@ -133,10 +133,10 @@ class SettlementMarketOrder:
             period = PERIOD_TODAY
 
         self.condition = condition
-        self.amount = amount_of_stock_unit
+        self.volume = volume_of_stock_unit
         self.period = period
 
 
 class SettlementLessUnitOrder:
-    def __init__(self, amount_of_stock_unit: int) -> None:
-        self.amount = amount_of_stock_unit
+    def __init__(self, volume_of_stock_unit: int) -> None:
+        self.volume = volume_of_stock_unit

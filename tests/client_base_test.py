@@ -77,28 +77,28 @@ class TestClient(ClientBase):
         max_value = self.data.loc[self.step_index, "Open"]
         return random.randrange(min_value, max_value)
 
-    def _market_buy(self, symbol, price, amount, tp, sl, option_info=None):
+    def _market_buy(self, symbol, price, volume, tp, sl, option_info=None):
         return True, None
 
-    def _market_sell(self, symbol, price, amount, tp, sl, option_info=None):
+    def _market_sell(self, symbol, price, volume, tp, sl, option_info=None):
         return True, None
 
-    def _buy_to_close(self, symbol, ask_rate, amount, option_info=None, result=None):
+    def _buy_to_close(self, symbol, ask_rate, volume, option_info=None, result=None):
         return True
 
-    def _sell_to_close(self, symbol, bid_rate, amount, option_info=None, result=None):
+    def _sell_to_close(self, symbol, bid_rate, volume, option_info=None, result=None):
         return True
     
-    def _buy_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _buy_limit(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, random.randrange(1000000, 9999999)
 
-    def _sell_limit(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _sell_limit(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, random.randrange(1000000, 9999999)
 
-    def _buy_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _buy_stop(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, random.randrange(1000000, 9999999)
 
-    def _sell_stop(self, symbol, price, amount, tp, sl, order_number, *args, **kwargs):
+    def _sell_stop(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, random.randrange(1000000, 9999999)
 
     def get_params(self) -> dict:
@@ -213,7 +213,7 @@ class TestBaseClient(unittest.TestCase):
     def test_trading_simulation(self):
         budget = 100000
         client = TestClient(budget=budget, do_render=True)
-        suc, position = client.open_trade(is_buy=True, amount=100.0, symbol="USDJPY")
+        suc, position = client.open_trade(is_buy=True, volume=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
             # check if diagonal graph is shown
@@ -233,7 +233,7 @@ class TestBaseClient(unittest.TestCase):
         ask_price = client.get_current_ask()
         suc, position = client.open_trade(
             is_buy=True,
-            amount=100.0,
+            volume=100.0,
             symbol="USDJPY",
             price=ask_price + 20,
             order_type=ORDER_TYPE.stop,
@@ -257,7 +257,7 @@ class TestBaseClient(unittest.TestCase):
         # current_budget, in_use, profit = client.get_budget()
         # self.assertEqual(in_use, 0)
         positions = client.get_positions()
-        self.assertEqual(len(positions), 1, f"long position spjild: {positions}")
+        self.assertEqual(len(positions), 1, f"long position should be 1: {positions}")
         count = 0
         while len(positions) > 0:
             client.get_ohlc(None, 100)
@@ -276,7 +276,7 @@ class TestBaseClient(unittest.TestCase):
         ask_price = client.get_current_ask()
         suc, position = client.open_trade(
             is_buy=True,
-            amount=100.0,
+            volume=100.0,
             symbol="USDJPY",
             price=ask_price + 20,
             order_type=ORDER_TYPE.stop,
@@ -300,9 +300,10 @@ class TestBaseClient(unittest.TestCase):
         # current_budget, in_use, profit = client.get_budget()
         # self.assertEqual(in_use, 0)
         positions = client.get_positions()
-        self.assertEqual(len(positions), 1, f"long position spjild: {positions}")
+        self.assertEqual(len(positions), 1, f"long position should be 1: {positions}")
         position = positions[0]
         close_result = client.close_position(position=position)
+        # no error means position is closed successfully
         self.assertTrue(close_result.error is False)
         self.assertNotEqual(close_result.profit, 0)
         
@@ -340,12 +341,12 @@ class TestBaseClient(unittest.TestCase):
     def test_multi_trading_simulation(self):
         budget = 100000
         client = TestClient(budget=budget, do_render=True)
-        suc, long_position = client.open_trade(is_buy=True, amount=100.0, symbol="USDJPY")
+        suc, long_position = client.open_trade(is_buy=True, volume=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
             # check if diagonal graph is shown
             time.sleep(1)
-        suc, short_position = client.open_trade(is_buy=False, amount=100.0, symbol="USDAUD")
+        suc, short_position = client.open_trade(is_buy=False, volume=100.0, symbol="USDAUD")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
             # check if diagonal graph is shown

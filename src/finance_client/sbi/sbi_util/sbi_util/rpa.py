@@ -180,12 +180,12 @@ class STOCK:
             print(f"error happend on transit_symbol_page_to_order_page {e}")
             return False
 
-    def filling_order_page(self, amount, password, market=False, price=None):
+    def filling_order_page(self, volume, password, market=False, price=None):
         """order the symbol
             if market is True or price is None, order market buy/sell
 
         Args:
-            amount (int): number of unit to order. Ex) If Unit 100, amount=3 means 300.
+            volume (int): number of unit to order. Ex) If Unit 100, volume=3 means 300.
             password (str): password to order
             market (bool, optional): Option to order with market price. Defaults to False.
             price (float, optional): Price to order. Defaults to None.
@@ -206,7 +206,7 @@ class STOCK:
             EC.presence_of_element_located((By.CLASS_NAME, target_class_name))
         )
         if mtexts_eles:
-            # input amount
+            # input volume
             self.logger.debug("start filling to sell")
             mtexts_eles = self.driver.find_elements(By.CLASS_NAME, target_class_name)
             for ele in mtexts_eles:
@@ -216,8 +216,8 @@ class STOCK:
             target_name = "input_quantity"
             input_ele = self.driver.find_element(By.NAME, target_name)
             input_ele.clear()
-            input_ele.send_keys(amount * order_unit)
-            self.logger.debug("filled order amount")
+            input_ele.send_keys(volume * order_unit)
+            self.logger.debug("filled order volume")
             if market is True or price is None:
                 market_rbutton = "nariyuki"
                 market_rb_ele = self.driver.find_element(By.ID, market_rbutton)
@@ -540,12 +540,12 @@ class STOCK:
                     self.logger.debug(f"rating is not available for {symbol}")
         return ratings
 
-    def buy_order(self, symbol: str, amount: int, order_price: float = None):
+    def buy_order(self, symbol: str, volume: int, order_price: float = None):
         """
 
         Args:
             symbol (str): symbol to order. Allows if search result shows a page of symbol.
-            amount (int): amount of order. try to buy with (amount * unit) * order_price
+            volume (int): volume of order. try to buy with (volume * unit) * order_price
             order_price (float, optional): price to order. Defaults to None.
 
         Returns:
@@ -555,7 +555,7 @@ class STOCK:
         if self.__open_symbol_page(symbol):
             if self.__transit_symbol_page_to_order_page(sbi_enum.buy):
                 self.filling_order_page(
-                    amount, password=self.trading_pass, price=order_price
+                    volume, password=self.trading_pass, price=order_price
                 )
                 return True
             else:
@@ -565,16 +565,16 @@ class STOCK:
             print("failed to open symbol page")
             return False
 
-    def buy_less_than_unit(self, symbol, amount: int):
+    def buy_less_than_unit(self, symbol, volume: int):
         raise Exception("Not implemented")
 
-    def sell_to_close_buy_order(self, symbol, amount, order_price=None):
+    def sell_to_close_buy_order(self, symbol, volume, order_price=None):
         """
         Sell to close
 
         Args:
             symbol (str): symbol name or id
-            amount (int): amount of order. try to buy with (amount * unit) * order_price
+            volume (int): volume of order. try to buy with (volume * unit) * order_price
             order_price (float, optional): price to order. Defaults to None.
 
         Returns:
@@ -593,7 +593,7 @@ class STOCK:
                     break
             if is_clicked:
                 return self.filling_order_page(
-                    amount, self.trading_pass, price=order_price
+                    volume, self.trading_pass, price=order_price
                 )
             else:
                 self.logger.warning(f"{symbol} is not found on symbol column.")

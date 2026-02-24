@@ -41,8 +41,8 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         )
 
     def test_01_buy_close(self):
-        # amount should be float. it is auto converted to trade unit in open_trade
-        suc, position = self.client.open_trade(is_buy=False, amount=1, symbol=tgt_symbol)
+        # volume should be float. it is auto converted to trade unit in open_trade
+        suc, position = self.client.open_trade(is_buy=False, volume=1, symbol=tgt_symbol)
         self.assertTrue(suc, "please check if market opens")
         self.assertIsNotNone(position)
 
@@ -50,7 +50,7 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         self.assertTrue(not result.error, "please check if market opens")
 
     def test_02_sell_close(self):
-        suc, position = self.client.open_trade(is_buy=True, amount=1, symbol=tgt_symbol)
+        suc, position = self.client.open_trade(is_buy=True, volume=1, symbol=tgt_symbol)
         self.assertTrue(suc, "please check if market opens")
         self.assertIsNotNone(position)
 
@@ -58,7 +58,7 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         self.assertTrue(not result.error, "please check if market opens")
 
     def test_03_update_position(self):
-        suc, position = self.client.open_trade(is_buy=True, amount=1, symbol=tgt_symbol)
+        suc, position = self.client.open_trade(is_buy=True, volume=1, symbol=tgt_symbol)
         self.assertTrue(suc, "please check if market opens")
         self.assertIsNotNone(position)
 
@@ -69,7 +69,7 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         self.assertTrue(not result.error, "please check if market opens")
 
     def test_04_order(self):
-        suc, position = self.client.open_trade(is_buy=True, amount=1, symbol=tgt_symbol, price=155.0, tp=160.0, sl=50.0, order_type=ORDER_TYPE.limit)
+        suc, position = self.client.open_trade(is_buy=True, volume=1, symbol=tgt_symbol, price=155.0, tp=160.0, sl=50.0, order_type=ORDER_TYPE.limit)
         self.assertTrue(suc, "order placement failed")
         self.assertIsNotNone(position)
         suc = self.client.cancel_order(position=position.id)
@@ -81,11 +81,11 @@ class TestMT5ClientWithSQL(unittest.TestCase):
         self.assertTrue(not suc, "canceling invalid order should fail")
 
     def test_06_get_positions(self):
-        suc, position1 = self.client.open_trade(is_buy=True, amount=1, symbol=tgt_symbol)
+        suc, position1 = self.client.open_trade(is_buy=True, volume=1, symbol=tgt_symbol)
         self.assertTrue(suc, "please check if market opens")
         self.assertIsNotNone(position1)
 
-        suc, position2 = self.client.open_trade(is_buy=False, amount=1, symbol="EURJPY")
+        suc, position2 = self.client.open_trade(is_buy=False, volume=1, symbol="EURJPY")
         self.assertTrue(suc, "please check if market opens")
         self.assertIsNotNone(position2)
 

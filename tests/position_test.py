@@ -17,7 +17,7 @@ class TestPositionWithFile(unittest.TestCase):
     def test_open_a_position(self):
         key = "test"
         storage = db.PositionFileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         long_positions, short_positions = manager.storage.get_positions()
         pre_positions_count = len(long_positions) + len(short_positions)
         manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
@@ -34,7 +34,7 @@ class TestPositionWithFile(unittest.TestCase):
     def test_close_a_position(self):
         key = "close_test"
         storage = db.PositionFileStorage(key, save_period=0, username=key, positions_path=self.position_file_path)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         self.assertNotEqual(position.id, None)
         result = manager.close_position(position.id, price=101.0)
@@ -49,7 +49,7 @@ class TestPositionWithFile(unittest.TestCase):
     def test_frequent_trade(self):
         key = "freq_test"
         storage = db.PositionFileStorage(key, save_period=0.1, username=key, positions_path=self.position_file_path)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         ids = []
         for i in range(30):
             position = manager.open_position(POSITION_SIDE.long, "symbol", 100.0, 1)
@@ -73,7 +73,7 @@ class TestPositionWithSQLite(unittest.TestCase):
     def test_open_a_position(self):
         key = "test"
         storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         long_positions, short_positions = manager.storage.get_positions()
         pre_positions_count = len(long_positions) + len(short_positions)
         manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
@@ -85,7 +85,7 @@ class TestPositionWithSQLite(unittest.TestCase):
     def test_close_a_position(self):
         key = "close_test"
         storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         self.assertNotEqual(position.id, None)
         result = manager.close_position(position.id, price=101.0)
@@ -94,7 +94,7 @@ class TestPositionWithSQLite(unittest.TestCase):
     def test_frequent_trade(self):
         key = "freq_test"
         storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         ids = []
         for i in range(30):
             position = manager.open_position(POSITION_SIDE.long, "symbol", 100.0, 1)
@@ -108,7 +108,7 @@ class TestPositionWithSQLite(unittest.TestCase):
     def get_position(self):
         key = "test"
         storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         position = manager.storage.get_position(position.id)
         self.assertTrue(isinstance(position, Position))
@@ -116,7 +116,7 @@ class TestPositionWithSQLite(unittest.TestCase):
     def get_positions(self, symbols=None):
         key = "test"
         storage = db.PositionSQLiteStorage(self.db_file_path, key, username=key)
-        manager = Manager(10000, storage=storage)
+        manager = Manager(10000, position_storage=storage)
         id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)

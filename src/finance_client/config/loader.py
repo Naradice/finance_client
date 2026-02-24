@@ -3,7 +3,7 @@ import os
 
 import yaml
 
-from .schema import AccountRiskConfig, SymbolRiskConfig
+from .model import AccountRiskConfig, SymbolRiskConfig
 
 
 def load_account_risk_config(file_path: str) -> AccountRiskConfig:

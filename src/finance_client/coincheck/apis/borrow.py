@@ -7,7 +7,7 @@ class Borrow:
         self.service = ServiceBase()
 
     def create(self, params={}):
-        defaults = {"amount": "", "currency": ""}
+        defaults = {"volume": "", "currency": ""}
         defaults.update(params)
         params = defaults.copy()
         return self.service.request(ServiceBase.METHOD_POST, self.baseUrl, params)
