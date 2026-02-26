@@ -532,7 +532,7 @@ class SQLiteStorage(BaseStorage):
         else:
             self.log_storage = log_storage
         self._table_init()
-    
+
     def __commit(self, query, params=()):
         with self.__lock:
             conn = sqlite3.connect(self.__database_path)
@@ -550,7 +550,6 @@ class SQLiteStorage(BaseStorage):
             conn.commit()
             cursor.close()
             conn.close()
-
 
     def __fetch(self, query, params=()):
         with self.__lock:
@@ -682,9 +681,9 @@ class SQLiteStorage(BaseStorage):
             index,
             position.amount,
             timestamp,
-            position.id,
             position.result,
             position.option,
+            position.id,
         )
         query = f"UPDATE {self.POSITION_TABLE_NAME} SET {', '.join(targets)} WHERE id = ?"
         self.__commit(query, values)
@@ -802,6 +801,7 @@ class SQLiteStorage(BaseStorage):
         except Exception:
             return False
 
+
 class LogSQLiteStorage(BaseStorage):
     TRADE_TABLE_NAME = "trade"
     _TRADE_TABLE_KEYS = {
@@ -826,7 +826,6 @@ class LogSQLiteStorage(BaseStorage):
 
         self.__database_path = database_path
         self._table_init()
-        
 
     def _table_init(self):
         conn = sqlite3.connect(self.__database_path)
