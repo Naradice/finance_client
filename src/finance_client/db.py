@@ -36,6 +36,24 @@ def _get_all_user_position_filepaths():
     return all_user_folders
 
 
+def _index_to_str(index):
+    if index is None:
+        time_index = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    elif isinstance(index, datetime.datetime):
+        time_index = index.isoformat()
+    elif isinstance(index, str):
+        time_index = index
+    elif isinstance(index, (int, float)):
+        time_index = datetime.datetime.fromtimestamp(index, tz=datetime.timezone.utc).isoformat()
+    elif isinstance(index, datetime.date):
+        time_index = index.isoformat()
+    elif isinstance(index, pd.Timestamp):
+        time_index = index.to_pydatetime().isoformat()
+    else:
+        raise ValueError(f"Unsupported index type: {type(index)}. index must be datetime, str, int, float, date or pd.Timestamp.")
+    return time_index
+
+
 class LogStorageBase(metaclass=ABCMeta):
 
     def __init__(self, provider: str, username: str) -> None:
@@ -56,9 +74,7 @@ class LogStorageBase(metaclass=ABCMeta):
             dict: log item dictionary
         """
 
-        time_index = position.index
-        if isinstance(time_index, pd.Timestamp):
-            time_index = time_index.isoformat()
+        time_index = _index_to_str(position.index)
         log_item = {}
         log_item["position_id"] = position.id
         log_item["provider"] = self.provider
@@ -97,7 +113,12 @@ class LogStorageBase(metaclass=ABCMeta):
     def get_logs(self, provider, username, start=None, end=None) -> pd.DataFrame:
         logger.warning("get_logs is not implemented in LogStorageBase.")
         return pd.DataFrame()
-    
+
+    @abstractmethod
+    def get_profit_logs(self, provider, username, start=None, end=None) -> pd.DataFrame:
+        logger.warning("get_profit_logs is not implemented in LogStorageBase.")
+        return pd.DataFrame()
+
     def get_log(self, provider, username, id=None, order_type=None) -> pd.DataFrame:
         if id is not None and order_type == 1:
             return self._get_open_log_with_id(provider, username, id)
@@ -113,7 +134,7 @@ class LogStorageBase(metaclass=ABCMeta):
             else:
                 log_df = pd.DataFrame()
             return log_df
-    
+
     def _get_profit(self, close_position: Position):
         log_df = self.get_log(provider=self.provider, username=self.username, id=close_position.id, order_type=1)
         if len(log_df) > 0:
@@ -160,7 +181,7 @@ class LogCSVStorage(LogStorageBase):
             self.__trade_logs = pd.concat([self.__trade_logs, df], ignore_index=True)
         except Exception as e:
             logger.warning(f"Failed to store log in memory: {e}")
-        
+
         if save_profit:
             profit = self._get_profit(position)
             if profit is not None:
@@ -169,7 +190,7 @@ class LogCSVStorage(LogStorageBase):
                     "provider": self.provider,
                     "username": self.username,
                     "symbol": position.symbol,
-                    "time_index": position.index,
+                    "time_index": _index_to_str(position.index),
                     "profit": profit,
                     "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
                 }
@@ -197,7 +218,7 @@ class LogCSVStorage(LogStorageBase):
                 self.__trade_logs = pd.concat([self.__trade_logs, df], ignore_index=True)
             except Exception as e:
                 logger.warning(f"Failed to store log in memory: {e}")
-            
+
             if save_profit:
                 account_history_items = []
                 for position_id, log_item in log_items.items():
@@ -208,7 +229,7 @@ class LogCSVStorage(LogStorageBase):
                             "provider": self.provider,
                             "username": self.username,
                             "symbol": log_item["symbol"],
-                            "time_index": log_item["time_index"],
+                            "time_index": _index_to_str(log_item["time_index"]),
                             "profit": profit,
                             "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
                         }
@@ -226,31 +247,36 @@ class LogCSVStorage(LogStorageBase):
         if provider is not None:
             try:
                 logs = logs[logs["provider"] == provider]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to filter logs by provider: {e}")
         if username is not None:
             try:
                 logs = logs[logs["username"] == username]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to filter logs by username: {e}")
         if start is not None:
             try:
                 logs = logs[logs["time_index"] >= start]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to filter logs by start time: {e}")
         if end is not None:
             try:
                 logs = logs[logs["time_index"] <= end]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to filter logs by end time: {e}")
         if id is not None:
             try:
                 logs = logs[logs["position_id"] == id]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to filter logs by id: {e}")
         return logs
 
-    def __get_log_with_cache(self, provider, username, id,) -> pd.DataFrame:
+    def __get_log_with_cache(
+        self,
+        provider,
+        username,
+        id,
+    ) -> pd.DataFrame:
         log_df = self.__filter_logs(self.__trade_logs, provider=provider, username=username, id=id)
         if len(log_df) > 0:
             log_df = log_df.sort_values(by="logged_at", ascending=False)
@@ -270,7 +296,7 @@ class LogCSVStorage(LogStorageBase):
         if len(log_df) > 1:
             log_df = log_df.iloc[:-1]
         return log_df
-    
+
     def _get_open_log_with_id(self, provider, username, id) -> pd.DataFrame:
         log_df = self.__get_log_with_cache(provider, username, id)
         if len(log_df) > 0:
@@ -289,6 +315,19 @@ class LogCSVStorage(LogStorageBase):
         df = pd.read_csv(self.trade_log_path)
         log_df = self.__filter_logs(df, provider=provider, username=username, start=start, end=end)
         return log_df
+
+    def get_profit_logs(self, provider=None, username=None, start=None, end=None) -> pd.DataFrame:
+        if provider is None:
+            provider = self.provider
+        if username is None:
+            username = self.username
+        if os.path.exists(self.account_history_path):
+            df = pd.read_csv(self.account_history_path, parse_dates=["time_index", "logged_at"])
+            profit_log_df = self.__filter_logs(df, provider=provider, username=username, start=start, end=end)
+            return profit_log_df
+        else:
+            return pd.DataFrame()
+
 
 class LogSQLiteStorage(LogStorageBase):
     TRADE_TABLE_NAME = "trade"
@@ -316,7 +355,7 @@ class LogSQLiteStorage(LogStorageBase):
         "profit": "REAL",
         "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     }
-    
+
     __lock = threading.Lock()
 
     def __init__(self, database_path, provider: str, username=None) -> None:
@@ -382,7 +421,7 @@ class LogSQLiteStorage(LogStorageBase):
                     "provider": self.provider,
                     "username": self.username,
                     "symbol": position.symbol,
-                    "time_index": position.index,
+                    "time_index": _index_to_str(position.index),
                     "profit": profit,
                     "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
                 }
@@ -392,12 +431,12 @@ class LogSQLiteStorage(LogStorageBase):
             else:
                 logger.warning(f"Profit is None for position id {position.id}. profit cannot be calculated.")
 
-    def store_logs(self, items:dict, save_profit:bool = False):
+    def store_logs(self, items: dict, save_profit: bool = False):
         log_values = [tuple(self._convert_position_to_log(p, order_type).values()) for p, order_type in items.items()]
         keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
         query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__multi_commit(query, log_values)
-    
+
         if save_profit:
             profit_log_items = []
             for position, order_type in items.items():
@@ -409,7 +448,7 @@ class LogSQLiteStorage(LogStorageBase):
                         "provider": self.provider,
                         "username": self.username,
                         "symbol": position.symbol,
-                        "time_index": position.index,
+                        "time_index": _index_to_str(position.index),
                         "profit": profit,
                         "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
                     }
@@ -425,18 +464,22 @@ class LogSQLiteStorage(LogStorageBase):
         with self.__lock:
             conn = sqlite3.connect(self.__database_path)
             query = f"SELECT * FROM {self.TRADE_TABLE_NAME} WHERE provider=? AND username=? AND position_id=?"
-            df = pd.read_sql_query(query, conn, params=(provider, username, id))
+            df = pd.read_sql_query(
+                query,
+                conn,
+                params=(provider, username, id),
+            )
             conn.close()
             if len(df) > 0:
                 df = df.sort_values(by="logged_at", ascending=False)
                 df = df.iloc[-1:]
             return df
-    
+
     def _get_open_log_with_id(self, provider, username, id):
         with self.__lock:
             conn = sqlite3.connect(self.__database_path)
             query = f"SELECT * FROM {self.TRADE_TABLE_NAME} WHERE provider=? AND username=? AND position_id=? AND order_type=1"
-            df = pd.read_sql_query(query, conn, params=(provider, username, id))
+            df = pd.read_sql_query(query, conn, params=(provider, username, id), parse_dates=["time_index", "logged_at"])
             conn.close()
             if len(df) > 0:
                 df = df.sort_values(by="logged_at", ascending=False)
@@ -447,14 +490,30 @@ class LogSQLiteStorage(LogStorageBase):
         with self.__lock:
             conn = sqlite3.connect(self.__database_path)
             query = f"SELECT * FROM {self.TRADE_TABLE_NAME} WHERE provider=? AND username=?"
-            df = pd.read_sql_query(query, conn, params=(provider, username))
+            df = pd.read_sql_query(query, conn, params=(provider, username), parse_dates=["time_index", "logged_at"])
             conn.close()
         if start is not None:
             df = df[df["time_index"] >= start]
         if end is not None:
             df = df[df["time_index"] <= end]
         return df
-    
+
+    def get_profit_logs(self, provider=None, username=None, start=None, end=None) -> pd.DataFrame:
+        with self.__lock:
+            if provider is None:
+                provider = self.provider
+            if username is None:
+                username = self.username
+            conn = sqlite3.connect(self.__database_path)
+            query = "SELECT * FROM profit WHERE provider=? AND username=?"
+            df = pd.read_sql_query(query, conn, params=(provider, username), parse_dates=["time_index", "logged_at"])
+            conn.close()
+        if start is not None:
+            df = df[df["time_index"] >= start]
+        if end is not None:
+            df = df[df["time_index"] <= end]
+        return df
+
     def close(self):
         return super().close()
 
@@ -700,6 +759,7 @@ class PositionFileStorage(PositionStorageBase):
             # save log file separately as position doesn't have closed price
         self.__update_required = True
         return True
+
     def _load_positions(self):
         """
 
@@ -819,7 +879,7 @@ class PositionSQLiteStorage(PositionStorageBase):
 
         self.__database_path = database_path
         self._table_init()
-    
+
     def __commit(self, query, params):
         with self.__lock:
             conn = sqlite3.connect(self.__database_path)
@@ -860,6 +920,9 @@ class PositionSQLiteStorage(PositionStorageBase):
 
     def store_position(self, position: Position):
         keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        time_index = _index_to_str(position.index)
+        if position.timestamp is None:
+            position.timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
         values = (
             position.id,
             self.provider,
@@ -871,7 +934,7 @@ class PositionSQLiteStorage(PositionStorageBase):
             position.price,
             position.tp,
             position.sl,
-            position.index,
+            time_index,
             position.volume,
             position.timestamp,
             position.result,
@@ -972,9 +1035,9 @@ class PositionSQLiteStorage(PositionStorageBase):
             index,
             position.volume,
             timestamp,
-            position.id,
             position.result,
             position.option,
+            position.id,
         )
         query = f"UPDATE {self.POSITION_TABLE_NAME} SET {', '.join(targets)} WHERE id = ?"
         self.__commit(query, values)

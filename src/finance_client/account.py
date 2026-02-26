@@ -5,16 +5,22 @@ from typing import List, Tuple
 import pandas as pd
 
 from finance_client.config.model import AccountRiskConfig
-from finance_client.db import (LogCSVStorage, LogStorageBase,
-                               PositionFileStorage, PositionStorageBase)
+from finance_client.db import LogCSVStorage, LogStorageBase, PositionFileStorage, PositionStorageBase
 from finance_client.position import POSITION_SIDE, ClosedResult, Position
 
 logger = logging.getLogger(__name__)
 
 
 class Manager:
-    def __init__(self, budget, position_storage: PositionStorageBase = None, log_storage: LogStorageBase = None,
-                 account_risk_config:AccountRiskConfig=None, tz_info=None, provider="Default"):
+    def __init__(
+        self,
+        budget,
+        position_storage: PositionStorageBase = None,
+        log_storage: LogStorageBase = None,
+        account_risk_config: AccountRiskConfig = None,
+        tz_info=None,
+        provider="Default",
+    ):
         """
 
         Args:
@@ -22,7 +28,7 @@ class Manager:
             position_storage (PositionStorageBase, optional): storage backend for positions. Defaults to None.
             log_storage (LogStorageBase, optional): storage backend for logs. Defaults to None.
             account_risk_config (AccountRiskConfig, optional): risk configuration for the account. Defaults to None.
-            tz_info (datetime.timezone, optional): timezone information. Defaults to None, which means UTC. 
+            tz_info (datetime.timezone, optional): timezone information. Defaults to None, which means UTC.
             provider (str, optional): provider name. Defaults to "Default".
         """
         self.budget = budget
@@ -42,14 +48,14 @@ class Manager:
             tz_info = datetime.timezone.utc
         self.tz_info = tz_info
         logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}, tz_info:{tz_info}")
-    
+
     @property
     def risk_config(self):
         if self.__account_risk_config is not None:
             return self.__account_risk_config
         else:
             return None
-    
+
     @risk_config.setter
     def risk_config(self, config: AccountRiskConfig):
         if config.daily_max_loss_percent is not None:
@@ -67,7 +73,6 @@ class Manager:
             self.update_daily_max_loss()
         else:
             self.__account_risk_config = config
-
 
     def open_position(
         self,
@@ -215,9 +220,20 @@ class Manager:
             closed_result.error = False
             self._trade_log_db.store_log(
                 # create position with closed price and volume for logging
-                Position(position.position_side, position.symbol, position.trade_unit, position.leverage, 
-                         price, volume, position.tp, position.sl, index, id=position.id),
-                order_type=-1
+                Position(
+                    position.position_side,
+                    position.symbol,
+                    position.trade_unit,
+                    position.leverage,
+                    price,
+                    volume,
+                    position.tp,
+                    position.sl,
+                    index,
+                    id=position.id,
+                ),
+                order_type=-1,
+                save_profit=True,
             )
             return closed_result
         else:
@@ -226,7 +242,7 @@ class Manager:
             closed_result.msg = "position id is not found"
             closed_result.error = True
             return closed_result
-            
+
     def remove_position_from_listening(self, id):
         if id in self.listening_positions:
             self.listening_positions.pop(id)
@@ -244,13 +260,13 @@ class Manager:
 
         Args:
             symbols (List[str], optional): filter by symbols. Defaults to None, which means get all positions.
-        
+
         Returns:
             Tuple[List[Position], List[Position]]: long_positions, short_positions
         """
         long_positions, short_positions = self.storage.get_positions(symbols=symbols)
         return list(long_positions), list(short_positions)
-    
+
     def get_open_positions_risk_volume(self) -> float:
         """
             calculate total risk volume of open positions, which is used to consider max concurrent position limit
@@ -262,14 +278,14 @@ class Manager:
         for position in long_positions + short_positions:
             if position.sl is not None:
                 price_diff = abs(position.price - position.sl)
-                risk_volume = self.trade_unit * position.volume * price_diff
+                risk_volume = position.trade_unit * position.volume * price_diff
                 total_risk_volume += risk_volume
             else:
                 logger.warning(f"position {position.id} has no stop loss, add X to risk volume")
 
         return total_risk_volume
 
-    def get_daily_realized_pnl(self, date: str=None) -> float:
+    def get_daily_realized_pnl(self, date: str = None) -> float:
         """
             calculate today's realized PnL, which is used to consider max daily loss limit
         Returns:
@@ -282,7 +298,7 @@ class Manager:
             today = pd.Timestamp(date, tz=self.tz_info).normalize()
             end_date = today + pd.Timedelta(days=1)
         logs = self._trade_log_db.get_profit_logs(start=today, end=end_date)
-        daily_realized_pnl = sum(log.profit for log in logs)
+        daily_realized_pnl = sum(log.profit for _, log in logs.iterrows())
         return daily_realized_pnl
 
     def __del__(self):
