@@ -24,9 +24,9 @@ def _value_to_position_side(value: int):
         for member in POSITION_SIDE:
             if member.name == value:
                 return member
-        if "ask" == value:
+        if "ask" == value or "buy" == value or "long" == value:
             return POSITION_SIDE.long
-        if "bid" == value:
+        if "bid" == value or "sell" == value or "short" == value:
             return POSITION_SIDE.short
     raise ValueError(f"{value} is not supported as POSITION_SIDE")
 
@@ -142,6 +142,8 @@ class Order:
         symbol: str,
         price: float,
         volume: float,
+        trade_unit: int,
+        leverage: float,
         tp: float,
         sl: float,
         magic_number: int,
@@ -156,8 +158,11 @@ class Order:
         self.symbol = symbol
         self.price = price
         self.volume = volume
+        self.trade_unit = trade_unit
+        self.leverage = leverage
         self.tp = tp
         self.sl = sl
+        self.magic_number = magic_number
         self.created = datetime.datetime.now(tz=datetime.timezone.utc)
 
     def to_dict(self):
@@ -167,13 +172,15 @@ class Order:
             "symbol": self.symbol,
             "price": self.price,
             "volume": self.volume,
+            "trade_unit": self.trade_unit,
+            "leverage": self.leverage,
             "tp": self.tp,
             "sl": self.sl,
             "id": self.id,
         }
 
     def __str__(self):
-        return f"Order(id={self.id}, order_type={self.order_type}, position_side={self.position_side}, symbol={self.symbol}, price={self.price}, volume={self.volume}, tp={self.tp}, sl={self.sl})"
+        return f"Order(id={self.id}, order_type={self.order_type}, position_side={self.position_side}, symbol={self.symbol}, price={self.price}, volume={self.volume}, trade_unit={self.trade_unit}, leverage={self.leverage}, tp={self.tp}, sl={self.sl})"
 
 
 class ClosedResult:

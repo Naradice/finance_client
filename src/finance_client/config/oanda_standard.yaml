@@ -1,8 +1,165 @@
 provider:
   contract_size: 100000
   leverage: 25
+
 symbols:
   USDJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  GBPJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  AUDJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  NZDJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURUSD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  AUDUSD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  GBPUSD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  NZDUSD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURGBP:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  AUDCAD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  AUDCHF:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  AUDNZD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  CADJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  CHFJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURAUD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURCAD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURCHF:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  GBPAUD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  GBPCHF:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDCHF:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDCAD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  TRYJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  ZARJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  GBPCAD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  GBPNZD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDTRY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDZAR:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  CADCHF:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  EURNZD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  NZDCAD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  NZDCHF:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  MXNJPY:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDMXN:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDSGD:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDCNH:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDDKK:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDNOK:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  USDSEK:
+    min_volume: 1000
+    volume_step: 1000
+    risk_percent: 1.0
+  CNHJPY:
     min_volume: 1000
     volume_step: 1000
     risk_percent: 1.0

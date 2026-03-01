@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 class ESClient(ClientBase):
-    def __init__(self, auto_index=False, frame=5, symbol="USDJPY", post_process=[], budget=1000000, seed=1017, user_name=None):
+    def __init__(self, auto_index=False, frame=5, symbol="USDJPY", post_process=[], free_mergin=1000000, seed=1017, user_name=None):
         """_summary_
 
         Args:
@@ -14,11 +14,11 @@ class ESClient(ClientBase):
             frame (int, optional): _description_. Defaults to 5.
             symbol (str, optional): _description_. Defaults to "USDJPY".
             post_process (list, optional): _description_. Defaults to [].
-            budget (int, optional): _description_. Defaults to 1000000.
+            free_mergin (int, optional): _description_. Defaults to 1000000.
             seed (int, optional): _description_. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
         """
-        super().__init__(budget=budget, symbols=symbol, frame=frame, provider="vantage", post_processes=post_process, user_name=None)
+        super().__init__(free_mergin=free_mergin, symbols=symbol, frame=frame, provider="vantage", post_processes=post_process, user_name=None)
         self.debug = False
         self.SYMBOL = symbol
         self.frame = frame

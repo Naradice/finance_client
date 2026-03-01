@@ -87,7 +87,7 @@ class CoinCheckClient(ClientBase):
         initialized_with=None,
         return_intermidiate_data=False,
         simulation=False,
-        budget=1000000,
+        free_mergin=1000000,
         frame: int = 30,
         observation_length=None,
         do_render=False,
@@ -100,7 +100,7 @@ class CoinCheckClient(ClientBase):
         Currentry BTC/JPY is only supported
 
         Args:
-            budget (int, optional): Defaults to 1000000.
+            free_mergin (int, optional): Defaults to 1000000.
             indicater_processes (list, optional): Indicaters made by finance_client.fprocess.idcprocess. Defaults to [].
             post_processes (list, optional): _description_. Defaults to [].
             frame (int, optional): Frame minutes. finance_client.frames is also available. Defaults to 30.
@@ -109,14 +109,14 @@ class CoinCheckClient(ClientBase):
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
         """
         super().__init__(
-            budget,
+            free_mergin,
             "CoinCheck",
             frame=frame,
             observation_length=observation_length,
             do_render=do_render,
             enable_trade_log=enable_trade_log,
             user_name=user_name,
-            storage=storage
+            storage=storage,
         )
         ServiceBase(ACCESS_ID=ACCESS_ID, ACCESS_SECRET=ACCESS_SECRET)
 
@@ -360,7 +360,7 @@ class CoinCheckClient(ClientBase):
 
     def __len__(self):
         return len(self.data)
-    
+
     def get_ohlc_columns(self) -> dict:
         return {
             "Open": "open",

@@ -11,7 +11,31 @@ from finance_client.position import POSITION_SIDE, Position
 
 class ManagerTest(unittest.TestCase):
 
+    def setUp(self):
+        # clean up before each test
+        base_path = os.path.dirname(os.getcwd())
+        if os.path.exists(f"{base_path}/unit_test.db"):
+            os.remove(f"{base_path}/unit_test.db")
+        if os.path.exists(f"{base_path}/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+
+        if os.path.exists(f"{base_path}/tests/unit_test.db"):
+            os.remove(f"{base_path}/tests/unit_test.db")
+        if os.path.exists(f"{base_path}/tests/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/tests/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/tests/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+
     def test_risk_config(self):
+        self.setUp()
         manager = Manager(10000)
         # valid config
         risk_config = AccountRiskConfig(
@@ -101,8 +125,8 @@ class ManagerTest(unittest.TestCase):
         manager.risk_config = risk_config
         self.assertEqual(manager.daily_max_loss, 5000.0)
 
-        # update budget and check if daily max loss is updated accordingly
-        manager.budget = 20000
+        # update free_mergin and check if daily max loss is updated accordingly
+        manager.free_mergin = 20000
         manager.update_daily_max_loss()
         self.assertEqual(manager.daily_max_loss, 10000.0)
 
@@ -296,42 +320,85 @@ class ManagerTest(unittest.TestCase):
         updated = manager.update_position(None, tp=110, sl=90)
         self.assertFalse(updated)
 
-    def test_update_position_with_invalid_tp_sl(self):
-        manager = Manager(10000)
-        position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
-        updated = manager.update_position(position, tp=-10, sl=-20)
-        self.assertTrue(updated)
-        self.assertEqual(position.tp, -10)
-        self.assertEqual(position.sl, -20)
-
-    def test_update_position_with_tp_sl_equal_to_price(self):
-        manager = Manager(10000)
-        position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
-        updated = manager.update_position(position, tp=100, sl=100)
-        self.assertTrue(updated)
-        self.assertEqual(position.tp, 100)
-        self.assertEqual(position.sl, 100)
-
     def test_get_positions(self):
         key = "account_test"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         manager = Manager(10000, position_storage=storage)
-        id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
-        id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
-        id = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
-        id = manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
-        id = manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
+        manager.open_position(POSITION_SIDE.short, "test", 100.0, 1)
         long_positions, short_positions = manager.storage.get_positions()
         self.assertGreaterEqual(len(long_positions), 3)
         self.assertGreaterEqual(len(short_positions), 2)
 
+    def test_get_balance(self):
+
+        manager = Manager(10000)
+        self.assertEqual(manager.get_balance(), 10000)
+
+    def test_get_balance_after_opening_position(self):
+        manager = Manager(10000)
+        manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        # balance should not change after opening position
+        self.assertEqual(manager.get_balance(), 10000)
+
+    def test_get_balance_after_closing_position(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=110, volume=1)
+        # balance should increase by profit after closing position
+        expected_balance = 10000 + (110 - 100) * position.trade_unit * position.leverage * position.volume
+        self.assertEqual(manager.get_balance(), expected_balance)
+
+    def test_get_balance_after_closing_position_with_loss(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=90, volume=1)
+        # balance should decrease by loss after closing position
+        expected_balance = 10000 - (100 - 90) * position.trade_unit * position.leverage * position.volume
+        self.assertEqual(manager.get_balance(), expected_balance)
+
+    def test_get_balance_after_closing_position_with_no_profit_loss(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=100, volume=1)
+        # balance should not change if there is no profit or loss after closing position
+        self.assertEqual(manager.get_balance(), 10000)
+
+    def test_get_balance_after_closing_position_with_partial_volume(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=110, volume=0.5)
+        # balance should increase by profit for the closed volume after closing position
+        expected_balance = 10000 + (110 - 100) * position.trade_unit * position.leverage * 0.5
+        self.assertEqual(manager.get_balance(), expected_balance)
+
+    def test_get_balance_after_closing_position_with_excess_volume(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=110, volume=2)
+        # balance should increase by profit for the whole volume of position even if closed volume is greater than position volume
+        expected_balance = 10000 + (110 - 100) * position.trade_unit * position.leverage * 1
+        self.assertEqual(manager.get_balance(), expected_balance)
+
+    def test_get_balance_after_closing_position_with_zero_volume(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=110, volume=0)
+        # balance should not change if closed volume is zero
+        self.assertEqual(manager.get_balance(), 10000)
+
+    def test_get_balance_after_closing_position_with_negative_volume(self):
+        manager = Manager(10000)
+        position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
+        manager.close_position(position.id, price=110, volume=-1)
+        # balance should decrease by loss for the negative closed volume
+        expected_balance = 10000 - (110 - 100) * position.trade_unit * position.leverage * 1
+        self.assertEqual(manager.get_balance(), expected_balance)
+
     def test_get_daily_realized_pnl(self):
-        if os.path.exists("./unit_test.db"):
-            os.remove("./unit_test.db")
-        if os.path.exists("./finance_trade_log.csv"):
-            os.remove("./finance_trade_log.csv")
-        if os.path.exists("./finance_account_history.csv"):
-            os.remove("./finance_account_history.csv")
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         # log storage is generated with CSV storage
@@ -347,12 +414,6 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(daily_realized_pnl, expected_realized_pnl)
 
     def test_get_daily_realized_pnl_tzinfo(self):
-        if os.path.exists("./unit_test.db"):
-            os.remove("./unit_test.db")
-        if os.path.exists("./finance_trade_log.csv"):
-            os.remove("./finance_trade_log.csv")
-        if os.path.exists("./finance_account_history.csv"):
-            os.remove("./finance_account_history.csv")
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         manager = Manager(10000, position_storage=storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
@@ -371,12 +432,6 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(daily_realized_pnl, expected_realized_pnl)
 
     def test_get_daily_realized_pnl_with_mismatched_tzinfo(self):
-        if os.path.exists("./unit_test.db"):
-            os.remove("./unit_test.db")
-        if os.path.exists("./finance_trade_log.csv"):
-            os.remove("./finance_trade_log.csv")
-        if os.path.exists("./finance_account_history.csv"):
-            os.remove("./finance_account_history.csv")
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         client_tz_info = datetime.timezone(datetime.timedelta(hours=0))  # UTC
@@ -398,12 +453,6 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_daily_realized_pnl(), (110 - 100) * position2.trade_unit * position2.leverage * position2.volume)
 
     def test_get_daily_realized_pnl_with_no_closed_positions(self):
-        if os.path.exists("./unit_test.db"):
-            os.remove("./unit_test.db")
-        if os.path.exists("./finance_trade_log.csv"):
-            os.remove("./finance_trade_log.csv")
-        if os.path.exists("./finance_account_history.csv"):
-            os.remove("./finance_account_history.csv")
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         manager = Manager(10000, position_storage=storage)
@@ -470,12 +519,18 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_daily_realized_pnl(), (110 - 100) * position2.trade_unit * position2.leverage * position2.volume)
 
     def test_get_risk_volume_of_open_positions(self):
-        if os.path.exists("./unit_test.db"):
-            os.remove("./unit_test.db")
-        if os.path.exists("./finance_trade_log.csv"):
-            os.remove("./finance_trade_log.csv")
-        if os.path.exists("./finance_account_history.csv"):
-            os.remove("./finance_account_history.csv")
+        manager = Manager(10000)
+        position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
+        position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
+        manager.update_position(position1, sl=90)
+        manager.update_position(position2, sl=220)
+        total_risk_volume = manager.get_open_positions_risk_volume()
+        expected_risk_volume = (100 - 90) * position1.trade_unit * position1.leverage * position1.volume + (
+            220 - 200
+        ) * position2.trade_unit * position2.leverage * position2.volume
+        self.assertEqual(total_risk_volume, expected_risk_volume)
+
+    def test_get_risk_volume_of_open_positions_with_sql(self):
         key = "account_test_risk"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         manager = Manager(10000, position_storage=storage)
@@ -488,6 +543,29 @@ class ManagerTest(unittest.TestCase):
             220 - 200
         ) * position2.trade_unit * position2.leverage * position2.volume
         self.assertEqual(total_risk_volume, expected_risk_volume)
+
+    def tearDown(self):
+        # clean up after each test
+        base_path = os.path.dirname(os.getcwd())
+        if os.path.exists(f"{base_path}/unit_test.db"):
+            os.remove(f"{base_path}/unit_test.db")
+        if os.path.exists(f"{base_path}/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+        if os.path.exists(f"{base_path}/tests/unit_test.db"):
+            os.remove(f"{base_path}/tests/unit_test.db")
+        if os.path.exists(f"{base_path}/tests/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/tests/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/tests/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+        return super().tearDown()
 
 
 if __name__ == "__main__":

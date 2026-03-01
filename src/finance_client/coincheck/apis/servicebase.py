@@ -96,4 +96,4 @@ class ServiceBase:
                 if err_txt == "invalid authentication":
                     raise Exception(err_txt)
                 elif "所持金額が足りません" in err_txt:
-                    raise ValueError("budget is insufficient for the volume")
+                    raise ValueError("free_mergin is insufficient for the volume")

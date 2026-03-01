@@ -46,7 +46,7 @@ class VantageClient(CSVClient):
         slip_type="random",
         do_render=False,
         enable_trade_log=False,
-        budget=1000000,
+        free_mergin=1000000,
         user_name=None,
     ):
         """Get ohlc rate from alpha vantage api. No online download.
@@ -58,7 +58,7 @@ class VantageClient(CSVClient):
             finance_target (Target, optional): Target of finance market. Defaults to Target.FX.
             frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
-            budget (int, optional): budget for the simulation. Defaults to 1000000.
+            free_mergin (int, optional): free_mergin for the simulation. Defaults to 1000000.
             seed (int, optional): random seed. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
 
@@ -103,7 +103,7 @@ class VantageClient(CSVClient):
             seed=seed,
             slip_type=slip_type,
             enable_trade_log=enable_trade_log,
-            budget=budget,
+            free_mergin=free_mergin,
             user_name=user_name
         )
 

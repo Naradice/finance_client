@@ -17,8 +17,7 @@ from ..client_base import ClientBase
 from ..position import ClosedResult, Position
 
 try:
-    from ..fprocess.fprocess.csvrw import (get_datafolder_path, read_csv,
-                                           write_df_to_csv)
+    from ..fprocess.fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 except ImportError:
     from ..fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 
@@ -34,7 +33,7 @@ class RequestBase:
     @property
     def price(self):
         return self._price
-    
+
     @price.setter
     def price(self, value):
         if isinstance(value, float) is False:
@@ -48,7 +47,7 @@ class RequestBase:
     @property
     def volume(self):
         return self._volume
-    
+
     @volume.setter
     def volume(self, value):
         if isinstance(value, float) is False:
@@ -59,9 +58,10 @@ class RequestBase:
                 raise ValueError(f"volume should be float type: {value}")
         self._volume = value
 
+
 class OrderRequest(RequestBase):
 
-    def __init__(self, symbol:str, price: float, volume: float, tp:float=None, sl:float=None, dev:int=None):
+    def __init__(self, symbol: str, price: float, volume: float, tp: float = None, sl: float = None, dev: int = None):
         self.symbol = symbol
         info = mt5.symbol_info(symbol)
         if info is None:
@@ -79,20 +79,21 @@ class OrderRequest(RequestBase):
         self.dev = dev
         super().__init__(price, order_volume)
 
-    
     @property
     def symbol(self):
         return self._symbol
+
     @symbol.setter
     def symbol(self, value):
         if not isinstance(value, str):
             logger.error(f"symbol should be str type: {value}")
             raise ValueError(f"symbol should be str type: {value}")
         self._symbol = value
-    
+
     @property
     def tp(self):
         return self._tp
+
     @tp.setter
     def tp(self, value):
         if value is not None:
@@ -103,9 +104,11 @@ class OrderRequest(RequestBase):
                     logger.exception(f"tp should be float type: {value}")
                     raise ValueError(f"tp should be float type: {value}")
         self._tp = value
+
     @property
     def sl(self):
         return self._sl
+
     @sl.setter
     def sl(self, value):
         if value is not None:
@@ -120,7 +123,7 @@ class OrderRequest(RequestBase):
     @property
     def dev(self):
         return self._dev
-    
+
     @dev.setter
     def dev(self, value):
         if value is not None:
@@ -132,9 +135,10 @@ class OrderRequest(RequestBase):
                     raise ValueError(f"deviation should be int type: {value}")
         self._dev = value
 
+
 class CloseRequest(RequestBase):
 
-    def __init__(self, symbol:str, price: float, volume: float, position:int):
+    def __init__(self, symbol: str, price: float, volume: float, position: int):
         self.symbol = symbol
         self.position = position
         info = mt5.symbol_info(symbol)
@@ -153,18 +157,18 @@ class CloseRequest(RequestBase):
     @property
     def symbol(self):
         return self._symbol
-    
+
     @symbol.setter
     def symbol(self, value):
         if not isinstance(value, str):
             logger.error(f"symbol should be str type: {value}")
             raise ValueError(f"symbol should be str type: {value}")
         self._symbol = value
-    
+
     @property
     def position(self):
         return self._position
-    
+
     @position.setter
     def position(self, value):
         if not isinstance(value, int):
@@ -176,6 +180,7 @@ class CloseRequest(RequestBase):
                 logger.exception(f"position id should be int type: {value}")
                 raise ValueError(f"position id should be int type: {value}")
         self._position = value
+
 
 class MT5Client(ClientBase):
     kinds = "mt5"
@@ -244,19 +249,19 @@ class MT5Client(ClientBase):
         server,
         simulation=True,
         frame=5,
-        observation_length=None,
+        free_mergination_length=None,
         point_unit=None,
         back_test=False,
         auto_index=False,
         do_render=False,
-        budget=1000000,
+        free_mergin=1000000,
         storage=None,
         log_storage=None,
         seed=1017,
         user_name=None,
         idc_process=None,
         std_processes=None,
-        start_index:int=None
+        start_index: int = None,
     ):
         """Trade Client for MT5 server
 
@@ -271,7 +276,7 @@ class MT5Client(ClientBase):
             back_test (bool, optional): if back_test is True, OHLC is retrieved based on sim_index. Defaults to False.
             auto_index (bool, optional): automatically step index when backtest is True. Defaults to False.
             do_render (bool, optional): If True, rendere OHLC when it is retrieved by get_ohlc. Defaults to False.
-            budget (int, optional): Defaults to 1000000.
+            free_mergin (int, optional): Defaults to 1000000.
             storage (db.PositionStorageBase, optional): Storage to store positions. Defaults to None.
             log_storage (db.TradeLogStorageBase, optional): Storage to store trade logs. Defaults to None.
             seed (int, optional): _description_. Defaults to 1017.
@@ -282,7 +287,7 @@ class MT5Client(ClientBase):
         """
         super().__init__(
             budget=budget,
-            frame=frame,
+            free_merginframe,
             observation_length=observation_length,
             provider=server,
             do_render=do_render,
@@ -383,7 +388,7 @@ class MT5Client(ClientBase):
         self.do_render = temp_r
 
         return data.columns
-    
+
     def __check_args(self, symbol, price, volume, dev=None, sl=None, tp=None, result=None):
         if not isinstance(symbol, str):
             logger.error(f"symbol should be str type: {symbol}")
@@ -595,7 +600,7 @@ class MT5Client(ClientBase):
         if len(symbols) == 1:
             spread_srs = spread_srs[symbols[0]]
         return spread_srs
-    
+
     def get_unit_size(self, symbol: str) -> float:
         info = mt5.symbol_info(symbol)
         if info is None:
@@ -637,7 +642,7 @@ class MT5Client(ClientBase):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
-        
+
         try:
             order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
@@ -665,7 +670,7 @@ class MT5Client(ClientBase):
     def _sell_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
-            return False, msg        
+            return False, msg
         try:
             order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
@@ -720,7 +725,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_to_close(self, symbol, price, volume, result, *args, **kwargs):        
+    def _buy_to_close(self, symbol, price, volume, result, *args, **kwargs):
         try:
             order_request = CloseRequest(symbol=symbol, price=price, volume=volume, position=result)
         except Exception as e:
@@ -750,7 +755,7 @@ class MT5Client(ClientBase):
     def _market_buy(self, symbol, price, volume, tp=None, sl=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
-            return False, msg        
+            return False, msg
         try:
             order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
         except Exception as e:
@@ -758,7 +763,14 @@ class MT5Client(ClientBase):
 
         if self.__ignore_order is False:
             request = self.__generate_common_request(
-                action=mt5.TRADE_ACTION_DEAL, symbol=order_request.symbol, _type=mt5.ORDER_TYPE_BUY, vol=order_request.volume, price=order_request.price, dev=20, sl=order_request.sl, tp=order_request.tp
+                action=mt5.TRADE_ACTION_DEAL,
+                symbol=order_request.symbol,
+                _type=mt5.ORDER_TYPE_BUY,
+                vol=order_request.volume,
+                price=order_request.price,
+                dev=20,
+                sl=order_request.sl,
+                tp=order_request.tp,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -801,7 +813,7 @@ class MT5Client(ClientBase):
     def _buy_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
-            return False, msg        
+            return False, msg
         # validate order request parameters
         try:
             order_request = OrderRequest(symbol=symbol, price=price, volume=volume, tp=tp, sl=sl)
@@ -1145,9 +1157,16 @@ class MT5Client(ClientBase):
                 time_index = datetime.datetime.fromtimestamp(m_position.time)
                 id = m_position.ticket
                 p = Position(
-                    position_side=position_side, symbol=symbol, price=position_price, volume=volume, tp=tp, sl=sl, 
-                    trade_unit=trade_unit, leverage=self.leverage,
-                    time_index=time_index, id=id
+                    position_side=position_side,
+                    symbol=symbol,
+                    price=position_price,
+                    volume=volume,
+                    tp=tp,
+                    sl=sl,
+                    trade_unit=trade_unit,
+                    leverage=self.leverage,
+                    time_index=time_index,
+                    id=id,
                 )
                 positions.append(p)
 
@@ -1158,7 +1177,7 @@ class MT5Client(ClientBase):
                     self._open_orders.pop(order_id)
             return positions
 
-    def update_position(self, position: Union[int, Position], tp:float=None, sl:float=None):
+    def update_position(self, position: Union[int, Position], tp: float = None, sl: float = None):
         if tp is None and sl is None:
             logger.error("update position require tp or sl")
             return False
@@ -1178,7 +1197,7 @@ class MT5Client(ClientBase):
         else:
             super().update_position(position, tp=tp, sl=sl)
             return True
-        
+
     def get_ohlc_columns(self, symbol: str = slice(None), out_type="dict", ignore=None) -> dict:
         ohlc_columns = {
             "Open": "open",
@@ -1201,10 +1220,10 @@ class MT5Client(ClientBase):
         else:
             columns = [item for key, item in ohlc_columns.items()]
             return columns
-        
+
     def get_current_datetime(self):
         if self.back_test:
-            df = self.__get_ohlc(1, "USDJPY", self.mt5_frame, index=self._step_index -1, grouped_by_symbol=True)
+            df = self.__get_ohlc(1, "USDJPY", self.mt5_frame, index=self._step_index - 1, grouped_by_symbol=True)
             date = df.index[-1].to_pydatetime()
             return date
         else:

@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 class Manager:
     def __init__(
         self,
-        budget,
+        free_mergin: float,
+        used_mergin: float = 0.0,
         position_storage: PositionStorageBase = None,
         log_storage: LogStorageBase = None,
         account_risk_config: AccountRiskConfig = None,
@@ -24,14 +25,16 @@ class Manager:
         """
 
         Args:
-            budget (float): initial budget for trading
+            free_mergin (float): initial free margin for trading
+            used_mergin (float, optional): initial used margin for trading. Defaults to 0.0.
             position_storage (PositionStorageBase, optional): storage backend for positions. Defaults to None.
             log_storage (LogStorageBase, optional): storage backend for logs. Defaults to None.
             account_risk_config (AccountRiskConfig, optional): risk configuration for the account. Defaults to None.
             tz_info (datetime.timezone, optional): timezone information. Defaults to None, which means UTC.
             provider (str, optional): provider name. Defaults to "Default".
         """
-        self.budget = budget
+        self.__original_balance = free_mergin + used_mergin
+        self.free_mergin = free_mergin
         if position_storage is None:
             position_storage = PositionFileStorage(provider, None, save_period=0)
         # initialize positions which have tp or sl
@@ -47,10 +50,10 @@ class Manager:
         if tz_info is None:
             tz_info = datetime.timezone.utc
         self.tz_info = tz_info
-        logger.info(f"MarketManager is initialized with budget:{budget}, provider:{provider}, tz_info:{tz_info}")
+        logger.info(f"MarketManager is initialized with mergin:{self.free_mergin}, provider:{provider}, tz_info:{tz_info}")
 
     @property
-    def risk_config(self):
+    def risk_config(self) -> AccountRiskConfig:
         if self.__account_risk_config is not None:
             return self.__account_risk_config
         else:
@@ -107,10 +110,7 @@ class Manager:
             self._trade_log_db.store_log(position, order_type=1)
             return position
         else:
-            # check if budget has enough volume
-            required_budget = (trade_unit * volume * price) / leverage
-            # if enough, add position
-            # if required_budget <= self.budget:
+            required_cost = (trade_unit * volume * price) / leverage
             position = Position(
                 position_side=position_side,
                 symbol=symbol,
@@ -125,8 +125,8 @@ class Manager:
                 result=result,
             )
             self.storage.store_position(position)
-            # then reduce budget
-            self.budget -= required_budget
+            # then reduce free margin
+            self.free_mergin -= required_cost
             # check if tp/sl exists
             if tp is not None or sl is not None:
                 self.listening_positions[position.id] = position
@@ -134,7 +134,7 @@ class Manager:
             self._trade_log_db.store_log(position, order_type=1)
             return position
             # else:
-            #     logger.info(f"current budget {self.budget} is less than required {required_budget}")
+            #     logger.info(f"current free margin {self.free_mergin} is less than required {required_cost}")
             #     return None
 
     def update_position(self, position: Position, tp=None, sl=None):
@@ -207,33 +207,34 @@ class Manager:
                 price_diff = position.price - price
             trade_unit = position.trade_unit
             profit = trade_unit * volume * price_diff
-            return_budget = (trade_unit * volume * position.price) / position.leverage + profit
+            return_mergin = (trade_unit * volume * position.price) / position.leverage + profit
             if position.volume == volume:
                 self.storage.delete_position(id)
             else:
                 position.volume -= volume
                 self.storage.update_position(position)
-            logger.info(f"closed result:: profit {profit}, budget: {return_budget}")
-            self.budget += return_budget
+            logger.info(f"closed result:: profit {profit}, free margin: {self.free_mergin}, price_diff: {price_diff}")
+            self.free_mergin += return_mergin
             self.remove_position_from_listening(id)
             closed_result.update(id=id, price=price, volume=volume, profit=profit, price_diff=price_diff)
             closed_result.error = False
+            close_position = Position(
+                position.position_side,
+                position.symbol,
+                position.trade_unit,
+                position.leverage,
+                price,
+                volume,
+                position.tp,
+                position.sl,
+                index,
+                id=position.id,
+            )
             self._trade_log_db.store_log(
                 # create position with closed price and volume for logging
-                Position(
-                    position.position_side,
-                    position.symbol,
-                    position.trade_unit,
-                    position.leverage,
-                    price,
-                    volume,
-                    position.tp,
-                    position.sl,
-                    index,
-                    id=position.id,
-                ),
+                close_position,
                 order_type=-1,
-                save_profit=True,
+                profit=profit,
             )
             return closed_result
         else:
@@ -252,7 +253,7 @@ class Manager:
 
     def update_daily_max_loss(self):
         if self.risk_config is not None and self.risk_config.daily_max_loss_percent is not None:
-            self.daily_max_loss = self.risk_config.daily_max_loss_percent * self.budget / 100.0
+            self.daily_max_loss = self.risk_config.daily_max_loss_percent * self.get_balance() / 100.0
 
     def get_positions(self, symbols: List[str] = None) -> Tuple[List[Position], List[Position]]:
         """
@@ -300,6 +301,45 @@ class Manager:
         logs = self._trade_log_db.get_profit_logs(start=today, end=end_date)
         daily_realized_pnl = sum(log.profit for _, log in logs.iterrows())
         return daily_realized_pnl
+
+    def get_balance(self) -> float:
+        """
+            calculate current balance
+        Returns:
+            float: current balance
+        """
+        balance = self.free_mergin
+        used_mergin = 0
+        long_positions, short_positions = self.get_positions()
+        for position in long_positions + short_positions:
+            used_mergin += (position.trade_unit * position.volume * position.price) / position.leverage
+        balance += used_mergin
+        return balance
+
+    def get_free_mergin(self) -> float:
+        """
+            calculate current free margin
+        Returns:
+            float: current free margin
+        """
+        return self.free_mergin
+
+    def calculate_mergin(self, price: float, volume: float, trade_unit: float, leverage: float) -> float:
+        return (trade_unit * volume * price) / leverage
+
+    def get_used_mergin(self) -> float:
+        long_positions, short_positions = self.get_positions()
+        used_mergin = 0.0
+
+        for position in long_positions + short_positions:
+            volume = position.volume
+            price = position.price
+            trade_unit = position.trade_unit
+            leverage = position.leverage
+            margin = self.calculate_mergin(price, volume, trade_unit, leverage)
+            used_mergin += margin
+
+        return used_mergin
 
     def __del__(self):
         if hasattr(self, "storage"):

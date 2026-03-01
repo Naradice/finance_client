@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import time
 from abc import ABCMeta, abstractmethod
-from typing import List
+from typing import List, Union
 
 import pandas as pd
 
@@ -82,6 +82,10 @@ class LogStorageBase(metaclass=ABCMeta):
         log_item["symbol"] = position.symbol
         log_item["time_index"] = time_index
         log_item["price"] = position.price
+        log_item["tp"] = position.tp
+        log_item["sl"] = position.sl
+        log_item["trade_unit"] = position.trade_unit
+        log_item["leverage"] = position.leverage
         log_item["volume"] = position.volume
         log_item["position_side"] = position.position_side.value
         log_item["order_type"] = order_type
@@ -89,12 +93,12 @@ class LogStorageBase(metaclass=ABCMeta):
         return log_item
 
     @abstractmethod
-    def store_log(self, position: Position, order_type: int, save_profit: bool = False):
+    def store_log(self, position: Position, order_type: int, profit: float = None):
         logger.warning("store_log is not implemented in LogStorageBase.")
         pass
 
     @abstractmethod
-    def store_logs(self, items: dict, save_profit: bool = False):
+    def store_logs(self, items: List[Union[Position, int]], save_profit: bool = False):
         logger.warning("store_logs is not implemented in LogStorageBase.")
         pass
 
@@ -166,11 +170,11 @@ class LogCSVStorage(LogStorageBase):
     def __init__(self, provider, username=None, trade_log_path: str = None, account_history_path: str = None) -> None:
         super().__init__(provider=provider, username=username)
         self.provider = provider
-        self.trade_log_path = _check_path(trade_log_path, "finance_trade_log.csv")
-        self.account_history_path = _check_path(account_history_path, "finance_account_history.csv")
+        self.trade_log_path = _check_path(trade_log_path, "logs/finance_trade_log.csv")
+        self.account_history_path = _check_path(account_history_path, "logs/finance_account_history.csv")
         self.__trade_logs = pd.DataFrame()
 
-    def store_log(self, position: Position, order_type: int, save_profit: bool = False):
+    def store_log(self, position: Position, order_type: int, profit: float = None):
         log_item = self._convert_position_to_log(position, order_type)
         df = pd.DataFrame.from_dict([log_item])
         save_header = not os.path.exists(self.trade_log_path)
@@ -182,30 +186,17 @@ class LogCSVStorage(LogStorageBase):
         except Exception as e:
             logger.warning(f"Failed to store log in memory: {e}")
 
-        if save_profit:
-            profit = self._get_profit(position)
-            if profit is not None:
-                account_history_item = {
-                    "position_id": position.id,
-                    "provider": self.provider,
-                    "username": self.username,
-                    "symbol": position.symbol,
-                    "time_index": _index_to_str(position.index),
-                    "profit": profit,
-                    "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-                }
-                account_history_df = pd.DataFrame.from_dict([account_history_item])
-                save_header = not os.path.exists(self.account_history_path)
-                account_history_df.to_csv(self.account_history_path, mode="a", header=save_header, index_label=None, index=False)
-            else:
-                logger.warning(f"Profit is None for position id {position.id}. account history log cannot be saved.")
+        if order_type == -1:
+            if profit is None:
+                profit = self._get_profit(position)
+            self.store_profit_logs(position, profit)
 
-    def store_logs(self, items: dict, save_profit: bool = False):
+    def store_logs(self, items: List[Union[Position, int]], profits: List[float] = None):
         if len(items) > 0:
             if isinstance(items, dict) is False:
                 log_items = {}
                 for item in items:
-                    log_item = self._convert_position_to_log(item)
+                    log_item = self._convert_position_to_log(*item)
                     log_items[log_item["position_id"]] = log_item
             else:
                 log_items = items
@@ -219,27 +210,42 @@ class LogCSVStorage(LogStorageBase):
             except Exception as e:
                 logger.warning(f"Failed to store log in memory: {e}")
 
-            if save_profit:
-                account_history_items = []
-                for position_id, log_item in log_items.items():
-                    profit = self._get_profit(log_item)
-                    if profit is not None:
-                        account_history_item = {
-                            "position_id": log_item["position_id"],
-                            "provider": self.provider,
-                            "username": self.username,
-                            "symbol": log_item["symbol"],
-                            "time_index": _index_to_str(log_item["time_index"]),
-                            "profit": profit,
-                            "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-                        }
-                        account_history_items.append(account_history_item)
-                    else:
-                        logger.warning(f"Profit is None for position id {log_item['position_id']}. account history log cannot be saved.")
-                if len(account_history_items) > 0:
-                    account_history_df = pd.DataFrame.from_dict(account_history_items)
-                    save_header = not os.path.exists(self.account_history_path)
-                    account_history_df.to_csv(self.account_history_path, mode="a", header=save_header, index_label=None, index=False)
+            account_history_items = []
+            for item, profit in zip(items, profits) if profits is not None else zip(items, [None] * len(items)):
+                position, order_type = item
+
+                if order_type == -1:
+                    if profit is None:
+                        profit = self._get_profit(position)
+                    account_history_item = {
+                        "position_id": position.id,
+                        "provider": self.provider,
+                        "username": self.username,
+                        "symbol": position.symbol,
+                        "time_index": _index_to_str(position.time_index),
+                        "profit": profit,
+                        "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+                    }
+                    account_history_items.append(account_history_item)
+            if len(account_history_items) > 0:
+                account_history_df = pd.DataFrame.from_dict(account_history_items)
+                save_header = not os.path.exists(self.account_history_path)
+                account_history_df.to_csv(self.account_history_path, mode="a", header=save_header, index_label=None, index=False)
+
+    def store_profit_logs(self, position: Position, profit: float):
+        if profit is not None:
+            account_history_item = {
+                "position_id": position.id,
+                "provider": self.provider,
+                "username": self.username,
+                "symbol": position.symbol,
+                "time_index": _index_to_str(position.index),
+                "profit": profit,
+                "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            }
+            account_history_df = pd.DataFrame.from_dict([account_history_item])
+            save_header = not os.path.exists(self.account_history_path)
+            account_history_df.to_csv(self.account_history_path, mode="a", header=save_header, index_label=None, index=False)
 
     def __filter_logs(self, logs, provider=None, username=None, start=None, end=None, id=None):
         if len(logs) == 0:
@@ -340,6 +346,10 @@ class LogSQLiteStorage(LogStorageBase):
         "time_index": "TEXT",
         "price": "REAL",
         "volume": "REAL",
+        "tp": "REAL",
+        "sl": "REAL",
+        "trade_unit": "REAL",
+        "leverage": "REAL",
         "position_side": "INT",
         "order_type": "INT",
         "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -406,15 +416,29 @@ class LogSQLiteStorage(LogStorageBase):
             cursor.close()
             conn.close()
 
-    def store_log(self, position: Position, order_type: int, save_profit: bool = False):
+    def store_log(self, position: Position, order_type: int, profit: float = None):
         values_dict = self._convert_position_to_log(position, order_type)
         keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
         query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__commit(query, tuple(values_dict.values()))
 
-        if save_profit:
-            profit = self._get_profit(position)
-            if profit is not None:
+        if order_type == -1:
+            if profit is None:
+                profit = self._get_profit(position)
+            self.store_profit_logs(position, profit)
+
+    def store_logs(self, items: List[Union[Position, int]], profits: List[float] = None):
+        log_values = [tuple(self._convert_position_to_log(*item).values()) for item in items]
+        keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__multi_commit(query, log_values)
+
+        profit_log_items = []
+        for item, profit in zip(items, profits) if profits is not None else zip(items, [None] * len(items)):
+            position, order_type = item
+            if order_type == -1:
+                if profit is None:
+                    profit = self._get_profit(position)
                 logger.info(f"profit for position id {position.id}: {profit}")
                 profit_log_item = {
                     "position_id": position.id,
@@ -425,40 +449,29 @@ class LogSQLiteStorage(LogStorageBase):
                     "profit": profit,
                     "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
                 }
-                keys, place_holders = self._create_basic_query(list(self._PROFIT_TABLE_KEYS.keys())[1:])
-                query = f"INSERT INTO profit ({keys}) VALUES {place_holders}"
-                self.__commit(query, tuple(profit_log_item.values()))
-            else:
-                logger.warning(f"Profit is None for position id {position.id}. profit cannot be calculated.")
+                profit_log_items.append(tuple(profit_log_item.values()))
+        if len(profit_log_items) > 0:
+            keys, place_holders = self._create_basic_query(list(self._PROFIT_TABLE_KEYS.keys())[1:])
+            query = f"INSERT INTO profit ({keys}) VALUES {place_holders}"
+            self.__multi_commit(query, profit_log_items)
 
-    def store_logs(self, items: dict, save_profit: bool = False):
-        log_values = [tuple(self._convert_position_to_log(p, order_type).values()) for p, order_type in items.items()]
-        keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
-        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
-        self.__multi_commit(query, log_values)
-
-        if save_profit:
-            profit_log_items = []
-            for position, order_type in items.items():
-                profit = self._get_profit(position)
-                if profit is not None:
-                    logger.info(f"profit for position id {position.id}: {profit}")
-                    profit_log_item = {
-                        "position_id": position.id,
-                        "provider": self.provider,
-                        "username": self.username,
-                        "symbol": position.symbol,
-                        "time_index": _index_to_str(position.index),
-                        "profit": profit,
-                        "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-                    }
-                    profit_log_items.append(tuple(profit_log_item.values()))
-                else:
-                    logger.warning(f"Profit is None for position id {position.id}. profit cannot be calculated.")
-            if len(profit_log_items) > 0:
-                keys, place_holders = self._create_basic_query(list(self._PROFIT_TABLE_KEYS.keys())[1:])
-                query = f"INSERT INTO profit ({keys}) VALUES {place_holders}"
-                self.__multi_commit(query, profit_log_items)
+    def store_profit_logs(self, position: Position, profit: float):
+        if profit is not None:
+            logger.info(f"profit for position id {position.id}: {profit}")
+            profit_log_item = {
+                "position_id": position.id,
+                "provider": self.provider,
+                "username": self.username,
+                "symbol": position.symbol,
+                "time_index": _index_to_str(position.index),
+                "profit": profit,
+                "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            }
+            keys, place_holders = self._create_basic_query(list(self._PROFIT_TABLE_KEYS.keys())[1:])
+            query = f"INSERT INTO profit ({keys}) VALUES {place_holders}"
+            self.__commit(query, tuple(profit_log_item.values()))
+        else:
+            logger.warning(f"Profit is None for position id {position.id}. profit cannot be calculated.")
 
     def _get_log_with_id(self, provider, username, id):
         with self.__lock:
@@ -554,7 +567,7 @@ class PositionStorageBase:
     def get_positions(self, symbols: list = None):
         return self.get_long_positions(symbols=symbols), self.get_short_positions(symbols=symbols)
 
-    def get_long_positions(self, symbols: list = None) -> list:
+    def get_long_positions(self, symbols: list = None) -> list[Position]:
         long_positions = self._positions[POSITION_SIDE.long].values()
         if len(long_positions) == 0:
             return long_positions
@@ -565,7 +578,7 @@ class PositionStorageBase:
                 symbols = [symbols]
             return list(filter(lambda position: position.symbol in symbols, long_positions))
 
-    def get_short_positions(self, symbols: list = None) -> list:
+    def get_short_positions(self, symbols: list = None) -> list[Position]:
         short_positions = self._positions[POSITION_SIDE.short].values()
         if symbols is None or len(symbols) == 0:
             return short_positions
@@ -639,7 +652,7 @@ class PositionFileStorage(PositionStorageBase):
         if self.username is None:
             self.positions_path = _check_path(positions_path, "positions.json")
         else:
-            self.positions_path = _check_path(positions_path, os.path.join("user", f"_{self.username}_", "positions.json"))
+            self.positions_path = _check_path(positions_path, os.path.join("user", f"{self.username}", "positions.json"))
         if not os.path.exists(self.positions_path):
             os.makedirs(os.path.dirname(self.positions_path), exist_ok=True)
             with open(self.positions_path, mode="w") as fp:

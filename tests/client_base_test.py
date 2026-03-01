@@ -4,11 +4,16 @@ import sys
 import time
 import unittest
 
+import numpy as np
 import pandas as pd
 
 os.environ["FC_DEBUG"] = "true"
-module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(module_path)
+try:
+    import finance_client
+except ImportError:
+    module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    sys.path.append(module_path)
+
 import finance_client.frames as Frame
 from finance_client import ORDER_TYPE, db
 from finance_client.client_base import ClientBase
@@ -17,7 +22,7 @@ from finance_client.client_base import ClientBase
 class TestClient(ClientBase):
     def __init__(
         self,
-        budget=1000000,
+        free_mergin=1000000,
         indicater_processes: list = None,
         do_render=False,
         pre_processes: list = None,
@@ -28,11 +33,14 @@ class TestClient(ClientBase):
         if storage is None:
             base_path = os.path.dirname(__file__)
             self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_storage.json"))
+            # remove existing storage file to start fresh for each test
+            if os.path.exists(self.storage_file_path):
+                os.remove(self.storage_file_path)
             storage = db.PositionFileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
             self.open_orders = []
             self.positions = []
         super().__init__(
-            budget=budget,
+            free_mergin=free_mergin,
             provider=provider,
             ohlc_columns=["Open", "High", "Low", "Close"],
             idc_process=indicater_processes,
@@ -88,7 +96,7 @@ class TestClient(ClientBase):
 
     def _sell_to_close(self, symbol, bid_rate, volume, option_info=None, result=None):
         return True
-    
+
     def _buy_limit(self, symbol, price, volume, tp, sl, order_number, *args, **kwargs):
         return True, random.randrange(1000000, 9999999)
 
@@ -126,19 +134,22 @@ class TestClient(ClientBase):
 
     def __len__(self):
         return super().__len__()
-    
+
+
 class TestMultiClient(TestClient):
     def __init__(
         self,
-        budget=1000000,
+        free_mergin=1000000,
         do_render=False,
     ):
         base_path = os.path.dirname(__file__)
         self.storage_file_path = os.path.abspath(os.path.join(base_path, f"test_multi_storage.json"))
+        if os.path.exists(self.storage_file_path):
+            os.remove(self.storage_file_path)
         storage = db.PositionFileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
 
         super().__init__(
-            budget=budget,
+            free_mergin=free_mergin,
             provider="Default",
             indicater_processes=None,
             pre_processes=None,
@@ -183,15 +194,45 @@ class TestMultiClient(TestClient):
             symbols = ["USDJPY", "USDAUD"]
         prices = []
         for symbol in symbols:
-            price = random.randrange(self.data.loc[self.step_index, (symbol, "Open")], self.data.loc[self.step_index, (symbol, "High")])
+            price = np.mean([self.data.loc[self.step_index, (symbol, "Open")], self.data.loc[self.step_index, (symbol, "High")]])
             prices.append(price)
         return pd.Series(prices, index=symbols)
 
     def get_current_bid(self, symbols=None) -> float:
-        return random.randrange(self.data["Low"].iloc[self.step_index], self.data["Open"].iloc[self.step_index])
+        if symbols is None:
+            symbols = ["USDJPY", "USDAUD"]
+        prices = []
+        for symbol in symbols:
+            price = np.mean([self.data.loc[self.step_index, (symbol, "Open")], self.data.loc[self.step_index, (symbol, "Low")]])
+            prices.append(price)
+        return pd.Series(prices, index=symbols)
 
 
 class TestBaseClient(unittest.TestCase):
+
+    def setUp(self):
+        # clean up before each test
+        base_path = os.path.dirname(os.getcwd())
+        if os.path.exists(f"{base_path}/unit_test.db"):
+            os.remove(f"{base_path}/unit_test.db")
+        if os.path.exists(f"{base_path}/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+
+        if os.path.exists(f"{base_path}/tests/unit_test.db"):
+            os.remove(f"{base_path}/tests/unit_test.db")
+        if os.path.exists(f"{base_path}/tests/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/tests/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/tests/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+
     def test_get_rates_wo_plot(self):
         client = TestClient(do_render=False)
         rates = client.get_ohlc(None, 100)
@@ -210,9 +251,10 @@ class TestBaseClient(unittest.TestCase):
         symbols = client.get_symbols()
         self.assertEqual(len(symbols), 0)
 
+    # E2E test for trading simulation with market order
     def test_trading_simulation(self):
-        budget = 100000
-        client = TestClient(budget=budget, do_render=True)
+        free_mergin = 100000
+        client = TestClient(free_mergin=free_mergin, do_render=True)
         suc, position = client.open_trade(is_buy=True, volume=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
@@ -220,16 +262,35 @@ class TestBaseClient(unittest.TestCase):
             time.sleep(1)
         long, short = client.get_portfolio()
         self.assertEqual(len(long), 1, f"Long position should be 1: {long}")
-        current_budget, in_use, profit = client.get_budget()
-        # self.assertLess(current_budget, budget)
-        self.assertGreater(in_use, 0)
+        current_free_mergin = client.get_free_mergin()
+        self.assertLess(current_free_mergin, free_mergin)
+        used_mergin = client.get_used_mergin()
+        self.assertEqual(used_mergin, 100000 * position.volume * position.price / 25)
+        profit = client.get_profit_loss()
+        self.assertNotEqual(profit, 0.0)
+        balance = client.get_balance()
+        self.assertEqual(balance, 100000)
+        daily_profit = client.get_daily_realized_pnl()
+        self.assertEqual(daily_profit, 0.0)
+
         close_result = client.close_position(id=position.id)
         self.assertTrue(close_result.error is False)
-        self.assertNotEqual(close_result.profit, 0)
+        self.assertNotEqual(close_result.profit, 0.0)
+
+        current_free_mergin_after_close = client.get_free_mergin()
+        self.assertEqual(current_free_mergin_after_close, free_mergin + close_result.profit)
+        used_mergin_after_close = client.get_used_mergin()
+        self.assertEqual(used_mergin_after_close, 0.0)
+        profit_after_close = client.get_profit_loss()
+        self.assertEqual(profit_after_close, 0.0)
+        balance_after_close = client.get_balance()
+        self.assertEqual(balance_after_close, free_mergin + close_result.profit)
+        daily_profit_after_close = client.get_daily_realized_pnl()
+        self.assertEqual(daily_profit_after_close, close_result.profit)
 
     def test_pending_order(self):
-        budget = 100000
-        client = TestClient(budget=budget, do_render=True)
+        free_mergin = 100000
+        client = TestClient(free_mergin=free_mergin, do_render=True)
         ask_price = client.get_current_ask()
         suc, position = client.open_trade(
             is_buy=True,
@@ -245,8 +306,8 @@ class TestBaseClient(unittest.TestCase):
         client.get_ohlc(None, 100)
         orders = client._open_orders
         self.assertEqual(len(orders), 1, f"orders should be 1 after pending order is triggered: {orders}")
-        # current_budget, in_use, profit = client.get_budget()
-        # self.assertGreater(in_use, 0)
+        current_free_mergin = client.get_free_mergin()
+        self.assertEqual(current_free_mergin, free_mergin, "free margin should not change until pending order is closed")
         count = 0
         while len(client._open_orders) > 0:
             client.get_ohlc(None, 100)
@@ -254,8 +315,7 @@ class TestBaseClient(unittest.TestCase):
             count += 1
             if count > 20:
                 self.fail("pending order is not closed after 20 iterations")
-        # current_budget, in_use, profit = client.get_budget()
-        # self.assertEqual(in_use, 0)
+
         positions = client.get_positions()
         self.assertEqual(len(positions), 1, f"long position should be 1: {positions}")
         count = 0
@@ -271,8 +331,8 @@ class TestBaseClient(unittest.TestCase):
             self.fail("all positions should be closed")
 
     def test_close_after_pending_order(self):
-        budget = 100000
-        client = TestClient(budget=budget, do_render=True)
+        free_mergin = 100000
+        client = TestClient(free_mergin=free_mergin, do_render=True)
         ask_price = client.get_current_ask()
         suc, position = client.open_trade(
             is_buy=True,
@@ -288,7 +348,7 @@ class TestBaseClient(unittest.TestCase):
         client.get_ohlc(None, 100)
         orders = client._open_orders
         self.assertEqual(len(orders), 1, f"orders should be 1 after pending order is triggered: {orders}")
-        # current_budget, in_use, profit = client.get_budget()
+        # current_free_mergin, in_use, profit = client.get_free_mergin()
         # self.assertGreater(in_use, 0)
         count = 0
         while len(client._open_orders) > 0:
@@ -297,7 +357,7 @@ class TestBaseClient(unittest.TestCase):
             count += 1
             if count > 20:
                 self.fail("pending order is not closed after 20 iterations")
-        # current_budget, in_use, profit = client.get_budget()
+        # current_free_mergin, in_use, profit = client.get_free_mergin()
         # self.assertEqual(in_use, 0)
         positions = client.get_positions()
         self.assertEqual(len(positions), 1, f"long position should be 1: {positions}")
@@ -306,7 +366,6 @@ class TestBaseClient(unittest.TestCase):
         # no error means position is closed successfully
         self.assertTrue(close_result.error is False)
         self.assertNotEqual(close_result.profit, 0)
-        
 
     # Multiindex without symbol
     def test_multi_ohlc_columns(self):
@@ -339,8 +398,8 @@ class TestBaseClient(unittest.TestCase):
         self.assertEqual(ohlc_dict["Close"], "Close")
 
     def test_multi_trading_simulation(self):
-        budget = 100000
-        client = TestClient(budget=budget, do_render=True)
+        free_mergin = 100000
+        client = TestClient(free_mergin=free_mergin, do_render=True)
         suc, long_position = client.open_trade(is_buy=True, volume=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
@@ -354,9 +413,9 @@ class TestBaseClient(unittest.TestCase):
         long, short = client.get_portfolio()
         self.assertEqual(len(long), 1)
         self.assertEqual(len(short), 1)
-        current_budget, in_use, profit = client.get_budget()
-        # budget caliculation is removed
-        # self.assertLess(current_budget, budget)
+        # current_free_mergin, in_use, profit = client.account.free_mergin()
+        # free_mergin caliculation is removed
+        # self.assertLess(current_free_mergin, free_mergin)
         # self.assertGreater(in_use, 0)
         closed_result = client.close_position(id=long_position.id)
         self.assertTrue(closed_result.error is False)
@@ -364,6 +423,81 @@ class TestBaseClient(unittest.TestCase):
         short_close_result = client.close_position(id=short_position.id)
         self.assertTrue(short_close_result.error is False)
         self.assertNotEqual(short_close_result.profit, 0)
+
+    def test_multi_get_current_ask(self):
+        client = TestMultiClient(do_render=False)
+        ask_rates = client.get_current_ask()
+        self.assertIsInstance(ask_rates, pd.Series)
+        self.assertEqual(len(ask_rates), 2)
+        self.assertIn("USDJPY", ask_rates.index)
+        self.assertIn("USDAUD", ask_rates.index)
+
+    def test_multi_get_current_bid(self):
+        client = TestMultiClient(do_render=False)
+        bid_rate = client.get_current_bid()
+        self.assertIsInstance(bid_rate, pd.Series)
+
+    def test_multi_get_future_rates(self):
+        client = TestMultiClient(do_render=False)
+        future_rates = client.get_future_rates(10)
+        self.assertIsInstance(future_rates, pd.Series)
+        self.assertIn(("USDJPY", "Open"), future_rates.index)
+        self.assertIn(("USDAUD", "Open"), future_rates.index)
+
+    def test_multi_get_ohlc(self):
+        client = TestMultiClient(do_render=False)
+        ohlc = client.get_ohlc(symbols=["USDJPY", "USDAUD"], length=10)
+        self.assertIsInstance(ohlc, pd.DataFrame)
+        self.assertIn(("USDJPY", "Open"), ohlc.columns)
+        self.assertIn(("USDAUD", "Open"), ohlc.columns)
+        self.assertEqual(len(ohlc), 10)
+
+    def test_multi_get_ohlc_single_symbol(self):
+        client = TestMultiClient(do_render=False)
+        ohlc = client.get_ohlc(symbols=["USDJPY"], length=10)
+        self.assertIsInstance(ohlc, pd.DataFrame)
+        self.assertIn(("USDJPY", "Open"), ohlc.columns)
+        self.assertNotIn(("USDAUD", "Open"), ohlc.columns)
+        self.assertEqual(len(ohlc), 10)
+
+    def test_multi_get_ohlc_no_symbol(self):
+        client = TestMultiClient(do_render=False)
+        ohlc = client.get_ohlc(length=10)
+        self.assertIsInstance(ohlc, pd.DataFrame)
+        self.assertIn(("USDJPY", "Open"), ohlc.columns)
+        self.assertIn(("USDAUD", "Open"), ohlc.columns)
+        self.assertEqual(len(ohlc), 10)
+
+    def test_multi_get_ohlc_none_symbol(self):
+        client = TestMultiClient(do_render=False)
+        ohlc = client.get_ohlc(symbols=None, length=10)
+        self.assertIsInstance(ohlc, pd.DataFrame)
+        self.assertIn(("USDJPY", "Open"), ohlc.columns)
+        self.assertIn(("USDAUD", "Open"), ohlc.columns)
+        self.assertEqual(len(ohlc), 10)
+
+    def tearDown(self):
+        # clean up after each test
+        base_path = os.path.dirname(os.getcwd())
+        if os.path.exists(f"{base_path}/unit_test.db"):
+            os.remove(f"{base_path}/unit_test.db")
+        if os.path.exists(f"{base_path}/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
+
+        if os.path.exists(f"{base_path}/tests/unit_test.db"):
+            os.remove(f"{base_path}/tests/unit_test.db")
+        if os.path.exists(f"{base_path}/tests/logs/finance_trade_log.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_trade_log.csv")
+        if os.path.exists(f"{base_path}/tests/logs/finance_account_history.csv"):
+            os.remove(f"{base_path}/tests/logs/finance_account_history.csv")
+        default_positions_path = os.path.abspath(f"{base_path}/tests/user/__none__/positions.json")
+        if os.path.exists(default_positions_path):
+            os.remove(default_positions_path)
 
 
 if __name__ == "__main__":

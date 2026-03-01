@@ -93,7 +93,7 @@ class YahooClient(CSVClient):
         enable_trade_log=False,
         storage=None,
         user_name=None,
-        budget=1000000,
+        free_mergin=1000000,
         initialize_rate_after_mins: int = 0,
     ):
         """Get ohlc rate from yfinance
@@ -102,7 +102,7 @@ class YahooClient(CSVClient):
             auto_step_index (bool, optional): increase step when get_rates is called. Defaults to False.
             frame (int, optional): Frame of ohlc rates. Defaults to Frame.M5.
             post_process (list, optional): process to add indicater for output when get_rate_with_indicater is called. Defaults to [].
-            budget (int, optional): budget for the simulation. Defaults to 1000000.
+            free_mergin (int, optional): free_mergin for the simulation. Defaults to 1000000.
             seed (int, optional): random seed. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             initialize_rate_after_mins (int, optional): If greather than 0, check if existing data is old when initializing and update data if it's old than specified minutes. Defaults to 0.
@@ -158,7 +158,7 @@ class YahooClient(CSVClient):
             slip_type=slip_type,
             storage=storage,
             enable_trade_log=enable_trade_log,
-            budget=budget,
+            free_mergin=free_mergin,
             user_name=user_name,
         )
         if initialize_rate_after_mins <= 0:

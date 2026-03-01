@@ -10,8 +10,7 @@ from typing import Any, List, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from finance_client.config.loader import (load_account_risk_config,
-                                          load_symbol_risk_config)
+from finance_client.config.loader import load_account_risk_config, load_symbol_risk_config
 from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
 from finance_client.risk_manager.model import RiskContext
 from finance_client.risk_manager.risk_options.risk_option import RiskOption
@@ -36,11 +35,12 @@ class ClientBase(metaclass=ABCMeta):
 
     def __init__(
         self,
-        budget=1000000.0,
-        provider: str="Default",
-        account_risk_config: AccountRiskConfig=None,
-        symbol_risk_config: dict[str, SymbolRiskConfig]=None,
-        symbols: List[str]=None,
+        free_mergin=1000000.0,
+        used_mergin=0.0,
+        provider: str = "Default",
+        account_risk_config: AccountRiskConfig = None,
+        symbol_risk_config: dict[str, SymbolRiskConfig] = None,
+        symbols: List[str] = None,
         ohlc_columns: Union[tuple, list] = None,
         idc_process=None,
         pre_process=None,
@@ -57,7 +57,8 @@ class ClientBase(metaclass=ABCMeta):
         """Base Class of Finance Client. Each Client should overwride required method.
 
         Args:
-            budget (float, optional): Available badged in your trade. Defaults to 1000000.0.
+            free_mergin (float, optional): initial free margin for trading. Defaults to 1000000.0.
+            used_mergin (float, optional): initial used margin for trading. Defaults to 0.0.
             provider (str, optional): Identity of provider. Specify to separate info (e.g. position) in DB. Defaults to "Default".
             account_risk_config (AccountRiskConfig, optional): risk config to calculate volume in smart order. Defaults to None.
             symbol_risk_config (dict[str, SymbolRiskConfig], optional): risk config for each symbol. Defaults to None.
@@ -124,8 +125,14 @@ class ClientBase(metaclass=ABCMeta):
         self.symbol_risk_config = symbol_risk_config
         if account_risk_config is None:
             account_risk_config = load_account_risk_config(self._default_account_config_path)
-        self.account = account.Manager(budget=budget, position_storage=storage, log_storage=log_storage,
-                                       account_risk_config=account_risk_config, provider=provider)
+        self.account = account.Manager(
+            free_mergin=free_mergin,
+            used_mergin=used_mergin,
+            position_storage=storage,
+            log_storage=log_storage,
+            account_risk_config=account_risk_config,
+            provider=provider,
+        )
         # update max_daily_loss when date is changed. This is used to consider max daily loss limit in risk management.
         self.__last_date = None
 
@@ -174,7 +181,9 @@ class ClientBase(metaclass=ABCMeta):
         """
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             logger.debug("order is requested.")
-            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1.0
+            symbol_risk_config = self.symbol_risk_config[symbol] if symbol in self.symbol_risk_config else None
+            trade_unit = symbol_risk_config.contract_size if symbol_risk_config else 1.0
+            leverage = symbol_risk_config.leverage if symbol_risk_config else 1.0
             if self.do_render and self.__ohlc_index == -1:
                 # self.__ohlc_index is initialized when get_ohlc is called. If ohlc_index == -1, it means position is opened before get_ohlc.
                 try:
@@ -193,7 +202,16 @@ class ClientBase(metaclass=ABCMeta):
                 if suc:
                     logger.info(f"open long position: {ask_rate}")
                     return True, self.__open_long_position(
-                        symbol=symbol, bought_rate=ask_rate, volume=volume, tp=tp, sl=sl, result=result, trade_unit=trade_unit, *args, **kwargs
+                        symbol=symbol,
+                        bought_rate=ask_rate,
+                        volume=volume,
+                        tp=tp,
+                        sl=sl,
+                        result=result,
+                        trade_unit=trade_unit,
+                        leverage=leverage,
+                        *args,
+                        **kwargs,
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
@@ -208,7 +226,16 @@ class ClientBase(metaclass=ABCMeta):
                 if suc:
                     logger.info(f"open short position: {bid_rate}")
                     return True, self.__open_short_position(
-                        symbol=symbol, sold_rate=bid_rate, volume=volume, tp=tp, sl=sl, result=result, trade_unit=trade_unit, *args, **kwargs
+                        symbol=symbol,
+                        sold_rate=bid_rate,
+                        volume=volume,
+                        tp=tp,
+                        sl=sl,
+                        result=result,
+                        trade_unit=trade_unit,
+                        leverage=leverage,
+                        *args,
+                        **kwargs,
                     )
                 else:
                     logger.error(f"Order is failed as {result}")
@@ -220,8 +247,16 @@ class ClientBase(metaclass=ABCMeta):
                 return False, None
             trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1.0
             leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
-            p = Position(POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short, price=price, symbol=symbol,
-                         volume=volume, tp=tp, sl=sl, trade_unit=trade_unit, leverage=leverage)
+            p = Position(
+                POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short,
+                price=price,
+                symbol=symbol,
+                volume=volume,
+                tp=tp,
+                sl=sl,
+                trade_unit=trade_unit,
+                leverage=leverage,
+            )
             # number to match position and order
             magic_number = uuid.uuid4().int & (1 << 64) - 1
             if order_type == ORDER_TYPE.limit or order_type == ORDER_TYPE.limit.value:
@@ -244,8 +279,10 @@ class ClientBase(metaclass=ABCMeta):
                         symbol,
                         price,
                         volume,
-                        tp,
-                        sl,
+                        trade_unit=trade_unit,
+                        leverage=leverage,
+                        tp=tp,
+                        sl=sl,
                         id=ticket_id,
                         magic_number=magic_number,
                     )
@@ -270,8 +307,10 @@ class ClientBase(metaclass=ABCMeta):
                         symbol,
                         price,
                         volume,
-                        tp,
-                        sl,
+                        trade_unit=trade_unit,
+                        leverage=leverage,
+                        tp=tp,
+                        sl=sl,
                         id=ticket_id,
                         magic_number=magic_number,
                     )
@@ -346,9 +385,6 @@ class ClientBase(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
         """
-        available_budget, in_use, profit = self.get_budget()
-        equity = available_budget + in_use + profit
-        logger.debug(f"available_budget: {available_budget}, in_use: {in_use}, profit: {profit}, equity: {equity}")
 
         if self.account.risk_config is None:
             warning_msg = "risk_config is not specified. load default risk config. If you want to specify risk config, please call update_risk_config method or specify risk_config when initialize the client."
@@ -357,20 +393,7 @@ class ClientBase(metaclass=ABCMeta):
         else:
             risk_config = self.account.risk_config
 
-        symbol_risk_config = self.get_symbol_config(symbol)
-        if not symbol_risk_config:
-            error_msg = f"symbol {symbol} is not defined in risk_config. please check risk_config symbols: {risk_config.symbols.keys()}"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-            
-        risk_context = RiskContext(
-            account_equity=equity,
-            account_balance=available_budget,
-            daily_realized_pnl=self.get_daily_realized_pnl(),  # Replace with actual value
-            open_positions_risk_volume=self.account.get_open_positions_risk_volume(),
-            symbol_risk_config=symbol_risk_config,
-            daily_loss_limit=self.account.daily_max_loss,
-        )
+        risk_context = self._build_risk_context(symbol, entry_price, sl, tp)
         volume = risk_option.calculate_volume(risk_context=risk_context)
         self.open_trade(is_buy=is_buy, volume=volume, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
 
@@ -535,7 +558,7 @@ class ClientBase(metaclass=ABCMeta):
         num_results = len(results)
         return results
 
-    def get_daily_realized_pnl(self, date: str=None) -> float:
+    def get_daily_realized_pnl(self, date: str = None) -> float:
         """get daily realized pnl for the date. This is used to consider max daily loss limit in risk management.
 
         Args:
@@ -558,7 +581,7 @@ class ClientBase(metaclass=ABCMeta):
         position = self.account.storage.get_position(id)
         return position
 
-    def get_positions(self, symbols=None) -> list:
+    def get_positions(self, symbols=None) -> List[Position]:
         """get all positions
         Args:
             symbols (list, optional): list of symbols to filter positions. Defaults to None.
@@ -590,7 +613,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def get_unit_size(self, symbol: str) -> float:
         return 1.0
-    
+
     def update_risk_config(self, account_risk_config: AccountRiskConfig = None, symbol_risk_config: dict[str, SymbolRiskConfig] = None):
         """update risk config
 
@@ -766,7 +789,14 @@ class ClientBase(metaclass=ABCMeta):
                         if order.position_side == POSITION_SIDE.long:
                             logger.info(f"long position is opened by limit/stop order: {open_price}")
                             if self.__open_long_position(
-                                symbol=order.symbol, bought_rate=open_price, volume=order.volume, tp=order.tp, sl=order.sl, result=None
+                                symbol=order.symbol,
+                                bought_rate=open_price,
+                                volume=order.volume,
+                                trade_unit=order.trade_unit,
+                                leverage=order.leverage,
+                                tp=order.tp,
+                                sl=order.sl,
+                                result=None,
                             ):
                                 closed_orders.append(id)
                         else:
@@ -934,8 +964,8 @@ class ClientBase(metaclass=ABCMeta):
             return data
         else:
             return data.iloc[-length:]
-    
-    def calculate_mergin(self, symbol: str, price: float, volume: float, position_side: int):
+
+    def calculate_mergin(self, symbol: str, price: float, volume: float, trade_unit: float = None, leverage: float = None):
         """calculate margin for the trade. This function is used for risk management.
 
         Args:
@@ -946,9 +976,18 @@ class ClientBase(metaclass=ABCMeta):
         Returns:
             float: margin for the trade
         """
+        if trade_unit is None or leverage is None:
+            symbol_config = self.symbol_risk_config.get(symbol, None)
+            if symbol_config is not None:
+                trade_unit = trade_unit if trade_unit is not None else symbol_config.contract_size
+                leverage = leverage if leverage is not None else symbol_config.leverage
+            else:
+                logger.warning(f"trade_unit or leverage is not specified for symbol {symbol}. use default value 1.0 for both.")
+                trade_unit = 1.0
+                leverage = 1.0
+        mergin = self.account.calculate_mergin(price, volume, trade_unit=trade_unit, leverage=leverage)
 
-        self.account.levarage
-        return 0.0
+        return mergin
 
     def download(self, symbols, length: int = None, frame: int = None, grouped_by_symbol=True, file_path=None):
         """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
@@ -1088,7 +1127,7 @@ class ClientBase(metaclass=ABCMeta):
                         logger.info(f"date is updated to {self.__last_date}. daily max loss is updated to {self.account.daily_max_loss}")
             except Exception as e:
                 logger.error(f"Failed to get datetime from index: {e}")
-                dt = None                
+                dt = None
             return ohlc_df
         else:
             # training
@@ -1139,7 +1178,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def get_next_tick(self, frame=5):
         print("Need to implement get_next_tick")
-    
+
     def get_symbol_config(self, symbol):
         if self.symbol_risk_config is None:
             self.symbol_risk_config = load_symbol_risk_config(self._default_symbol_config_path)
@@ -1298,7 +1337,7 @@ class ClientBase(metaclass=ABCMeta):
                 diffs.append(*bid_diffs)
             return diffs
 
-    def __open_long_position(self, symbol, bought_rate, volume, trade_unit, tp=None, sl=None, option_info=None, result=None):
+    def __open_long_position(self, symbol, bought_rate, volume, trade_unit, leverage=1.0, tp=None, sl=None, option_info=None, result=None):
         logger.debug(f"open long position is created: {symbol}, {bought_rate}, {volume}, {tp}, {sl}, {option_info}, {result}")
         p = self.account.open_position(
             position_side=POSITION_SIDE.long,
@@ -1306,6 +1345,7 @@ class ClientBase(metaclass=ABCMeta):
             price=bought_rate,
             volume=volume,
             trade_unit=trade_unit,
+            leverage=leverage,
             tp=tp,
             sl=sl,
             index=self.get_current_datetime(),
@@ -1319,7 +1359,7 @@ class ClientBase(metaclass=ABCMeta):
                 self._trading_log(p.id, bought_rate, volume, True)
         return p
 
-    def __open_short_position(self, symbol, sold_rate, volume, trade_unit, option_info=None, tp=None, sl=None, result=None):
+    def __open_short_position(self, symbol, sold_rate, volume, trade_unit, leverage=1.0, tp=None, sl=None, option_info=None, result=None):
         logger.debug(f"open short position is created: {symbol}, {sold_rate}, {volume}, {tp}, {sl}, {option_info}, {result}")
         p = self.account.open_position(
             position_side=POSITION_SIDE.short,
@@ -1327,6 +1367,7 @@ class ClientBase(metaclass=ABCMeta):
             price=sold_rate,
             volume=volume,
             trade_unit=trade_unit,
+            leverage=leverage,
             tp=tp,
             sl=sl,
             index=self.get_current_datetime(),
@@ -1543,6 +1584,74 @@ class ClientBase(metaclass=ABCMeta):
             logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
             return pd.DataFrame()
 
+    def _build_risk_context(self, symbol: str, entry_price: float, stop_loss: float, take_profit: float) -> RiskContext:
+        symbol_risk_config = self.get_symbol_config(symbol)
+        return RiskContext(
+            account_equity=self.get_equity(),
+            account_balance=self.account.get_balance(),
+            daily_realized_pnl=self.account.get_daily_realized_pnl(),
+            open_positions_risk_volume=self.account.get_open_positions_risk_volume(),
+            symbol_risk_config=symbol_risk_config,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+        )
+
+    def get_free_mergin(self) -> float:
+        return self.account.get_free_mergin()
+
+    def get_used_mergin(self) -> float:
+        return self.account.get_used_mergin()
+
+    def get_profit_loss(self) -> float:
+        profit_loss = 0.0
+        long_positions, short_positions = self.account.storage.get_positions()
+        long_symbols = set([position.symbol for position in long_positions])
+        short_symbols = set([position.symbol for position in short_positions])
+
+        bid_rates = self.get_current_bid(list(long_symbols)) if len(long_symbols) > 0 else {}
+        ask_rates = self.get_current_ask(list(short_symbols)) if len(short_symbols) > 0 else {}
+
+        for position in long_positions:
+            if isinstance(bid_rates, pd.Series) or isinstance(bid_rates, dict):
+                current_bid = bid_rates.get(position.symbol, None)
+            elif isinstance(bid_rates, (int, float)) or isinstance(bid_rates, int):
+                current_bid = bid_rates
+            else:
+                logger.warning(f"Failed to get current bid for symbol {position.symbol}. It is not included in profit/loss calculation.")
+                current_bid = None
+            if current_bid is not None:
+                profit_loss += (current_bid - position.price) * position.volume
+            else:
+                logger.warning(f"Failed to get current bid for symbol {position.symbol}. It is not included in profit/loss calculation.")
+        for position in short_positions:
+            if isinstance(ask_rates, pd.Series) or isinstance(ask_rates, dict):
+                current_ask = ask_rates.get(position.symbol, None)
+            elif isinstance(ask_rates, (int, float)) or isinstance(ask_rates, int):
+                current_ask = ask_rates
+            if current_ask is not None:
+                profit_loss += (position.price - current_ask) * position.volume
+            else:
+                logger.warning(f"Failed to get current ask for symbol {position.symbol}. It is not included in profit/loss calculation.")
+        return profit_loss
+
+    def get_equity(self) -> float:
+        """
+            calculate current equity by adding free margin and unrealized PnL of open positions
+        Returns:
+            float: current equity
+        """
+        equity = self.account.free_mergin
+        profit_loss = self.get_profit_loss()
+        equity += profit_loss
+        return equity
+
+    def get_balance(self) -> float:
+        return self.account.get_balance()
+
+    def get_open_positions(self) -> tuple[list[Position], list[Position]]:
+        return self.account.storage.get_positions()
+
     def get_symbols(self):
         if self._symbols is None or len(self._symbols) == 0:
             ohlc = self.get_ohlc(slice(None), length=1)
@@ -1552,19 +1661,6 @@ class ClientBase(metaclass=ABCMeta):
             else:
                 self._symbols = list(symbols)
         return self._symbols
-
-    def get_budget(self) -> tuple:
-        ask_states, bid_states = self.get_portfolio()
-        in_use = 0
-        profit = 0
-        for state in ask_states:
-            in_use += state[1] * state[2]
-            profit += state[4]
-
-        for state in bid_states:
-            in_use += state[1] * state[2]
-            profit += state[4]
-        return self.account.budget, in_use, profit
 
     def get_portfolio(self) -> tuple:
         portfolio = {"long": {}, "short": {}}
