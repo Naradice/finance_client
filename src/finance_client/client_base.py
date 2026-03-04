@@ -10,7 +10,8 @@ from typing import Any, List, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from finance_client.config.loader import load_account_risk_config, load_symbol_risk_config
+from finance_client.config.loader import (load_account_risk_config,
+                                          load_symbol_risk_config)
 from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
 from finance_client.risk_manager.model import RiskContext
 from finance_client.risk_manager.risk_options.risk_option import RiskOption
@@ -76,6 +77,7 @@ class ClientBase(metaclass=ABCMeta):
             enable_trade_log (bool, optional): Store trade log to csv or not. Defaults to False.
             storage (db.PositionStorageBase, optional): Specify supported storage. Defaults to None, then use SQLite.
             log_storage (db.LogStorageBase, optional): Specify supported log storage. Defaults to None, then use CSV.
+            risk_option (RiskOption, optional): risk option to use for smart_order when risk_option is not specified in smart_order. Defaults to None.
         """
         self.auto_index = None
         self._step_index = start_index
@@ -163,7 +165,7 @@ class ClientBase(metaclass=ABCMeta):
         tp: float = None,
         sl: float = None,
         order_type: int = 0,
-        ohlc_df=None,
+        risk_option: RiskOption = None,
         *args,
         **kwargs,
     ):
@@ -179,22 +181,32 @@ class ClientBase(metaclass=ABCMeta):
             sl (float, optional): specify stop loss price. Default is None
             ohlc_df (pd.DataFrame, optional): Recent OHLC data forwarded to risk_option.calculate()
                 so indicators can be computed inside the risk option.
+            risk_option (RiskOption, optional): risk option to use for this trade only. Falls back to self.risk_option if None.
 
         Returns:
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
         """
         if volume is None:
-            if self.risk_option is None:
+            if self.risk_option is None and risk_option is None:
                 raise ValueError("volume must be specified or set risk_option at client init.")
-            entry = price if price is not None else (self.get_current_ask(symbol) if is_buy else self.get_current_bid(symbol))
-            context = self._build_risk_context(symbol, is_buy, entry, sl, tp)
-            result = self.risk_option.calculate(context, ohlc_df=ohlc_df)
-            volume = result.volume
-            if sl is None:
-                sl = result.stop_loss_price
-            if tp is None:
-                tp = result.take_profit_price
+            effective_risk_option = risk_option if risk_option is not None else self.risk_option
+            if isinstance(effective_risk_option, RiskOption):
+                entry = price if price is not None else (self.get_current_ask(symbol) if is_buy else self.get_current_bid(symbol))
+                required_length = effective_risk_option.get_required_ohlc_length()
+                if required_length > 0:
+                    ohlc_df = self.get_ohlc(symbol, length=required_length)
+                else:
+                    ohlc_df = None
+                context = self._build_risk_context(symbol, is_buy, entry, sl, tp)
+                result = effective_risk_option.calculate(context, ohlc_df=ohlc_df)
+                volume = result.volume
+                if sl is None:
+                    sl = result.stop_loss_price
+                if tp is None:
+                    tp = result.take_profit_price
+            else:
+                raise ValueError("risk_option must be an instance of RiskOption.")
 
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             logger.debug("order is requested.")
@@ -1734,4 +1746,5 @@ class ClientBase(metaclass=ABCMeta):
             seed = 1017
         random.seed(seed)
         np.random.seed(seed)
+        self.seed_value = seed
         self.seed_value = seed

@@ -6,9 +6,13 @@ ATR × 係数
 定期再計算可能
 """
 
+import logging
+
+from finance_client.fprocess.fprocess.idcprocess import ATRProcess
 from finance_client.risk_manager.model import RiskContext, RiskResult
 from finance_client.risk_manager.risk_options.risk_option import RiskOption
 
+logger = logging.getLogger(__name__)
 
 class ATRRisk(RiskOption):
     """Risk sizing based on ATR-derived stop loss distance.
@@ -24,22 +28,35 @@ class ATRRisk(RiskOption):
        atr_process is provided.
     """
 
-    def __init__(self, percent: float, atr_multiplier: float, rr_ratio: float, atr_process=None):
+    def __init__(self, percent: float, atr_multiplier: float, rr_ratio: float,
+                 atr_window: int = 14, ohlc_columns:list[str] = None,
+                 atr_process=None):
         """
         Args:
             percent (float): Percentage of account equity to risk per trade (e.g. 1.0 = 1%).
             atr_multiplier (float): Multiplier applied to ATR to determine SL distance.
             rr_ratio (float): Risk-to-reward ratio used to set take profit distance.
+            atr_window (int, optional): Window size for ATR calculation. Defaults to 14.
+            ohlc_columns (list[str], optional): Column names for OHLC data if using atr_process. Defaults to None, then use ['open', 'high', 'low', 'close'].
             atr_process (ATRProcess, optional): ATRProcess instance whose latest value is
                 read automatically. If None, set atr_value manually before each trade.
         """
-        self.percent = percent
         self.atr_multiplier = atr_multiplier
+        self.percent = percent
         self.rr_ratio = rr_ratio
-        self.atr_process = atr_process  # ATRProcess instance; ATR is read from last_data automatically
-        self.atr_value: float | None = None  # manual fallback; set before calculate() if no atr_process
 
-    def _get_atr(self, ohlc_df=None) -> float:
+        if atr_process is not None and isinstance(atr_process, ATRProcess):
+            self.atr_process = atr_process
+            logging.info(f"Initialized ATRRisk with ATRProcess specified. other parameters will be ignored.")
+        else:
+            self.atr_window = atr_window
+            self.ohlc_columns = ohlc_columns if ohlc_columns is not None else ['open', 'high', 'low', 'close']
+            self.atr_process = ATRProcess(window=atr_window, ohlc_column_name=self.ohlc_columns)
+
+    def get_required_ohlc_length(self):
+        return super().get_required_ohlc_length() + self.atr_process.get_minimum_required_length()
+
+    def _get_atr(self, ohlc_df) -> float:
         """Return the current ATR value.
 
         Resolution order:
@@ -58,12 +75,8 @@ class ATRRisk(RiskOption):
             ValueError: If none of the above sources is available.
         """
         if self.atr_process is not None:
-            if ohlc_df is not None:
-                result = self.atr_process.run(ohlc_df)
-                return result[self.atr_process.KEY_ATR].iloc[-1]
-            return self.atr_process.last_data[self.atr_process.KEY_ATR].iloc[-1]
-        if self.atr_value is not None:
-            return self.atr_value
+            result = self.atr_process.run(ohlc_df)
+            return result[self.atr_process.KEY_ATR].iloc[-1]
         raise ValueError("ATR value is not available. Provide atr_process at init or set atr_value before calling calculate().")
 
     def calculate(self, context: RiskContext, ohlc_df=None) -> RiskResult:
@@ -83,7 +96,9 @@ class ATRRisk(RiskOption):
         Raises:
             ValueError: If no ATR value is available (see _get_atr).
         """
-        # ① SL距離決定
+        # SL距離決定
+        if ohlc_df is None:
+            raise ValueError("ohlc_df is required for ATRRisk calculation to obtain ATR value.")
         atr = self._get_atr(ohlc_df)
         sl_distance = atr * self.atr_multiplier
 
@@ -94,7 +109,7 @@ class ATRRisk(RiskOption):
             stop_loss = context.entry_price + sl_distance
             take_profit = context.entry_price - sl_distance * self.rr_ratio
 
-        # ② 許容損失
+        # 許容損失
         allowed_loss = context.account_equity * (self.percent / 100)
         loss_per_unit = sl_distance * context.symbol_risk_config.pip_value_per_lot
         raw_volume = allowed_loss / loss_per_unit

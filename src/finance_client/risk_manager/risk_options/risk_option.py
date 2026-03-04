@@ -35,6 +35,17 @@ class RiskOption(ABC):
         """
         ...
 
+    def get_required_ohlc_length(self) -> int:
+        """Return the number of recent OHLC bars required for this risk option's calculations.
+
+        This allows the caller to ensure that sufficient historical data is provided
+        when calling calculate().
+
+        Returns:
+            int: Number of recent OHLC bars needed, or 0 if no historical data is required.
+        """
+        return 0
+
     def _round_volume(self, volume: float, context: RiskContext) -> float:
         """Round volume down to the nearest volume_step, with a floor of min_volume.
 
