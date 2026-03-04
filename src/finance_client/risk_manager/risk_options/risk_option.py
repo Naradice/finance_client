@@ -19,12 +19,15 @@ class RiskOption(ABC):
     """
 
     @abstractmethod
-    def calculate(self, context: RiskContext) -> RiskResult:
+    def calculate(self, context: RiskContext, ohlc_df=None) -> RiskResult:
         """Calculate position size and risk/reward levels for a trade.
 
         Args:
             context (RiskContext): Current account state and trade parameters,
                 including equity, entry price, stop loss, and symbol config.
+            ohlc_df (pd.DataFrame, optional): Recent OHLC data for the symbol.
+                Subclasses may use this to compute indicators (e.g. ATR) on the
+                fly instead of relying on pre-computed values.
 
         Returns:
             RiskResult: Computed volume, stop_loss_price, take_profit_price,

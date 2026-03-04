@@ -594,6 +594,49 @@ class TestRiskOptionIntegration(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.smart_order(is_buy=True, symbol="USDJPY")
 
+    def test_open_trade_passes_ohlc_df_to_risk_option(self):
+        """ohlc_df passed to open_trade should be forwarded to risk_option.calculate()."""
+        received = {}
+
+        from finance_client.risk_manager.risk_options.atr import ATRRisk
+        from finance_client.risk_manager.model import RiskContext, RiskResult
+
+        class _CapturingRisk(ATRRisk):
+            def calculate(self, context, ohlc_df=None):
+                received["ohlc_df"] = ohlc_df
+                return super().calculate(context, ohlc_df=ohlc_df)
+
+        risk = _CapturingRisk(percent=1.0, atr_multiplier=2.0, rr_ratio=2.0)
+        risk.atr_value = 50.0
+        client = self._make_client()
+        client.risk_option = risk
+
+        ohlc_df = client.data.iloc[:10]
+        client.open_trade(is_buy=True, symbol="USDJPY", ohlc_df=ohlc_df)
+
+        self.assertIs(received["ohlc_df"], ohlc_df)
+
+    def test_smart_order_passes_ohlc_df_to_risk_option(self):
+        """ohlc_df passed to smart_order should be forwarded to risk_option.calculate()."""
+        received = {}
+
+        from finance_client.risk_manager.risk_options.atr import ATRRisk
+
+        class _CapturingRisk(ATRRisk):
+            def calculate(self, context, ohlc_df=None):
+                received["ohlc_df"] = ohlc_df
+                return super().calculate(context, ohlc_df=ohlc_df)
+
+        risk = _CapturingRisk(percent=1.0, atr_multiplier=2.0, rr_ratio=2.0)
+        risk.atr_value = 50.0
+        client = self._make_client()
+        client.risk_option = risk
+
+        ohlc_df = client.data.iloc[:10]
+        client.smart_order(is_buy=True, symbol="USDJPY", ohlc_df=ohlc_df)
+
+        self.assertIs(received["ohlc_df"], ohlc_df)
+
 
 if __name__ == "__main__":
     unittest.main()

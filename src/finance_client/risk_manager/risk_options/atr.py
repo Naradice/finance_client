@@ -39,28 +39,42 @@ class ATRRisk(RiskOption):
         self.atr_process = atr_process  # ATRProcess instance; ATR is read from last_data automatically
         self.atr_value: float | None = None  # manual fallback; set before calculate() if no atr_process
 
-    def _get_atr(self) -> float:
-        """Return the current ATR value from atr_process or the manually set atr_value.
+    def _get_atr(self, ohlc_df=None) -> float:
+        """Return the current ATR value.
+
+        Resolution order:
+        1. ohlc_df + atr_process: run atr_process.run(ohlc_df) and take the last value.
+        2. atr_process alone: read from atr_process.last_data (pre-computed).
+        3. atr_value: manually assigned float.
+
+        Args:
+            ohlc_df (pd.DataFrame, optional): OHLC data to compute ATR from.
+                Only used when atr_process is also set.
 
         Returns:
             float: Current ATR value.
 
         Raises:
-            ValueError: If neither atr_process nor atr_value is available.
+            ValueError: If none of the above sources is available.
         """
         if self.atr_process is not None:
+            if ohlc_df is not None:
+                result = self.atr_process.run(ohlc_df)
+                return result[self.atr_process.KEY_ATR].iloc[-1]
             return self.atr_process.last_data[self.atr_process.KEY_ATR].iloc[-1]
         if self.atr_value is not None:
             return self.atr_value
         raise ValueError("ATR value is not available. Provide atr_process at init or set atr_value before calling calculate().")
 
-    def calculate(self, context: RiskContext) -> RiskResult:
+    def calculate(self, context: RiskContext, ohlc_df=None) -> RiskResult:
         """Calculate position size and SL/TP prices using ATR-based risk sizing.
 
         Args:
             context (RiskContext): Current account state and trade parameters.
                 context.stop_loss and context.take_profit are ignored; both are
                 computed from the ATR value instead.
+            ohlc_df (pd.DataFrame, optional): OHLC data passed to atr_process.run()
+                to compute a fresh ATR. Ignored if atr_process is not set.
 
         Returns:
             RiskResult: Volume, stop_loss_price, take_profit_price, risk_volume,
@@ -70,7 +84,7 @@ class ATRRisk(RiskOption):
             ValueError: If no ATR value is available (see _get_atr).
         """
         # ① SL距離決定
-        atr = self._get_atr()
+        atr = self._get_atr(ohlc_df)
         sl_distance = atr * self.atr_multiplier
 
         if context.is_buy:

@@ -163,6 +163,7 @@ class ClientBase(metaclass=ABCMeta):
         tp: float = None,
         sl: float = None,
         order_type: int = 0,
+        ohlc_df=None,
         *args,
         **kwargs,
     ):
@@ -176,6 +177,8 @@ class ClientBase(metaclass=ABCMeta):
             order_type (int): 0: Market, 1: Limit, 2: Stop
             tp (float, optional): specify take profit price. Default is None
             sl (float, optional): specify stop loss price. Default is None
+            ohlc_df (pd.DataFrame, optional): Recent OHLC data forwarded to risk_option.calculate()
+                so indicators can be computed inside the risk option.
 
         Returns:
             Success (bool): True if order is completed
@@ -186,7 +189,7 @@ class ClientBase(metaclass=ABCMeta):
                 raise ValueError("volume must be specified or set risk_option at client init.")
             entry = price if price is not None else (self.get_current_ask(symbol) if is_buy else self.get_current_bid(symbol))
             context = self._build_risk_context(symbol, is_buy, entry, sl, tp)
-            result = self.risk_option.calculate(context)
+            result = self.risk_option.calculate(context, ohlc_df=ohlc_df)
             volume = result.volume
             if sl is None:
                 sl = result.stop_loss_price
@@ -384,6 +387,7 @@ class ClientBase(metaclass=ABCMeta):
         tp: float = None,
         sl: float = None,
         order_type: int = 0,
+        ohlc_df=None,
     ):
         """open or order a position with risk management. volume is calculated by risk_option.
 
@@ -395,6 +399,8 @@ class ClientBase(metaclass=ABCMeta):
             order_type (int): 0: Market, 1: Limit, 2: Stop
             tp (float, optional): specify take profit price. Default is None
             sl (float, optional): specify stop loss price. Default is None
+            ohlc_df (pd.DataFrame, optional): Recent OHLC data forwarded to risk_option.calculate()
+                so indicators can be computed inside the risk option.
         Returns:
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
@@ -405,7 +411,7 @@ class ClientBase(metaclass=ABCMeta):
         original = self.risk_option
         self.risk_option = effective_risk_option
         try:
-            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
+            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type, ohlc_df=ohlc_df)
         finally:
             self.risk_option = original
 

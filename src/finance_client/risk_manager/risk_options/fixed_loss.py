@@ -27,12 +27,14 @@ class FixedAmountRisk(RiskOption):
         """
         self.allowed_loss_volume = allowed_loss_volume
 
-    def calculate(self, context: RiskContext) -> RiskResult:
+    def calculate(self, context: RiskContext, ohlc_df=None) -> RiskResult:
         """Calculate position size based on a fixed allowed loss amount.
 
         Args:
             context (RiskContext): Current account state and trade parameters.
                 context.stop_loss must be set; context.take_profit is optional.
+            ohlc_df (pd.DataFrame, optional): OHLC data available for subclasses
+                or custom indicator calculations. Not used by this strategy.
 
         Returns:
             RiskResult: Volume sized so that SL hit costs allowed_loss_volume,

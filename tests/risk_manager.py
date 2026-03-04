@@ -1,5 +1,7 @@
 import unittest
 
+import pandas as pd
+
 from finance_client.config.model import SymbolRiskConfig
 from finance_client.risk_manager.model import RiskContext, RiskResult
 from finance_client.risk_manager.risk_options.atr import ATRRisk
@@ -38,7 +40,12 @@ class _MockATRProcess:
 
     def __init__(self, atr_value: float):
         import pandas as pd
+        self._atr_value = atr_value
         self.last_data = pd.DataFrame({self.KEY_ATR: [atr_value]})
+
+    def run(self, ohlc_df):
+        import pandas as pd
+        return pd.DataFrame({self.KEY_ATR: [self._atr_value] * len(ohlc_df)}, index=ohlc_df.index)
 
 
 class TestATRRisk(unittest.TestCase):
@@ -84,6 +91,30 @@ class TestATRRisk(unittest.TestCase):
         ctx = _make_context(is_buy=True, entry_price=100.0)
         result = risk.calculate(ctx)
         # SL distance should be 2.0 * 1.0 = 2.0, not 999.0
+        self.assertAlmostEqual(abs(ctx.entry_price - result.stop_loss_price), 2.0)
+
+    def test_ohlc_df_with_atr_process(self):
+        """When ohlc_df is provided, atr_process.run(ohlc_df) is used instead of last_data."""
+        ohlc_df = pd.DataFrame({"Open": [100.0], "High": [101.0], "Low": [99.0], "Close": [100.5]})
+        process = _MockATRProcess(atr_value=3.0)
+        # Poison last_data so the test fails if run() is not called
+        process.last_data = pd.DataFrame({process.KEY_ATR: [999.0]})
+
+        risk = ATRRisk(percent=1.0, atr_multiplier=1.0, rr_ratio=1.0, atr_process=process)
+        ctx = _make_context(is_buy=True, entry_price=100.0)
+        result = risk.calculate(ctx, ohlc_df=ohlc_df)
+
+        # SL distance should be 3.0 * 1.0 = 3.0, not 999.0
+        self.assertAlmostEqual(abs(ctx.entry_price - result.stop_loss_price), 3.0)
+
+    def test_ohlc_df_ignored_without_atr_process(self):
+        """When ohlc_df is provided but no atr_process, atr_value is still used."""
+        ohlc_df = pd.DataFrame({"Open": [100.0], "High": [101.0], "Low": [99.0], "Close": [100.5]})
+        risk = ATRRisk(percent=1.0, atr_multiplier=1.0, rr_ratio=1.0)
+        risk.atr_value = 2.0
+        ctx = _make_context(is_buy=True, entry_price=100.0)
+        result = risk.calculate(ctx, ohlc_df=ohlc_df)
+
         self.assertAlmostEqual(abs(ctx.entry_price - result.stop_loss_price), 2.0)
 
     def test_rr_ratio(self):
