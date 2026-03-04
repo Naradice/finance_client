@@ -500,5 +500,100 @@ class TestBaseClient(unittest.TestCase):
             os.remove(default_positions_path)
 
 
+class TestRiskOptionIntegration(unittest.TestCase):
+    """Tests for risk_option integration in open_trade and smart_order."""
+
+    def _make_client(self):
+        return TestClient(free_mergin=1_000_000)
+
+    def _make_atr_risk(self, atr_value=50.0):
+        from finance_client.risk_manager.risk_options.atr import ATRRisk
+        risk = ATRRisk(percent=1.0, atr_multiplier=2.0, rr_ratio=2.0)
+        risk.atr_value = atr_value
+        return risk
+
+    # --- open_trade ---
+
+    def test_open_trade_without_volume_uses_risk_option(self):
+        """open_trade with volume=None should auto-calculate volume from self.risk_option."""
+        client = self._make_client()
+        client.risk_option = self._make_atr_risk()
+        suc, position = client.open_trade(is_buy=True, symbol="USDJPY")
+        self.assertTrue(suc)
+        self.assertIsNotNone(position)
+        self.assertGreater(position.volume, 0)
+
+    def test_open_trade_without_volume_raises_when_no_risk_option(self):
+        """open_trade with volume=None and no risk_option should raise ValueError."""
+        client = self._make_client()
+        with self.assertRaises(ValueError):
+            client.open_trade(is_buy=True, symbol="USDJPY")
+
+    def test_open_trade_fills_sl_from_risk_option(self):
+        """When sl is None, open_trade should fill it from the RiskResult."""
+        client = self._make_client()
+        client.risk_option = self._make_atr_risk()
+        suc, position = client.open_trade(is_buy=True, symbol="USDJPY")
+        self.assertTrue(suc)
+        self.assertIsNotNone(position.sl)
+
+    def test_open_trade_fills_tp_from_risk_option(self):
+        """When tp is None, open_trade should fill it from the RiskResult."""
+        client = self._make_client()
+        client.risk_option = self._make_atr_risk()
+        suc, position = client.open_trade(is_buy=True, symbol="USDJPY")
+        self.assertTrue(suc)
+        self.assertIsNotNone(position.tp)
+
+    def test_open_trade_explicit_sl_not_overridden(self):
+        """An explicitly provided sl must not be overridden by the risk option."""
+        client = self._make_client()
+        client.risk_option = self._make_atr_risk()
+        explicit_sl = 100.0
+        suc, position = client.open_trade(is_buy=True, symbol="USDJPY", sl=explicit_sl)
+        self.assertTrue(suc)
+        self.assertEqual(position.sl, explicit_sl)
+
+    # --- smart_order ---
+
+    def test_smart_order_uses_self_risk_option(self):
+        """smart_order with no risk_option arg should use self.risk_option."""
+        client = self._make_client()
+        client.risk_option = self._make_atr_risk()
+        suc, position = client.smart_order(is_buy=True, symbol="USDJPY")
+        self.assertTrue(suc)
+        self.assertIsNotNone(position)
+
+    def test_smart_order_uses_provided_risk_option(self):
+        """smart_order with risk_option arg should use it even when self.risk_option is None."""
+        client = self._make_client()
+        suc, position = client.smart_order(is_buy=True, symbol="USDJPY", risk_option=self._make_atr_risk())
+        self.assertTrue(suc)
+        self.assertIsNotNone(position)
+
+    def test_smart_order_temporary_risk_option_does_not_persist(self):
+        """After smart_order, self.risk_option must be restored to its original value."""
+        client = self._make_client()
+        self.assertIsNone(client.risk_option)
+        client.smart_order(is_buy=True, symbol="USDJPY", risk_option=self._make_atr_risk())
+        self.assertIsNone(client.risk_option)
+
+    def test_smart_order_temporary_overrides_self_risk_option(self):
+        """The risk_option arg should take priority over self.risk_option for that trade."""
+        default_risk = self._make_atr_risk(atr_value=50.0)
+        temp_risk = self._make_atr_risk(atr_value=1.0)
+        client = self._make_client()
+        client.risk_option = default_risk
+        client.smart_order(is_buy=True, symbol="USDJPY", risk_option=temp_risk)
+        # self.risk_option must be the original default after the call
+        self.assertIs(client.risk_option, default_risk)
+
+    def test_smart_order_raises_when_no_risk_option(self):
+        """smart_order with no risk_option set anywhere should raise ValueError."""
+        client = self._make_client()
+        with self.assertRaises(ValueError):
+            client.smart_order(is_buy=True, symbol="USDJPY")
+
+
 if __name__ == "__main__":
     unittest.main()

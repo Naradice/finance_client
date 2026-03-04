@@ -27,11 +27,12 @@ class RiskContext:
         - max_daily_loss: max daily loss volume, which is used to calculate remaining risk capacity for the day
     """
 
+    is_buy: bool
     account_equity: float
     account_balance: float
     daily_realized_pnl: float
     open_positions_risk_volume: float
     symbol_risk_config: SymbolRiskConfig
     entry_price: float
-    stop_loss: float
+    stop_loss: float | None
     take_profit: float | None

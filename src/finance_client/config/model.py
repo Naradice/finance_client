@@ -21,3 +21,4 @@ class SymbolRiskConfig:
     risk_percent: float
     contract_size: float
     leverage: float
+    pip_value_per_lot: float = 1.0  # monetary value per lot per 1 price-unit move

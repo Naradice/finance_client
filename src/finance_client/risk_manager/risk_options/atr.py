@@ -11,45 +11,81 @@ from finance_client.risk_manager.risk_options.risk_option import RiskOption
 
 
 class ATRRisk(RiskOption):
+    """Risk sizing based on ATR-derived stop loss distance.
 
-    def __init__(self, percent: float, atr_value: float, atr_multiplier: float, rr_ratio: float):
+    Stop loss is placed at entry ± (ATR × atr_multiplier).
+    Take profit is placed at entry ± (SL distance × rr_ratio).
+    Volume is sized so that the monetary risk equals percent% of account equity.
+
+    ATR value source (in priority order):
+    1. atr_process: an ATRProcess instance — ATR is read automatically from
+       atr_process.last_data on each calculate() call.
+    2. atr_value: assign manually before calling calculate() when no
+       atr_process is provided.
+    """
+
+    def __init__(self, percent: float, atr_multiplier: float, rr_ratio: float, atr_process=None):
+        """
+        Args:
+            percent (float): Percentage of account equity to risk per trade (e.g. 1.0 = 1%).
+            atr_multiplier (float): Multiplier applied to ATR to determine SL distance.
+            rr_ratio (float): Risk-to-reward ratio used to set take profit distance.
+            atr_process (ATRProcess, optional): ATRProcess instance whose latest value is
+                read automatically. If None, set atr_value manually before each trade.
+        """
         self.percent = percent
-        self.atr_value = atr_value
         self.atr_multiplier = atr_multiplier
         self.rr_ratio = rr_ratio
+        self.atr_process = atr_process  # ATRProcess instance; ATR is read from last_data automatically
+        self.atr_value: float | None = None  # manual fallback; set before calculate() if no atr_process
+
+    def _get_atr(self) -> float:
+        """Return the current ATR value from atr_process or the manually set atr_value.
+
+        Returns:
+            float: Current ATR value.
+
+        Raises:
+            ValueError: If neither atr_process nor atr_value is available.
+        """
+        if self.atr_process is not None:
+            return self.atr_process.last_data[self.atr_process.KEY_ATR].iloc[-1]
+        if self.atr_value is not None:
+            return self.atr_value
+        raise ValueError("ATR value is not available. Provide atr_process at init or set atr_value before calling calculate().")
 
     def calculate(self, context: RiskContext) -> RiskResult:
+        """Calculate position size and SL/TP prices using ATR-based risk sizing.
 
+        Args:
+            context (RiskContext): Current account state and trade parameters.
+                context.stop_loss and context.take_profit are ignored; both are
+                computed from the ATR value instead.
+
+        Returns:
+            RiskResult: Volume, stop_loss_price, take_profit_price, risk_volume,
+                reward_volume, and risk_reward_ratio.
+
+        Raises:
+            ValueError: If no ATR value is available (see _get_atr).
+        """
         # ① SL距離決定
-        sl_distance = self.atr_value * self.atr_multiplier
+        atr = self._get_atr()
+        sl_distance = atr * self.atr_multiplier
 
-        if context.entry_price > context.current_price:
-            stop_loss = context.entry_price + sl_distance
-        else:
+        if context.is_buy:
             stop_loss = context.entry_price - sl_distance
+            take_profit = context.entry_price + sl_distance * self.rr_ratio
+        else:
+            stop_loss = context.entry_price + sl_distance
+            take_profit = context.entry_price - sl_distance * self.rr_ratio
 
         # ② 許容損失
-        allowed_loss = (
-            context.account_equity *
-            (self.percent / 100)
-        )
-
-        loss_per_unit = (
-            sl_distance *
-            context.pip_value_per_lot
-        )
-
+        allowed_loss = context.account_equity * (self.percent / 100)
+        loss_per_unit = sl_distance * context.symbol_risk_config.pip_value_per_lot
         raw_volume = allowed_loss / loss_per_unit
 
         volume = self._round_volume(raw_volume, context)
-
-        # ③ TP決定
-        tp_distance = sl_distance * self.rr_ratio
-
-        if context.entry_price > stop_loss:
-            take_profit = context.entry_price + tp_distance
-        else:
-            take_profit = context.entry_price - tp_distance
 
         risk_volume = self._calc_loss(volume, context, stop_loss)
         reward_volume = risk_volume * self.rr_ratio
@@ -60,5 +96,5 @@ class ATRRisk(RiskOption):
             take_profit_price=take_profit,
             risk_volume=risk_volume,
             reward_volume=reward_volume,
-            risk_reward_ratio=self.rr_ratio
+            risk_reward_ratio=self.rr_ratio,
         )

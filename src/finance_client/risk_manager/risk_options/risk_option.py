@@ -7,21 +7,54 @@ Alt options:
 
 from abc import ABC, abstractmethod
 
-from finance_client.risk_manager.model import RiskContext
+from finance_client.risk_manager.model import RiskContext, RiskResult
 
 
 class RiskOption(ABC):
+    """Abstract base class for position sizing strategies.
+
+    Subclasses implement calculate() to determine trade volume, stop loss,
+    and take profit based on account state and symbol configuration provided
+    via RiskContext.
+    """
 
     @abstractmethod
-    def calculate_volume(
-        self,
-        risk_context: RiskContext,
-        entry_price: float,
-        stop_loss: float,
-        take_profit: float,
-    ) -> float: ...
+    def calculate(self, context: RiskContext) -> RiskResult:
+        """Calculate position size and risk/reward levels for a trade.
+
+        Args:
+            context (RiskContext): Current account state and trade parameters,
+                including equity, entry price, stop loss, and symbol config.
+
+        Returns:
+            RiskResult: Computed volume, stop_loss_price, take_profit_price,
+                and risk/reward metrics.
+        """
+        ...
 
     def _round_volume(self, volume: float, context: RiskContext) -> float:
-        stepped = (volume // context.symbol_risk_config.volume_step) * context.symbol_risk_config.volume_step
+        """Round volume down to the nearest volume_step, with a floor of min_volume.
 
+        Args:
+            volume (float): Raw calculated volume.
+            context (RiskContext): Provides symbol_risk_config.volume_step and min_volume.
+
+        Returns:
+            float: Adjusted volume that respects the broker's lot-size constraints.
+        """
+        stepped = (volume // context.symbol_risk_config.volume_step) * context.symbol_risk_config.volume_step
         return max(stepped, context.symbol_risk_config.min_volume)
+
+    def _calc_loss(self, volume: float, context: RiskContext, stop_loss_price: float) -> float:
+        """Calculate the monetary loss (in account currency) for a given volume and stop level.
+
+        Args:
+            volume (float): Trade volume in lots.
+            context (RiskContext): Provides entry_price and symbol_risk_config.pip_value_per_lot.
+            stop_loss_price (float): Price at which the loss is realised.
+
+        Returns:
+            float: Monetary loss = volume × |entry - stop| × pip_value_per_lot.
+        """
+        sl_distance = abs(context.entry_price - stop_loss_price)
+        return volume * sl_distance * context.symbol_risk_config.pip_value_per_lot

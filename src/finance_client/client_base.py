@@ -53,6 +53,7 @@ class ClientBase(metaclass=ABCMeta):
         enable_trade_log=False,
         storage: db.PositionStorageBase = None,
         log_storage: db.LogStorageBase = None,
+        risk_option: RiskOption = None,
     ):
         """Base Class of Finance Client. Each Client should overwride required method.
 
@@ -151,12 +152,13 @@ class ClientBase(metaclass=ABCMeta):
             self.eco_keys = economic_keys
 
         self._indices = None
+        self.risk_option = risk_option
 
     def open_trade(
         self,
         is_buy: bool,
-        volume: float,
         symbol: str,
+        volume: float = None,
         price: float = None,
         tp: float = None,
         sl: float = None,
@@ -168,8 +170,8 @@ class ClientBase(metaclass=ABCMeta):
 
         Args:
             is_buy (bool): buy order or not
-            volume (float): volume of trade unit
             symbol (str): symbol of currency, stock etc. ex USDJPY.
+            volume (float, optional): volume of trade unit. If None and risk_option is set, volume is calculated automatically.
             price (float): order price. If None is specified, use market price to order.
             order_type (int): 0: Market, 1: Limit, 2: Stop
             tp (float, optional): specify take profit price. Default is None
@@ -179,6 +181,18 @@ class ClientBase(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
         """
+        if volume is None:
+            if self.risk_option is None:
+                raise ValueError("volume must be specified or set risk_option at client init.")
+            entry = price if price is not None else (self.get_current_ask(symbol) if is_buy else self.get_current_bid(symbol))
+            context = self._build_risk_context(symbol, is_buy, entry, sl, tp)
+            result = self.risk_option.calculate(context)
+            volume = result.volume
+            if sl is None:
+                sl = result.stop_loss_price
+            if tp is None:
+                tp = result.take_profit_price
+
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             logger.debug("order is requested.")
             symbol_risk_config = self.symbol_risk_config[symbol] if symbol in self.symbol_risk_config else None
@@ -365,7 +379,7 @@ class ClientBase(metaclass=ABCMeta):
         self,
         is_buy: bool,
         symbol: str,
-        risk_option: RiskOption,
+        risk_option: RiskOption = None,
         entry_price: float = None,
         tp: float = None,
         sl: float = None,
@@ -376,7 +390,7 @@ class ClientBase(metaclass=ABCMeta):
         Args:
             is_buy (bool): buy order or not
             symbol (str): symbol of currency, stock etc. ex USDJPY.
-            risk_option (RiskOption, optional): risk option to calculate volume.
+            risk_option (RiskOption, optional): risk option to use for this trade only. Falls back to self.risk_option if None.
             entry_price (float): order price. If None is specified, use market price to order.
             order_type (int): 0: Market, 1: Limit, 2: Stop
             tp (float, optional): specify take profit price. Default is None
@@ -385,17 +399,15 @@ class ClientBase(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
         """
-
-        if self.account.risk_config is None:
-            warning_msg = "risk_config is not specified. load default risk config. If you want to specify risk config, please call update_risk_config method or specify risk_config when initialize the client."
-            logger.warning(warning_msg)
-            risk_config = load_account_risk_config(self._default_account_config_path)
-        else:
-            risk_config = self.account.risk_config
-
-        risk_context = self._build_risk_context(symbol, entry_price, sl, tp)
-        volume = risk_option.calculate_volume(risk_context=risk_context)
-        self.open_trade(is_buy=is_buy, volume=volume, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
+        effective_risk_option = risk_option if risk_option is not None else self.risk_option
+        if effective_risk_option is None:
+            raise ValueError("risk_option must be provided or set at client initialization to use smart_order.")
+        original = self.risk_option
+        self.risk_option = effective_risk_option
+        try:
+            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type)
+        finally:
+            self.risk_option = original
 
     def _trading_log(self, position: Position, price, volume, is_open):
         pass
@@ -1584,9 +1596,10 @@ class ClientBase(metaclass=ABCMeta):
             logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
             return pd.DataFrame()
 
-    def _build_risk_context(self, symbol: str, entry_price: float, stop_loss: float, take_profit: float) -> RiskContext:
+    def _build_risk_context(self, symbol: str, is_buy: bool, entry_price: float, stop_loss: float, take_profit: float) -> RiskContext:
         symbol_risk_config = self.get_symbol_config(symbol)
         return RiskContext(
+            is_buy=is_buy,
             account_equity=self.get_equity(),
             account_balance=self.account.get_balance(),
             daily_realized_pnl=self.account.get_daily_realized_pnl(),
