@@ -17,7 +17,8 @@ from ..client_base import ClientBase
 from ..position import ClosedResult, Position
 
 try:
-    from ..fprocess.fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
+    from ..fprocess.fprocess.csvrw import (get_datafolder_path, read_csv,
+                                           write_df_to_csv)
 except ImportError:
     from ..fprocess.csvrw import get_datafolder_path, read_csv, write_df_to_csv
 
@@ -249,12 +250,12 @@ class MT5Client(ClientBase):
         server,
         simulation=True,
         frame=5,
-        free_mergination_length=None,
+        observation_length=None,
         point_unit=None,
         back_test=False,
         auto_index=False,
         do_render=False,
-        free_mergin=1000000,
+        free_margin=1000000,
         storage=None,
         log_storage=None,
         seed=1017,
@@ -276,7 +277,7 @@ class MT5Client(ClientBase):
             back_test (bool, optional): if back_test is True, OHLC is retrieved based on sim_index. Defaults to False.
             auto_index (bool, optional): automatically step index when backtest is True. Defaults to False.
             do_render (bool, optional): If True, rendere OHLC when it is retrieved by get_ohlc. Defaults to False.
-            free_mergin (int, optional): Defaults to 1000000.
+            free_margin (int, optional): Defaults to 1000000.
             storage (db.PositionStorageBase, optional): Storage to store positions. Defaults to None.
             log_storage (db.TradeLogStorageBase, optional): Storage to store trade logs. Defaults to None.
             seed (int, optional): _description_. Defaults to 1017.
@@ -286,8 +287,8 @@ class MT5Client(ClientBase):
             start_index (int, optional): start index for backtest. If None, default index is used. Defaults to None.
         """
         super().__init__(
-            budget=budget,
-            free_merginframe,
+            free_margin=free_margin,
+            frame=frame,
             observation_length=observation_length,
             provider=server,
             do_render=do_render,
@@ -1234,4 +1235,5 @@ class MT5Client(ClientBase):
             return self.LAST_IDX[self.frame]
         else:
             MAX_LENGTH = 12 * 24 * 345
+            return MAX_LENGTH
             return MAX_LENGTH

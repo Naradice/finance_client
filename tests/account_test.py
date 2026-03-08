@@ -125,8 +125,8 @@ class ManagerTest(unittest.TestCase):
         manager.risk_config = risk_config
         self.assertEqual(manager.daily_max_loss, 5000.0)
 
-        # update free_mergin and check if daily max loss is updated accordingly
-        manager.free_mergin = 20000
+        # update free_margin and check if daily max loss is updated accordingly
+        manager.free_margin = 20000
         manager.update_daily_max_loss()
         self.assertEqual(manager.daily_max_loss, 10000.0)
 
@@ -524,7 +524,7 @@ class ManagerTest(unittest.TestCase):
         position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
         manager.update_position(position1, sl=90)
         manager.update_position(position2, sl=220)
-        total_risk_volume = manager.get_open_positions_risk_volume()
+        total_risk_volume = manager.get_open_positions_risk_loss()
         expected_risk_volume = (100 - 90) * position1.trade_unit * position1.leverage * position1.volume + (
             220 - 200
         ) * position2.trade_unit * position2.leverage * position2.volume
@@ -538,7 +538,7 @@ class ManagerTest(unittest.TestCase):
         position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
         manager.update_position(position1, sl=90)
         manager.update_position(position2, sl=220)
-        total_risk_volume = manager.get_open_positions_risk_volume()
+        total_risk_volume = manager.get_open_positions_risk_loss()
         expected_risk_volume = (100 - 90) * position1.trade_unit * position1.leverage * position1.volume + (
             220 - 200
         ) * position2.trade_unit * position2.leverage * position2.volume

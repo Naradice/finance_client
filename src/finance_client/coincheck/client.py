@@ -87,7 +87,7 @@ class CoinCheckClient(ClientBase):
         initialized_with=None,
         return_intermidiate_data=False,
         simulation=False,
-        free_mergin=1000000,
+        free_margin=1000000,
         frame: int = 30,
         observation_length=None,
         do_render=False,
@@ -100,7 +100,7 @@ class CoinCheckClient(ClientBase):
         Currentry BTC/JPY is only supported
 
         Args:
-            free_mergin (int, optional): Defaults to 1000000.
+            free_margin (int, optional): Defaults to 1000000.
             indicater_processes (list, optional): Indicaters made by finance_client.fprocess.idcprocess. Defaults to [].
             post_processes (list, optional): _description_. Defaults to [].
             frame (int, optional): Frame minutes. finance_client.frames is also available. Defaults to 30.
@@ -109,7 +109,7 @@ class CoinCheckClient(ClientBase):
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
         """
         super().__init__(
-            free_mergin,
+            free_margin,
             "CoinCheck",
             frame=frame,
             observation_length=observation_length,

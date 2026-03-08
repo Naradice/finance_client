@@ -177,8 +177,14 @@ class LogCSVStorage(LogStorageBase):
     def store_log(self, position: Position, order_type: int, profit: float = None):
         log_item = self._convert_position_to_log(position, order_type)
         df = pd.DataFrame.from_dict([log_item])
+        if len(df) == 0:
+            logger.warning("No log item to store.")
+            return
         save_header = not os.path.exists(self.trade_log_path)
         df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
+
+        # convert None to nan for hiding warning 
+        df = df.where(pd.notnull(df), "nan")
 
         # store log in memory for later retrieval
         try:
@@ -201,6 +207,9 @@ class LogCSVStorage(LogStorageBase):
             else:
                 log_items = items
             df = pd.DataFrame.from_dict(log_items)
+            if len(df) == 0:
+                logger.warning("No log items to store.")
+                return
             save_header = not os.path.exists(self.trade_log_path)
             df.to_csv(self.trade_log_path, mode="a", header=save_header, index_label=None, index=False)
 

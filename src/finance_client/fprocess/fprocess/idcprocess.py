@@ -458,9 +458,8 @@ class ATRProcess(ProcessBase):
         return ATRProcess(key, window, columns, is_input, is_out)
 
     def run(self, data: pd.DataFrame, symbols: list = [], grouped_by_symbol=False):
-        option = self.option
-        target_columns = option["ohlc_column"]
-        window = option["window"]
+        target_columns = self.option["ohlc_column"]
+        window = self.option["window"]
         c_atr = self.KEY_ATR
 
         if type(data.columns) == pd.MultiIndex:
@@ -478,9 +477,8 @@ class ATRProcess(ProcessBase):
         return pd.concat([data, atr_df], axis=1)
 
     def update(self, tick: pd.Series, symbols: list = []):
-        option = self.option
-        target_columns = option["ohlc_column"]
-        window = option["window"]
+        target_columns = self.option["ohlc_column"]
+        window = self.option["window"]
         c_atr = self.KEY_ATR
 
         pre_data = self.last_data.iloc[-1]
@@ -527,9 +525,8 @@ class RSIProcess(ProcessBase):
         return RSIProcess(key, window, columns, is_input, is_out)
 
     def run(self, data: pd.DataFrame, symbols: list = [], grouped_by_symbol=False):
-        option = self.option
-        target_column = option["ohlc_column"][0]
-        window = option["window"]
+        target_column = self.option["ohlc_column"][0]
+        window = self.option["window"]
 
         if type(data.columns) == pd.MultiIndex:
             if len(symbols) == 0:
@@ -560,9 +557,8 @@ class RSIProcess(ProcessBase):
         return pd.concat([data, rsi_df], axis=1)
 
     def update(self, tick: pd.Series, symbols: list = []):
-        option = self.option
-        target_column = option["ohlc_column"][0]
-        window = option["window"]
+        target_column = self.option["ohlc_column"][0]
+        window = self.option["window"]
         columns = (*self.columns, target_column)
 
         pre_data = self.last_data.iloc[-1]

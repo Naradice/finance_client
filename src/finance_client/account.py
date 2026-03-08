@@ -1,11 +1,13 @@
 import datetime
 import logging
+import os
 from typing import List, Tuple
 
 import pandas as pd
 
-from finance_client.config.model import AccountRiskConfig
-from finance_client.db import LogCSVStorage, LogStorageBase, PositionFileStorage, PositionStorageBase
+from finance_client.config import AccountRiskConfig, load_account_risk_config
+from finance_client.db import (LogCSVStorage, LogStorageBase,
+                               PositionFileStorage, PositionStorageBase)
 from finance_client.position import POSITION_SIDE, ClosedResult, Position
 
 logger = logging.getLogger(__name__)
@@ -14,27 +16,27 @@ logger = logging.getLogger(__name__)
 class Manager:
     def __init__(
         self,
-        free_mergin: float,
-        used_mergin: float = 0.0,
+        account_risk_config_file,
+        free_margin: float,
+        used_margin: float = 0.0,
         position_storage: PositionStorageBase = None,
         log_storage: LogStorageBase = None,
-        account_risk_config: AccountRiskConfig = None,
         tz_info=None,
         provider="Default",
     ):
         """
 
         Args:
-            free_mergin (float): initial free margin for trading
-            used_mergin (float, optional): initial used margin for trading. Defaults to 0.0.
+            account_risk_config_file (str, optional): path to the risk configuration file for the account.
+            free_margin (float): initial free margin for trading
+            used_margin (float, optional): initial used margin for trading. Defaults to 0.0.
             position_storage (PositionStorageBase, optional): storage backend for positions. Defaults to None.
             log_storage (LogStorageBase, optional): storage backend for logs. Defaults to None.
-            account_risk_config (AccountRiskConfig, optional): risk configuration for the account. Defaults to None.
             tz_info (datetime.timezone, optional): timezone information. Defaults to None, which means UTC.
             provider (str, optional): provider name. Defaults to "Default".
         """
-        self.__original_balance = free_mergin + used_mergin
-        self.free_mergin = free_mergin
+        self.__original_balance = free_margin + used_margin
+        self.free_margin = free_margin
         if position_storage is None:
             position_storage = PositionFileStorage(provider, None, save_period=0)
         # initialize positions which have tp or sl
@@ -44,13 +46,15 @@ class Manager:
             self._trade_log_db = LogCSVStorage(provider, username=position_storage.username)
         else:
             self._trade_log_db = log_storage
-
+        if not os.path.exists(account_risk_config_file):
+            raise FileNotFoundError(f"Account risk config file not found: {account_risk_config_file}")
+        account_risk_config = load_account_risk_config(account_risk_config_file)
         self.__account_risk_config = account_risk_config
         self.update_daily_max_loss()
         if tz_info is None:
             tz_info = datetime.timezone.utc
         self.tz_info = tz_info
-        logger.info(f"MarketManager is initialized with mergin:{self.free_mergin}, provider:{provider}, tz_info:{tz_info}")
+        logger.info(f"MarketManager is initialized with margin:{self.free_margin}, provider:{provider}, tz_info:{tz_info}")
 
     @property
     def risk_config(self) -> AccountRiskConfig:
@@ -126,7 +130,7 @@ class Manager:
             )
             self.storage.store_position(position)
             # then reduce free margin
-            self.free_mergin -= required_cost
+            self.free_margin -= required_cost
             # check if tp/sl exists
             if tp is not None or sl is not None:
                 self.listening_positions[position.id] = position
@@ -134,7 +138,7 @@ class Manager:
             self._trade_log_db.store_log(position, order_type=1)
             return position
             # else:
-            #     logger.info(f"current free margin {self.free_mergin} is less than required {required_cost}")
+            #     logger.info(f"current free margin {self.free_margin} is less than required {required_cost}")
             #     return None
 
     def update_position(self, position: Position, tp=None, sl=None):
@@ -207,14 +211,14 @@ class Manager:
                 price_diff = position.price - price
             trade_unit = position.trade_unit
             profit = trade_unit * volume * price_diff
-            return_mergin = (trade_unit * volume * position.price) / position.leverage + profit
+            return_margin = (trade_unit * volume * position.price) / position.leverage + profit
             if position.volume == volume:
                 self.storage.delete_position(id)
             else:
                 position.volume -= volume
                 self.storage.update_position(position)
-            logger.info(f"closed result:: profit {profit}, free margin: {self.free_mergin}, price_diff: {price_diff}")
-            self.free_mergin += return_mergin
+            logger.info(f"closed result:: profit {profit}, free margin: {self.free_margin}, price_diff: {price_diff}")
+            self.free_margin += return_margin
             self.remove_position_from_listening(id)
             closed_result.update(id=id, price=price, volume=volume, profit=profit, price_diff=price_diff)
             closed_result.error = False
@@ -268,7 +272,7 @@ class Manager:
         long_positions, short_positions = self.storage.get_positions(symbols=symbols)
         return list(long_positions), list(short_positions)
 
-    def get_open_positions_risk_volume(self) -> float:
+    def get_open_positions_risk_loss(self) -> float:
         """
             calculate total risk volume of open positions, which is used to consider max concurrent position limit
         Returns:
@@ -308,41 +312,64 @@ class Manager:
         Returns:
             float: current balance
         """
-        balance = self.free_mergin
-        used_mergin = 0
+        balance = self.free_margin
+        used_margin = 0
         long_positions, short_positions = self.get_positions()
         for position in long_positions + short_positions:
-            used_mergin += (position.trade_unit * position.volume * position.price) / position.leverage
-        balance += used_mergin
+            used_margin += (position.trade_unit * position.volume * position.price) / position.leverage
+        balance += used_margin
         return balance
 
-    def get_free_mergin(self) -> float:
+    def get_free_margin(self) -> float:
         """
             calculate current free margin
         Returns:
             float: current free margin
         """
-        return self.free_mergin
+        return self.free_margin
+    
+    def get_max_total_loss_risk(self) -> float:
+        """
+            calculate remaining loss risk for open positions and daily loss, which is used to consider max total loss limit
+        Returns:
+            float: remaining loss risk for open positions and daily loss
+        """
+        if self.risk_config is not None and self.risk_config.max_total_risk_percent is not None:
+            max_total_loss_risk = self.risk_config.max_total_risk_percent * self.get_balance() / 100.0
+            remaining_loss_risk = max(0.0, max_total_loss_risk - self.get_open_positions_risk_loss() - self.get_daily_realized_pnl())
+            return remaining_loss_risk
+    
+    def get_daily_max_loss(self) -> float:
+        """
+            get daily max loss volume
+        Returns:
+            float: daily max loss volume
+        """
+        if self.risk_config is not None and self.risk_config.daily_max_loss_percent is not None:
+            return self.risk_config.daily_max_loss_percent * self.get_balance() / 100.0
+        else:
+            return None
 
-    def calculate_mergin(self, price: float, volume: float, trade_unit: float, leverage: float) -> float:
+    def calculate_margin(self, price: float, volume: float, trade_unit: float, leverage: float) -> float:
         return (trade_unit * volume * price) / leverage
 
-    def get_used_mergin(self) -> float:
+    def get_used_margin(self) -> float:
         long_positions, short_positions = self.get_positions()
-        used_mergin = 0.0
+        used_margin = 0.0
 
         for position in long_positions + short_positions:
             volume = position.volume
             price = position.price
             trade_unit = position.trade_unit
             leverage = position.leverage
-            margin = self.calculate_mergin(price, volume, trade_unit, leverage)
-            used_mergin += margin
+            margin = self.calculate_margin(price, volume, trade_unit, leverage)
+            used_margin += margin
 
-        return used_mergin
+        return used_margin
 
     def __del__(self):
         if hasattr(self, "storage"):
             self.storage.close()
         if hasattr(self, "_trade_log_db"):
+            self._trade_log_db.close()
             self._trade_log_db.close()

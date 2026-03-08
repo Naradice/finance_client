@@ -22,7 +22,7 @@ from finance_client.client_base import ClientBase
 class TestClient(ClientBase):
     def __init__(
         self,
-        free_mergin=1000000,
+        free_margin=1000000,
         indicater_processes: list = None,
         do_render=False,
         pre_processes: list = None,
@@ -40,7 +40,7 @@ class TestClient(ClientBase):
             self.open_orders = []
             self.positions = []
         super().__init__(
-            free_mergin=free_mergin,
+            free_margin=free_margin,
             provider=provider,
             ohlc_columns=["Open", "High", "Low", "Close"],
             idc_process=indicater_processes,
@@ -139,7 +139,7 @@ class TestClient(ClientBase):
 class TestMultiClient(TestClient):
     def __init__(
         self,
-        free_mergin=1000000,
+        free_margin=1000000,
         do_render=False,
     ):
         base_path = os.path.dirname(__file__)
@@ -149,7 +149,7 @@ class TestMultiClient(TestClient):
         storage = db.PositionFileStorage(provider="TestClient", username=None, positions_path=self.storage_file_path)
 
         super().__init__(
-            free_mergin=free_mergin,
+            free_margin=free_margin,
             provider="Default",
             indicater_processes=None,
             pre_processes=None,
@@ -253,8 +253,8 @@ class TestBaseClient(unittest.TestCase):
 
     # E2E test for trading simulation with market order
     def test_trading_simulation(self):
-        free_mergin = 100000
-        client = TestClient(free_mergin=free_mergin, do_render=True)
+        free_margin = 100000
+        client = TestClient(free_margin=free_margin, do_render=True)
         suc, position = client.open_trade(is_buy=True, volume=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
@@ -262,10 +262,10 @@ class TestBaseClient(unittest.TestCase):
             time.sleep(1)
         long, short = client.get_portfolio()
         self.assertEqual(len(long), 1, f"Long position should be 1: {long}")
-        current_free_mergin = client.get_free_mergin()
-        self.assertLess(current_free_mergin, free_mergin)
-        used_mergin = client.get_used_mergin()
-        self.assertEqual(used_mergin, 100000 * position.volume * position.price / 25)
+        current_free_margin = client.get_free_margin()
+        self.assertLess(current_free_margin, free_margin)
+        used_margin = client.get_used_margin()
+        self.assertEqual(used_margin, 100000 * position.volume * position.price / 25)
         profit = client.get_profit_loss()
         self.assertNotEqual(profit, 0.0)
         balance = client.get_balance()
@@ -277,20 +277,20 @@ class TestBaseClient(unittest.TestCase):
         self.assertTrue(close_result.error is False)
         self.assertNotEqual(close_result.profit, 0.0)
 
-        current_free_mergin_after_close = client.get_free_mergin()
-        self.assertEqual(current_free_mergin_after_close, free_mergin + close_result.profit)
-        used_mergin_after_close = client.get_used_mergin()
-        self.assertEqual(used_mergin_after_close, 0.0)
+        current_free_margin_after_close = client.get_free_margin()
+        self.assertEqual(current_free_margin_after_close, free_margin + close_result.profit)
+        used_margin_after_close = client.get_used_margin()
+        self.assertEqual(used_margin_after_close, 0.0)
         profit_after_close = client.get_profit_loss()
         self.assertEqual(profit_after_close, 0.0)
         balance_after_close = client.get_balance()
-        self.assertEqual(balance_after_close, free_mergin + close_result.profit)
+        self.assertEqual(balance_after_close, free_margin + close_result.profit)
         daily_profit_after_close = client.get_daily_realized_pnl()
         self.assertEqual(daily_profit_after_close, close_result.profit)
 
     def test_pending_order(self):
-        free_mergin = 100000
-        client = TestClient(free_mergin=free_mergin, do_render=True)
+        free_margin = 100000
+        client = TestClient(free_margin=free_margin, do_render=True)
         ask_price = client.get_current_ask()
         suc, position = client.open_trade(
             is_buy=True,
@@ -306,8 +306,8 @@ class TestBaseClient(unittest.TestCase):
         client.get_ohlc(None, 100)
         orders = client._open_orders
         self.assertEqual(len(orders), 1, f"orders should be 1 after pending order is triggered: {orders}")
-        current_free_mergin = client.get_free_mergin()
-        self.assertEqual(current_free_mergin, free_mergin, "free margin should not change until pending order is closed")
+        current_free_margin = client.get_free_margin()
+        self.assertEqual(current_free_margin, free_margin, "free margin should not change until pending order is closed")
         count = 0
         while len(client._open_orders) > 0:
             client.get_ohlc(None, 100)
@@ -331,8 +331,8 @@ class TestBaseClient(unittest.TestCase):
             self.fail("all positions should be closed")
 
     def test_close_after_pending_order(self):
-        free_mergin = 100000
-        client = TestClient(free_mergin=free_mergin, do_render=True)
+        free_margin = 100000
+        client = TestClient(free_margin=free_margin, do_render=True)
         ask_price = client.get_current_ask()
         suc, position = client.open_trade(
             is_buy=True,
@@ -348,7 +348,7 @@ class TestBaseClient(unittest.TestCase):
         client.get_ohlc(None, 100)
         orders = client._open_orders
         self.assertEqual(len(orders), 1, f"orders should be 1 after pending order is triggered: {orders}")
-        # current_free_mergin, in_use, profit = client.get_free_mergin()
+        # current_free_margin, in_use, profit = client.get_free_margin()
         # self.assertGreater(in_use, 0)
         count = 0
         while len(client._open_orders) > 0:
@@ -357,7 +357,7 @@ class TestBaseClient(unittest.TestCase):
             count += 1
             if count > 20:
                 self.fail("pending order is not closed after 20 iterations")
-        # current_free_mergin, in_use, profit = client.get_free_mergin()
+        # current_free_margin, in_use, profit = client.get_free_margin()
         # self.assertEqual(in_use, 0)
         positions = client.get_positions()
         self.assertEqual(len(positions), 1, f"long position should be 1: {positions}")
@@ -398,8 +398,8 @@ class TestBaseClient(unittest.TestCase):
         self.assertEqual(ohlc_dict["Close"], "Close")
 
     def test_multi_trading_simulation(self):
-        free_mergin = 100000
-        client = TestClient(free_mergin=free_mergin, do_render=True)
+        free_margin = 100000
+        client = TestClient(free_margin=free_margin, do_render=True)
         suc, long_position = client.open_trade(is_buy=True, volume=100.0, symbol="USDJPY")
         for i in range(0, 5):
             client.get_ohlc(None, 100)
@@ -413,9 +413,9 @@ class TestBaseClient(unittest.TestCase):
         long, short = client.get_portfolio()
         self.assertEqual(len(long), 1)
         self.assertEqual(len(short), 1)
-        # current_free_mergin, in_use, profit = client.account.free_mergin()
-        # free_mergin caliculation is removed
-        # self.assertLess(current_free_mergin, free_mergin)
+        # current_free_margin, in_use, profit = client.account.free_margin()
+        # free_margin caliculation is removed
+        # self.assertLess(current_free_margin, free_margin)
         # self.assertGreater(in_use, 0)
         closed_result = client.close_position(id=long_position.id)
         self.assertTrue(closed_result.error is False)
@@ -504,7 +504,7 @@ class TestRiskOptionIntegration(unittest.TestCase):
     """Tests for risk_option integration in open_trade and smart_order."""
 
     def _make_client(self):
-        return TestClient(free_mergin=1_000_000)
+        return TestClient(free_margin=1_000_000)
 
     def _make_atr_risk(self, atr_value=50.0):
         from finance_client.risk_manager.risk_options.atr import ATRRisk
@@ -598,8 +598,8 @@ class TestRiskOptionIntegration(unittest.TestCase):
         """ohlc_df passed to open_trade should be forwarded to risk_option.calculate()."""
         received = {}
 
-        from finance_client.risk_manager.risk_options.atr import ATRRisk
         from finance_client.risk_manager.model import RiskContext, RiskResult
+        from finance_client.risk_manager.risk_options.atr import ATRRisk
 
         class _CapturingRisk(ATRRisk):
             def calculate(self, context, ohlc_df=None):

@@ -29,7 +29,7 @@ def delete_db():
 class TestMT5ClientWithSQL(unittest.TestCase):
     @classmethod
     def setUpClass(self) -> None:
-        self.free_mergin = 100000
+        self.free_margin = 100000
         storage = db.PositionSQLiteStorage(test_db_name, provider=provider, username="test_user")
         self.client = MT5Client(
             id=id,
@@ -39,7 +39,7 @@ class TestMT5ClientWithSQL(unittest.TestCase):
             simulation=simulation,
             frame=Frame.MIN30,
             storage=storage,
-            free_mergin=self.free_mergin,
+            free_margin=self.free_margin,
         )
         self.tool = AgentTool(client=self.client)
 
@@ -393,14 +393,14 @@ class TestMT5ClientWithSQL(unittest.TestCase):
             except Exception:
                 self.fail("Renko is not a valid float string")
 
-    def test_get_free_mergin(self):
-        free_mergin = self.tool.get_free_mergin()
+    def test_get_free_margin(self):
+        free_margin = self.tool.get_free_margin()
         try:
-            float_free_mergin = float(free_mergin)
-            self.assertTrue(isinstance(free_mergin, str))
-            self.assertEqual(float_free_mergin, self.free_mergin)
+            float_free_margin = float(free_margin)
+            self.assertTrue(isinstance(free_margin, str))
+            self.assertEqual(float_free_margin, self.free_margin)
         except Exception:
-            self.fail("get_free_mergin did not return a valid float string")
+            self.fail("get_free_margin did not return a valid float string")
 
     def tearDown(self) -> None:
         self.client.close_client()

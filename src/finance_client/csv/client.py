@@ -12,7 +12,7 @@ import pandas as pd
 
 import finance_client.frames as Frame
 from finance_client.client_base import ClientBase
-from finance_client.fprocess.fprocess.validation import get_most_frequent_delta
+from finance_client.risk_manager.risk_options.risk_option import RiskOption
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +296,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         skiprows=None,
         auto_reset_index=False,
         slip_type="random",
-        free_mergin=1000000,
+        free_margin=1000000,
         storage=None,
         log_storage=None,
         do_render=False,
@@ -304,6 +304,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         provider="csv",
         user_name=None,
         enable_trade_log=False,
+        risk_option: RiskOption = None,
     ):
         """CSV Client Base
         Need to change codes to use settings file
@@ -318,7 +319,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             _symbols = symbols
 
         super().__init__(
-            free_mergin=free_mergin,
+            free_margin=free_margin,
             do_render=do_render,
             symbols=_symbols,
             ohlc_columns=columns,
@@ -332,6 +333,7 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             user_name=user_name,
             storage=storage,
             log_storage=log_storage,
+            risk_option=risk_option
         )
         random.seed(seed)
         self.data = None
@@ -541,12 +543,13 @@ class CSVClient(CSVClientBase):
         skiprows=None,
         auto_reset_index=False,
         slip_type="random",
-        free_mergin=1000000,
+        free_margin=1000000,
         storage=None,
         do_render=False,
         seed=1017,
         enable_trade_log=False,
-        user_name:str = None
+        user_name:str = None,
+        risk_option: RiskOption = None,
     ):
         """CSV Client for time series data like bitcoin, stock, finance
 
@@ -574,6 +577,7 @@ class CSVClient(CSVClientBase):
             enable_trade_log (bool, optional): If true, trade log is enabled. Defaults to False.
             seed (int, optional): specify random seed. Defaults to 1017
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
+            risk_option (RiskOption, optional): risk option to manage risk. Defaults to None.
         """
         super().__init__(
             files=files,
@@ -595,13 +599,14 @@ class CSVClient(CSVClientBase):
             skiprows=skiprows,
             auto_reset_index=auto_reset_index,
             slip_type=slip_type,
-            free_mergin=free_mergin,
+            free_margin=free_margin,
             storage=storage,
             do_render=do_render,
             seed=seed,
             user_name=user_name,
             provider="csv",
             enable_trade_log=enable_trade_log,
+            risk_option=risk_option
         )
         if out_frame is not None:
             if self.frame < out_frame:
@@ -1007,7 +1012,7 @@ class CSVChunkClient(CSVClientBase):
         skiprows=None,
         auto_reset_index=False,
         slip_type="random",
-        free_mergin=1000000,
+        free_margin=1000000,
         do_render=False,
         seed=1017,
         user_name:str = None,
@@ -1057,7 +1062,7 @@ class CSVChunkClient(CSVClientBase):
             skiprows,
             auto_reset_index,
             slip_type,
-            free_mergin,
+            free_margin,
             do_render,
             seed,
             provider,

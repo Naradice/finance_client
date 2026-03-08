@@ -10,11 +10,9 @@ from typing import Any, List, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from finance_client.config.loader import (load_account_risk_config,
-                                          load_symbol_risk_config)
+from finance_client.config.loader import load_account_risk_config
 from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
-from finance_client.risk_manager.model import RiskContext
-from finance_client.risk_manager.risk_options.risk_option import RiskOption
+from finance_client.risk_manager import RiskContext, RiskManager, RiskOption
 
 from . import account, db
 from . import frames as Frame
@@ -36,11 +34,11 @@ class ClientBase(metaclass=ABCMeta):
 
     def __init__(
         self,
-        free_mergin=1000000.0,
-        used_mergin=0.0,
+        free_margin=1000000.0,
+        used_margin=0.0,
         provider: str = "Default",
-        account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: dict[str, SymbolRiskConfig] = None,
+        account_risk_config_file: str = None,
+        symbol_risk_config_file: str = None,
         symbols: List[str] = None,
         ohlc_columns: Union[tuple, list] = None,
         idc_process=None,
@@ -59,11 +57,11 @@ class ClientBase(metaclass=ABCMeta):
         """Base Class of Finance Client. Each Client should overwride required method.
 
         Args:
-            free_mergin (float, optional): initial free margin for trading. Defaults to 1000000.0.
-            used_mergin (float, optional): initial used margin for trading. Defaults to 0.0.
+            free_margin (float, optional): initial free margin for trading. Defaults to 1000000.0.
+            used_margin (float, optional): initial used margin for trading. Defaults to 0.0.
             provider (str, optional): Identity of provider. Specify to separate info (e.g. position) in DB. Defaults to "Default".
-            account_risk_config (AccountRiskConfig, optional): risk config to calculate volume in smart order. Defaults to None.
-            symbol_risk_config (dict[str, SymbolRiskConfig], optional): risk config for each symbol. Defaults to None.
+            account_risk_config_file (str, optional): path to the risk configuration file for the account. Defaults to None.
+            symbol_risk_config_file (str, optional): path to the risk configuration file for each symbol. Defaults to None.
             symbols (List[str], optional): list of symbols. Defaults to None.
             ohlc_columns (tuple, optional): column names of historical data. Defaults to ("Open", "High", "Low", "Close").
             idc_process (list[process], optional): indicator process to apply it when you get ohlc data. Defaults to None.
@@ -86,8 +84,8 @@ class ClientBase(metaclass=ABCMeta):
             symbols = []
         if not hasattr(self, "_symbols"):
             self._symbols = symbols
+        # default config path. Actual Client class can overwrite it if needed.
         self._default_account_config_path = os.path.join(os.path.dirname(__file__), "config/user.yaml")
-        # TODO: prepare typical symbol config file and load it as default
         self._default_symbol_config_path = os.path.join(os.path.dirname(__file__), "config/oanda_standard.yaml")
         self._default_risk_config = None
         self.do_render = do_render
@@ -123,18 +121,18 @@ class ClientBase(metaclass=ABCMeta):
         if storage is None:
             db_path = os.path.join(os.getcwd(), "finance_client.db")
             storage = db.PositionSQLiteStorage(db_path, provider, user_name)
-        if symbol_risk_config is None:
-            symbol_risk_config = load_symbol_risk_config(self._default_symbol_config_path)
-        self.symbol_risk_config = symbol_risk_config
-        if account_risk_config is None:
-            account_risk_config = load_account_risk_config(self._default_account_config_path)
         self.account = account.Manager(
-            free_mergin=free_mergin,
-            used_mergin=used_mergin,
+            account_risk_config_file=self._default_account_config_path if account_risk_config_file is None else account_risk_config_file,
+            free_margin=free_margin,
+            used_margin=used_margin,
             position_storage=storage,
             log_storage=log_storage,
-            account_risk_config=account_risk_config,
             provider=provider,
+        )
+        self.risk_option = risk_option
+        self.risk_manager = RiskManager(
+            self.account, 
+            self._default_symbol_config_path if symbol_risk_config_file is None else symbol_risk_config_file
         )
         # update max_daily_loss when date is changed. This is used to consider max daily loss limit in risk management.
         self.__last_date = None
@@ -154,7 +152,6 @@ class ClientBase(metaclass=ABCMeta):
             self.eco_keys = economic_keys
 
         self._indices = None
-        self.risk_option = risk_option
 
     def open_trade(
         self,
@@ -195,28 +192,36 @@ class ClientBase(metaclass=ABCMeta):
                 entry = price if price is not None else (self.get_current_ask(symbol) if is_buy else self.get_current_bid(symbol))
                 required_length = effective_risk_option.get_required_ohlc_length()
                 if required_length > 0:
-                    ohlc_df = self.get_ohlc(symbol, length=required_length)
+                    ohlc_df = self.get_ohlc(symbol, length=required_length, disable_step=True)
                 else:
                     ohlc_df = None
-                context = self._build_risk_context(symbol, is_buy, entry, sl, tp)
-                result = effective_risk_option.calculate(context, ohlc_df=ohlc_df)
-                volume = result.volume
+                risk_result = self.risk_manager.evaluate_risk(
+                    risk_option=effective_risk_option,
+                    account_equity=self.get_equity(),
+                    symbol=symbol,
+                    is_buy=is_buy,
+                    entry_price=entry,
+                    stop_loss=sl,
+                    take_profit=tp,
+                    ohlc_df=ohlc_df,
+                )
+                volume = risk_result.volume
                 if sl is None:
-                    sl = result.stop_loss_price
+                    sl = risk_result.stop_loss_price
                 if tp is None:
-                    tp = result.take_profit_price
+                    tp = risk_result.take_profit_price
             else:
                 raise ValueError("risk_option must be an instance of RiskOption.")
 
         if order_type == ORDER_TYPE.market or order_type == ORDER_TYPE.market.value:
             logger.debug("order is requested.")
-            symbol_risk_config = self.symbol_risk_config[symbol] if symbol in self.symbol_risk_config else None
+            symbol_risk_config = self.risk_manager.get_symbol_config(symbol)
             trade_unit = symbol_risk_config.contract_size if symbol_risk_config else 1.0
             leverage = symbol_risk_config.leverage if symbol_risk_config else 1.0
             if self.do_render and self.__ohlc_index == -1:
                 # self.__ohlc_index is initialized when get_ohlc is called. If ohlc_index == -1, it means position is opened before get_ohlc.
                 try:
-                    self.get_ohlc(symbol)
+                    self.get_ohlc(symbol, length=1, disable_step=True)
                 except Exception:
                     # ignore exception as it doesn't relete with the trade
                     logger.exception(f"failed to get ohlc for {symbol}")
@@ -720,13 +725,14 @@ class ClientBase(metaclass=ABCMeta):
 
     # override if actual client can check if position is closed by tp/sl
     def _check_position(self, position: Position, **kwargs):
+        logger.debug(f"check position: {position.id}")
         low_price = kwargs.get("low_price")
         high_price = kwargs.get("high_price")
 
         closed_price = None
         # start checking stop loss at first.
         if position.sl is not None:
-            logger.debug(f"sl: {position.tp}, high: {high_price}, low: {low_price}")
+            logger.debug(f"sl: {position.sl}, high: {high_price}, low: {low_price}")
             if position.position_side == POSITION_SIDE.long:
                 if position.sl >= low_price:
                     closed_price = position.sl
@@ -995,7 +1001,7 @@ class ClientBase(metaclass=ABCMeta):
         else:
             return data.iloc[-length:]
 
-    def calculate_mergin(self, symbol: str, price: float, volume: float, trade_unit: float = None, leverage: float = None):
+    def calculate_margin(self, symbol: str, price: float, volume: float, trade_unit: float = None, leverage: float = None):
         """calculate margin for the trade. This function is used for risk management.
 
         Args:
@@ -1015,9 +1021,9 @@ class ClientBase(metaclass=ABCMeta):
                 logger.warning(f"trade_unit or leverage is not specified for symbol {symbol}. use default value 1.0 for both.")
                 trade_unit = 1.0
                 leverage = 1.0
-        mergin = self.account.calculate_mergin(price, volume, trade_unit=trade_unit, leverage=leverage)
+        margin = self.account.calculate_margin(price, volume, trade_unit=trade_unit, leverage=leverage)
 
-        return mergin
+        return margin
 
     def download(self, symbols, length: int = None, frame: int = None, grouped_by_symbol=True, file_path=None):
         """download symbol data with specified length. This function omit processing and return raw data, saving data into data folder.
@@ -1073,6 +1079,7 @@ class ClientBase(metaclass=ABCMeta):
         pre_processes=None,
         economic_keys=None,
         grouped_by_symbol=True,
+        **kwargs,
     ) -> pd.DataFrame:
         """get ohlc data with specified length
 
@@ -1116,6 +1123,10 @@ class ClientBase(metaclass=ABCMeta):
                 pre_processes = []
         if economic_keys is None:
             economic_keys = self.eco_keys
+        disable_step = kwargs.get("disable_step", False)
+        if disable_step:
+            auto_step_index = self.auto_step_index
+            self.auto_step_index = False
 
         do_run_process = False
         if len(idc_processes) > 0 or len(pre_processes) > 0:
@@ -1132,20 +1143,26 @@ class ClientBase(metaclass=ABCMeta):
 
         if index is None or type(index) is int:
             # return DataFrame for trading
-            ohlc_df = self.__get_trading_data(
-                length=length,
-                symbols=symbols,
-                frame=frame,
-                columns=columns,
-                index=index,
-                idc_processes=idc_processes,
-                pre_processes=pre_processes,
-                economic_keys=economic_keys,
-                grouped_by_symbol=grouped_by_symbol,
-                do_run_process=do_run_process,
-                do_add_eco_idc=do_add_eco_idc,
-                data_freq=data_freq,
-            )
+            try:
+                ohlc_df = self.__get_trading_data(
+                    length=length,
+                    symbols=symbols,
+                    frame=frame,
+                    columns=columns,
+                    index=index,
+                    idc_processes=idc_processes,
+                    pre_processes=pre_processes,
+                    economic_keys=economic_keys,
+                    grouped_by_symbol=grouped_by_symbol,
+                    do_run_process=do_run_process,
+                    do_add_eco_idc=do_add_eco_idc,
+                    data_freq=data_freq,
+                )
+            except Exception as e:
+                logger.error(f"Failed to get trading data: {e}")
+                if disable_step:
+                    self.auto_step_index = auto_step_index
+                return pd.DataFrame()
             try:
                 index = ohlc_df.index[0]
                 dt = self._index_to_datetime(index)
@@ -1158,23 +1175,33 @@ class ClientBase(metaclass=ABCMeta):
             except Exception as e:
                 logger.error(f"Failed to get datetime from index: {e}")
                 dt = None
+            finally:
+                if disable_step:
+                    self.auto_step_index = auto_step_index
             return ohlc_df
         else:
             # training
-            return self.__get_training_data(
-                length=length,
-                symbols=symbols,
-                frame=frame,
-                columns=columns,
-                indices=index,
-                idc_processes=idc_processes,
-                pre_processes=pre_processes,
-                economic_keys=economic_keys,
-                grouped_by_symbol=grouped_by_symbol,
-                do_run_process=do_run_process,
-                do_add_eco_idc=do_add_eco_idc,
-                data_freq=data_freq,
-            )
+            try:
+                ohlc_df = self.__get_training_data(
+                    length=length,
+                    symbols=symbols,
+                    frame=frame,
+                    columns=columns,
+                    indices=index,
+                    idc_processes=idc_processes,
+                    pre_processes=pre_processes,
+                    economic_keys=economic_keys,
+                    grouped_by_symbol=grouped_by_symbol,
+                    do_run_process=do_run_process,
+                    do_add_eco_idc=do_add_eco_idc,
+                    data_freq=data_freq,
+                )
+            except Exception as e:
+                logger.error(f"Failed to get training data: {e}")
+            finally:
+                if disable_step:
+                    self.auto_step_index = auto_step_index
+                return pd.DataFrame()
 
     # Need to implement in the actual client
 
@@ -1208,19 +1235,6 @@ class ClientBase(metaclass=ABCMeta):
 
     def get_next_tick(self, frame=5):
         print("Need to implement get_next_tick")
-
-    def get_symbol_config(self, symbol):
-        if self.symbol_risk_config is None:
-            self.symbol_risk_config = load_symbol_risk_config(self._default_symbol_config_path)
-        if self.symbol_risk_config is not None:
-            if symbol in self.symbol_risk_config:
-                return self.symbol_risk_config[symbol]
-            else:
-                logger.warning(f"symbol {symbol} is not found in symbol_risk_config.")
-                return None
-        else:
-            logger.warning("symbol_risk_config is not initialized.")
-            return None
 
     def _get_default_path(self):
         return None
@@ -1417,7 +1431,7 @@ class ClientBase(metaclass=ABCMeta):
         self.auto_index = False
         temp_r = self.do_render
         self.do_render = False
-        data = self.get_ohlc(symbol, 1)
+        data = self.get_ohlc(symbol, 1, disable_step=True)
         # revert options
         self.auto_index = temp
         self.do_render = temp_r
@@ -1512,7 +1526,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def revert_preprocesses(self, data: pd.DataFrame = None):
         if data is None:
-            data = self.get_ohlc()
+            data = self.get_ohlc(disable_step=True)
         data = data.copy()
 
         columns_dict = self.get_ohlc_columns()
@@ -1614,25 +1628,14 @@ class ClientBase(metaclass=ABCMeta):
             logger.warning(f"no column found to roll. currently {ohlc_columns_dict}")
             return pd.DataFrame()
 
-    def _build_risk_context(self, symbol: str, is_buy: bool, entry_price: float, stop_loss: float, take_profit: float) -> RiskContext:
-        symbol_risk_config = self.get_symbol_config(symbol)
-        return RiskContext(
-            is_buy=is_buy,
-            account_equity=self.get_equity(),
-            account_balance=self.account.get_balance(),
-            daily_realized_pnl=self.account.get_daily_realized_pnl(),
-            open_positions_risk_volume=self.account.get_open_positions_risk_volume(),
-            symbol_risk_config=symbol_risk_config,
-            entry_price=entry_price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-        )
+    def get_free_margin(self) -> float:
+        return self.account.get_free_margin()
 
-    def get_free_mergin(self) -> float:
-        return self.account.get_free_mergin()
-
-    def get_used_mergin(self) -> float:
-        return self.account.get_used_mergin()
+    def get_used_margin(self) -> float:
+        return self.account.get_used_margin()
+    
+    def get_daily_max_loss(self) -> float:
+        return self.account.get_daily_max_loss()
 
     def get_profit_loss(self) -> float:
         profit_loss = 0.0
@@ -1672,7 +1675,7 @@ class ClientBase(metaclass=ABCMeta):
         Returns:
             float: current equity
         """
-        equity = self.account.free_mergin
+        equity = self.account.free_margin
         profit_loss = self.get_profit_loss()
         equity += profit_loss
         return equity
@@ -1685,7 +1688,7 @@ class ClientBase(metaclass=ABCMeta):
 
     def get_symbols(self):
         if self._symbols is None or len(self._symbols) == 0:
-            ohlc = self.get_ohlc(slice(None), length=1)
+            ohlc = self.get_ohlc(slice(None), length=1, disable_step=True)
             symbols = fprocess.ohlc.get_symbols(ohlc)
             if symbols is None:
                 self._symbols = []

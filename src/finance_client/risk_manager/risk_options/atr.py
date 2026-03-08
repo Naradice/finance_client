@@ -111,7 +111,7 @@ class ATRRisk(RiskOption):
 
         # 許容損失
         allowed_loss = context.account_equity * (self.percent / 100)
-        loss_per_unit = sl_distance * context.symbol_risk_config.pip_value_per_lot
+        loss_per_unit = sl_distance * context.symbol_risk_config.contract_size
         raw_volume = allowed_loss / loss_per_unit
 
         volume = self._round_volume(raw_volume, context)

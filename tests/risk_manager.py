@@ -11,14 +11,13 @@ from finance_client.risk_manager.risk_options.percent_equity import \
     PercentEquityRisk
 
 
-def _make_symbol_config(pip_value_per_lot=10.0, min_volume=0.01, volume_step=0.01):
+def _make_symbol_config(min_volume=0.01, volume_step=0.01):
     return SymbolRiskConfig(
         min_volume=min_volume,
         volume_step=volume_step,
         risk_percent=1.0,
         contract_size=100000,
         leverage=25,
-        pip_value_per_lot=pip_value_per_lot,
     )
 
 
@@ -28,11 +27,13 @@ def _make_context(is_buy=True, entry_price=150.0, stop_loss=None, take_profit=No
         account_equity=equity,
         account_balance=equity,
         daily_realized_pnl=0.0,
-        open_positions_risk_volume=0.0,
+        open_positions_loss_risk=0.0,
         symbol_risk_config=_make_symbol_config(),
         entry_price=entry_price,
         stop_loss=stop_loss,
         take_profit=take_profit,
+        max_total_loss_risk=None,
+        daily_max_loss=None,
     )
 
 
