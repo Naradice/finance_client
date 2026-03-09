@@ -11,6 +11,9 @@ import MetaTrader5 as mt5
 import numpy
 import pandas as pd
 
+from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
+from finance_client.risk_manager.risk_options.risk_option import RiskOption
+
 from .. import enum
 from .. import frames as Frame
 from ..client_base import ClientBase
@@ -248,8 +251,10 @@ class MT5Client(ClientBase):
         id,
         password,
         server,
+        account_risk_config: str|AccountRiskConfig = None,
+        symbol_risk_config: str|SymbolRiskConfig = None,
         simulation=True,
-        frame=5,
+        frame=5,    
         observation_length=None,
         point_unit=None,
         back_test=False,
@@ -263,6 +268,7 @@ class MT5Client(ClientBase):
         idc_process=None,
         std_processes=None,
         start_index: int = None,
+        risk_option: RiskOption = None,
     ):
         """Trade Client for MT5 server
 
@@ -271,6 +277,8 @@ class MT5Client(ClientBase):
             password (str): login password of MT5 server
             server (str): name of MT5 server
             simulation (bool, optional): If simulation is True, don't send an order to MT5 server. Defaults to True.
+            account_risk_config (str|AccountRiskConfig, optional): account risk configuration. Defaults to None.
+            symbol_risk_config (str|SymbolRiskConfig, optional): symbol risk configuration. Defaults to None.
             frame (int, optional): specify default frame. Defaults to 5.
             observation_length (int, optional): specify default length to get ohlc. Defaults to None.
             point_unit (float, optional): specify order unit to override default one if you need. If None, the unit is automatically detected.
@@ -285,11 +293,14 @@ class MT5Client(ClientBase):
             idc_process (list[fprocess.ProcessBase], optional): list of indicator process to apply them when get_ohlc is called. Defaults to None.
             std_processes (list[fprocess.ProcessBase], optional): list of standalization process to apply them when get_ohlc is called. Defaults to None.
             start_index (int, optional): start index for backtest. If None, default index is used. Defaults to None.
+            risk_option (RiskOption, optional): risk option to apply when trading. Defaults to None.
         """
         super().__init__(
             free_margin=free_margin,
             frame=frame,
             observation_length=observation_length,
+            account_risk_config=account_risk_config,
+            symbol_risk_config=symbol_risk_config,
             provider=server,
             do_render=do_render,
             enable_trade_log=False,
@@ -298,6 +309,7 @@ class MT5Client(ClientBase):
             idc_process=idc_process,
             pre_process=std_processes,
             log_storage=log_storage,
+            risk_option=risk_option,
         )
         self.back_test = back_test
         self.debug = False

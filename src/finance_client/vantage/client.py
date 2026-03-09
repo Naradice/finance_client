@@ -3,6 +3,9 @@ import logging
 
 import pandas as pd
 
+from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
+from finance_client.risk_manager.risk_options.risk_option import RiskOption
+
 from .. import frames as Frame
 from ..csv.client import CSVClient
 from . import target
@@ -48,6 +51,9 @@ class VantageClient(CSVClient):
         enable_trade_log=False,
         free_margin=1000000,
         user_name=None,
+        risk_option: RiskOption = None,
+        account_risk_config: AccountRiskConfig = None,
+        symbol_risk_config: str | SymbolRiskConfig = None
     ):
         """Get ohlc rate from alpha vantage api. No online download.
 
@@ -61,6 +67,9 @@ class VantageClient(CSVClient):
             free_margin (int, optional): free_margin for the simulation. Defaults to 1000000.
             seed (int, optional): random seed. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
+            risk_option (RiskOption, optional): _description_. Defaults to None.
+            account_risk_config (str|AccountRiskConfig, optional): _description_. Defaults to None.
+            symbol_risk_config (str|SymbolRiskConfig, optional): _description_. Defaults to None.
 
         Raises:
             ValueError: other than 1, 5, 15, 30, 60, 60*24, 60*24*7, 60*24*7*30 is specified as frame
@@ -104,7 +113,10 @@ class VantageClient(CSVClient):
             slip_type=slip_type,
             enable_trade_log=enable_trade_log,
             free_margin=free_margin,
-            user_name=user_name
+            user_name=user_name,
+            risk_option=risk_option,
+            account_risk_config=account_risk_config,
+            symbol_risk_config=symbol_risk_config
         )
 
     def __convert_response_to_df(self, data_json: dict):

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Manager:
     def __init__(
         self,
-        account_risk_config_file,
+        account_risk_config: str | AccountRiskConfig,
         free_margin: float,
         used_margin: float = 0.0,
         position_storage: PositionStorageBase = None,
@@ -27,7 +27,7 @@ class Manager:
         """
 
         Args:
-            account_risk_config_file (str, optional): path to the risk configuration file for the account.
+            account_risk_config (str | AccountRiskConfig): path to the risk configuration file for the account or an AccountRiskConfig object.
             free_margin (float): initial free margin for trading
             used_margin (float, optional): initial used margin for trading. Defaults to 0.0.
             position_storage (PositionStorageBase, optional): storage backend for positions. Defaults to None.
@@ -46,9 +46,12 @@ class Manager:
             self._trade_log_db = LogCSVStorage(provider, username=position_storage.username)
         else:
             self._trade_log_db = log_storage
-        if not os.path.exists(account_risk_config_file):
-            raise FileNotFoundError(f"Account risk config file not found: {account_risk_config_file}")
-        account_risk_config = load_account_risk_config(account_risk_config_file)
+        if isinstance(account_risk_config, str):
+            if not os.path.exists(account_risk_config):
+                raise FileNotFoundError(f"Account risk config file not found: {account_risk_config}")
+            account_risk_config = load_account_risk_config(account_risk_config)
+        elif not isinstance(account_risk_config, AccountRiskConfig):
+            raise ValueError("account_risk_config must be either a file path or an AccountRiskConfig object")
         self.__account_risk_config = account_risk_config
         self.update_daily_max_loss()
         if tz_info is None:

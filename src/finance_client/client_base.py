@@ -10,9 +10,8 @@ from typing import Any, List, Sequence, Union
 import numpy as np
 import pandas as pd
 
-from finance_client.config.loader import load_account_risk_config
 from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
-from finance_client.risk_manager import RiskContext, RiskManager, RiskOption
+from finance_client.risk_manager import RiskManager, RiskOption
 
 from . import account, db
 from . import frames as Frame
@@ -37,8 +36,8 @@ class ClientBase(metaclass=ABCMeta):
         free_margin=1000000.0,
         used_margin=0.0,
         provider: str = "Default",
-        account_risk_config_file: str = None,
-        symbol_risk_config_file: str = None,
+        account_risk_config: str|AccountRiskConfig = None,
+        symbol_risk_config: str|SymbolRiskConfig = None,
         symbols: List[str] = None,
         ohlc_columns: Union[tuple, list] = None,
         idc_process=None,
@@ -60,8 +59,8 @@ class ClientBase(metaclass=ABCMeta):
             free_margin (float, optional): initial free margin for trading. Defaults to 1000000.0.
             used_margin (float, optional): initial used margin for trading. Defaults to 0.0.
             provider (str, optional): Identity of provider. Specify to separate info (e.g. position) in DB. Defaults to "Default".
-            account_risk_config_file (str, optional): path to the risk configuration file for the account. Defaults to None.
-            symbol_risk_config_file (str, optional): path to the risk configuration file for each symbol. Defaults to None.
+            account_risk_config (str|AccountRiskConfig, optional): account risk config to manage risk. Defaults to None.
+            symbol_risk_config (str|SymbolRiskConfig, optional): symbol risk config to manage risk. It can be file path or SymbolRiskConfig object. Defaults to None.
             symbols (List[str], optional): list of symbols. Defaults to None.
             ohlc_columns (tuple, optional): column names of historical data. Defaults to ("Open", "High", "Low", "Close").
             idc_process (list[process], optional): indicator process to apply it when you get ohlc data. Defaults to None.
@@ -122,7 +121,7 @@ class ClientBase(metaclass=ABCMeta):
             db_path = os.path.join(os.getcwd(), "finance_client.db")
             storage = db.PositionSQLiteStorage(db_path, provider, user_name)
         self.account = account.Manager(
-            account_risk_config_file=self._default_account_config_path if account_risk_config_file is None else account_risk_config_file,
+            account_risk_config=self._default_account_config_path if account_risk_config is None else account_risk_config,
             free_margin=free_margin,
             used_margin=used_margin,
             position_storage=storage,
@@ -132,7 +131,7 @@ class ClientBase(metaclass=ABCMeta):
         self.risk_option = risk_option
         self.risk_manager = RiskManager(
             self.account, 
-            self._default_symbol_config_path if symbol_risk_config_file is None else symbol_risk_config_file
+            self._default_symbol_config_path if symbol_risk_config is None else symbol_risk_config
         )
         # update max_daily_loss when date is changed. This is used to consider max daily loss limit in risk management.
         self.__last_date = None

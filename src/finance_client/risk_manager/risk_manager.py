@@ -13,6 +13,7 @@ import os
 
 from finance_client.account import Manager as AccountManager
 from finance_client.config.loader import load_symbol_risk_config
+from finance_client.config.model import SymbolRiskConfig
 from finance_client.risk_manager.model import RiskContext, RiskResult
 from finance_client.risk_manager.risk_options.atr import ATRRisk
 from finance_client.risk_manager.risk_options.fixed_loss import FixedAmountRisk
@@ -35,12 +36,17 @@ def create_atr_option(percent: float, atr_multiplier: float, rr_ratio: float, at
 
 class RiskManager:
 
-    def __init__(self, account_manager: AccountManager, symbol_risk_config_file: str):
+    def __init__(self, account_manager: AccountManager, symbol_risk_config: str | SymbolRiskConfig):
         self.account_manager = account_manager
-        self.symbol_risk_config_file = symbol_risk_config_file
-        if not os.path.exists(symbol_risk_config_file):
-            raise FileNotFoundError(f"Symbol risk config file not found: {symbol_risk_config_file}")
-        self.symbol_risk_config = load_symbol_risk_config(symbol_risk_config_file)
+        self.symbol_risk_config = symbol_risk_config
+        if isinstance(symbol_risk_config, str):
+            if not os.path.exists(symbol_risk_config):
+                raise FileNotFoundError(f"Symbol risk config file not found: {symbol_risk_config}")
+            self.symbol_risk_config = load_symbol_risk_config(symbol_risk_config)
+        elif isinstance(symbol_risk_config, SymbolRiskConfig):
+            self.symbol_risk_config = symbol_risk_config
+        else:
+            raise ValueError("Invalid type for symbol_risk_config. Expected str (file path) or SymbolRiskConfig object.")
 
     def get_symbol_config(self, symbol):
         if self.symbol_risk_config is not None:

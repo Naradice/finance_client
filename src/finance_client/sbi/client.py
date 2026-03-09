@@ -6,6 +6,8 @@ import pandas as pd
 
 import finance_client.frames as Frame
 from finance_client.client_base import ClientBase
+from finance_client.config import AccountRiskConfig, SymbolRiskConfig
+from finance_client.risk_manager.risk_options.risk_option import RiskOption
 from finance_client.yfinance.client import YahooClient
 
 from .sbi_util.sbi_util.rpa import STOCK
@@ -36,6 +38,9 @@ class SBIClient(ClientBase):
         storage=None,
         do_render=False,
         enable_trade_log=False,
+        risk_option: RiskOption = None,
+        account_risk_config: str|AccountRiskConfig = None,
+        symbol_risk_config: str|SymbolRiskConfig = None
     ):
         """_summary_
 
@@ -54,6 +59,9 @@ class SBIClient(ClientBase):
             storage (_type_, optional): _description_. Defaults to None.
             do_render (bool, optional): _description_. Defaults to False.
             enable_trade_log (bool, optional): _description_. Defaults to False.
+            risk_option (RiskOption, optional): _description_. Defaults to None.
+            account_risk_config (str|AccountRiskConfig, optional): _description_. Defaults to None.
+            symbol_risk_config (str|SymbolRiskConfig, optional): _description_. Defaults to None.
 
         Raises:
             Exception: _description_
@@ -93,7 +101,10 @@ class SBIClient(ClientBase):
             do_render=do_render,
             storage=storage,
             enable_trade_log=enable_trade_log,
-            user_name=user_name
+            user_name=user_name,
+            risk_option=risk_option,
+            account_risk_config=account_risk_config,
+            symbol_risk_config=symbol_risk_config
         )
 
     def get_additional_params(self):
@@ -236,4 +247,5 @@ class SBIClient(ClientBase):
         if self.client is None:
             return 0
         else:
+            return len(self.client)
             return len(self.client)

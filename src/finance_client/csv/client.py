@@ -12,6 +12,8 @@ import pandas as pd
 
 import finance_client.frames as Frame
 from finance_client.client_base import ClientBase
+from finance_client.config import AccountRiskConfig
+from finance_client.config.model import SymbolRiskConfig
 from finance_client.risk_manager.risk_options.risk_option import RiskOption
 
 logger = logging.getLogger(__name__)
@@ -305,6 +307,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         user_name=None,
         enable_trade_log=False,
         risk_option: RiskOption = None,
+        account_risk_config: AccountRiskConfig = None,
+        symbol_risk_config: str | SymbolRiskConfig = None
     ):
         """CSV Client Base
         Need to change codes to use settings file
@@ -333,7 +337,9 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             user_name=user_name,
             storage=storage,
             log_storage=log_storage,
-            risk_option=risk_option
+            risk_option=risk_option,
+            account_risk_config=account_risk_config,
+            symbol_risk_config=symbol_risk_config
         )
         random.seed(seed)
         self.data = None
@@ -550,6 +556,8 @@ class CSVClient(CSVClientBase):
         enable_trade_log=False,
         user_name:str = None,
         risk_option: RiskOption = None,
+        account_risk_config: AccountRiskConfig = None,
+        symbol_risk_config: str | SymbolRiskConfig = None
     ):
         """CSV Client for time series data like bitcoin, stock, finance
 
@@ -578,6 +586,8 @@ class CSVClient(CSVClientBase):
             seed (int, optional): specify random seed. Defaults to 1017
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             risk_option (RiskOption, optional): risk option to manage risk. Defaults to None.
+            account_risk_config (AccountRiskConfig, optional): account risk config to manage risk. Defaults to None.
+            symbol_risk_config (str | SymbolRiskConfig, optional): symbol risk config to manage risk. It can be file path or SymbolRiskConfig object. Defaults to None.
         """
         super().__init__(
             files=files,
@@ -606,7 +616,9 @@ class CSVClient(CSVClientBase):
             user_name=user_name,
             provider="csv",
             enable_trade_log=enable_trade_log,
-            risk_option=risk_option
+            risk_option=risk_option,
+            account_risk_config=account_risk_config,
+            symbol_risk_config=symbol_risk_config
         )
         if out_frame is not None:
             if self.frame < out_frame:

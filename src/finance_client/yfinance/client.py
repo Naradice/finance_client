@@ -6,6 +6,9 @@ from time import sleep
 import pandas as pd
 import yfinance as yf
 
+from finance_client.config.model import AccountRiskConfig, SymbolRiskConfig
+from finance_client.risk_manager.risk_options.risk_option import RiskOption
+
 from .. import frames as Frame
 from ..csv.client import CSVClient
 
@@ -95,6 +98,9 @@ class YahooClient(CSVClient):
         user_name=None,
         free_margin=1000000,
         initialize_rate_after_mins: int = 0,
+        risk_option: RiskOption = None,
+        account_risk_config: AccountRiskConfig = None,
+        symbol_risk_config: str | SymbolRiskConfig = None
     ):
         """Get ohlc rate from yfinance
         Args:
@@ -106,6 +112,9 @@ class YahooClient(CSVClient):
             seed (int, optional): random seed. Defaults to 1017.
             user_name (str, optional): user name to separate info (e.g. position) within the same provider. Defaults to None. It means client doesn't care users.
             initialize_rate_after_mins (int, optional): If greather than 0, check if existing data is old when initializing and update data if it's old than specified minutes. Defaults to 0.
+            risk_option (RiskOption, optional): risk option to manage risk. Defaults to None.
+            account_risk_config (str|AccountRiskConfig, optional): account risk config to manage risk. Defaults to None.
+            symbol_risk_config (str|SymbolRiskConfig, optional): symbol risk config to manage risk. It can be file path or SymbolRiskConfig object. Defaults to None.
         Raises:
             ValueError: other than 1, 5, 15, 30, 60, 60*24, 60*24*7, 60*24*7*30 is specified as frame
             ValueError: length of symbol(tuple) isn't 2 when target is FX or CRYPT_CURRENCY
@@ -156,6 +165,9 @@ class YahooClient(CSVClient):
             idc_process=idc_processes,
             pre_process=pre_process,
             slip_type=slip_type,
+            risk_option=risk_option,
+            account_risk_config=account_risk_config,
+            symbol_risk_config=symbol_risk_config,
             storage=storage,
             enable_trade_log=enable_trade_log,
             free_margin=free_margin,
