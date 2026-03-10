@@ -113,13 +113,14 @@ class RiskManager:
             volume = max(volume, context.symbol_risk_config.min_volume)
             logger.info(f"Applied min volume cap: {context.symbol_risk_config.min_volume}, volume after cap: {volume}")
 
-        if context.max_total_loss_risk is not None:
-            remaining_volume = max(0.0, context.max_total_loss_risk - context.open_positions_loss_risk)
-            volume = min(volume, remaining_volume)
+        if context.max_total_loss_risk is not None and stop_distance > 0:
+            max_volume_by_total_risk = context.max_total_loss_risk / (stop_distance * context.symbol_risk_config.contract_size)
+            volume = min(volume, max_volume_by_total_risk)
             logger.info(f"Applied max total loss risk cap: {context.max_total_loss_risk}, volume after cap: {volume}")
-    
+
         if context.daily_max_loss is not None and stop_distance > 0:
-            remaining_loss = max(0.0, context.daily_max_loss - context.daily_realized_pnl)
+            daily_loss = max(0.0, -context.daily_realized_pnl)
+            remaining_loss = max(0.0, context.daily_max_loss - daily_loss)
             max_volume_by_loss = remaining_loss / (stop_distance * context.symbol_risk_config.contract_size)
             volume = min(volume, max_volume_by_loss)
             logger.info(f"Applied daily max loss cap: {context.daily_max_loss}, volume after cap: {volume}")

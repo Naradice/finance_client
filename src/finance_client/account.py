@@ -319,6 +319,8 @@ class Manager:
         used_margin = 0
         long_positions, short_positions = self.get_positions()
         for position in long_positions + short_positions:
+            if position.price is None:
+                continue
             used_margin += (position.trade_unit * position.volume * position.price) / position.leverage
         balance += used_margin
         return balance
@@ -339,7 +341,8 @@ class Manager:
         """
         if self.risk_config is not None and self.risk_config.max_total_risk_percent is not None:
             max_total_loss_risk = self.risk_config.max_total_risk_percent * self.get_balance() / 100.0
-            remaining_loss_risk = max(0.0, max_total_loss_risk - self.get_open_positions_risk_loss() - self.get_daily_realized_pnl())
+            daily_loss = max(0.0, -self.get_daily_realized_pnl())
+            remaining_loss_risk = max(0.0, max_total_loss_risk - self.get_open_positions_risk_loss() - daily_loss)
             return remaining_loss_risk
     
     def get_daily_max_loss(self) -> float:

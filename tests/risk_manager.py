@@ -5,6 +5,7 @@ import pandas as pd
 from finance_client.config.model import SymbolRiskConfig
 from finance_client.fprocess.fprocess.idcprocess import ATRProcess
 from finance_client.risk_manager.model import RiskContext, RiskResult
+from finance_client.risk_manager.risk_manager import RiskManager
 from finance_client.risk_manager.risk_options.atr import ATRRisk
 from finance_client.risk_manager.risk_options.fixed_loss import FixedAmountRisk
 from finance_client.risk_manager.risk_options.percent_equity import \
@@ -176,6 +177,133 @@ class TestFixedAmountRisk(unittest.TestCase):
         self.assertGreater(result_tight.volume, result_wide.volume)
 
 
+class TestApplyAccountCaps(unittest.TestCase):
+    """Tests for RiskManager._apply_account_caps — the account-level volume constraints."""
+
+    def _make_risk_manager(self):
+        symbol_config = _make_symbol_config()
+        # account_manager is not used by _apply_account_caps itself
+        return RiskManager(account_manager=None, symbol_risk_config=symbol_config)
+
+    def _make_context(
+        self,
+        daily_realized_pnl=0.0,
+        open_positions_loss_risk=0.0,
+        max_total_loss_risk=None,
+        daily_max_loss=None,
+        entry_price=150.0,
+        stop_loss=149.0,
+    ):
+        return RiskContext(
+            is_buy=True,
+            account_equity=1_000_000.0,
+            account_balance=1_000_000.0,
+            daily_realized_pnl=daily_realized_pnl,
+            open_positions_loss_risk=open_positions_loss_risk,
+            symbol_risk_config=_make_symbol_config(),
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=None,
+            max_total_loss_risk=max_total_loss_risk,
+            daily_max_loss=daily_max_loss,
+        )
+
+    # ── daily loss cap ────────────────────────────────────────────────────────
+
+    def test_daily_loss_cap_reduces_volume_after_losing_day(self):
+        """After a losing day, volume should be reduced to stay within the daily limit."""
+        rm = self._make_risk_manager()
+        # daily limit = 10000, already lost 8000 (pnl = -8000), remaining = 2000
+        # stop_distance = 1.0, contract_size = 100000 → max_volume = 2000 / 100000 = 0.02
+        ctx = self._make_context(daily_realized_pnl=-8000.0, daily_max_loss=10000.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.02, places=5)
+
+    def test_daily_loss_cap_zero_when_limit_exhausted(self):
+        """When the daily loss limit is fully consumed, volume should be reduced to zero."""
+        rm = self._make_risk_manager()
+        ctx = self._make_context(daily_realized_pnl=-10000.0, daily_max_loss=10000.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertEqual(volume, 0.0)
+
+    def test_daily_loss_cap_not_affected_by_profit(self):
+        """A profitable day should NOT expand the daily loss budget beyond the full limit."""
+        rm = self._make_risk_manager()
+        # daily limit = 10000, today profitable (+5000) → daily_loss = 0, remaining = 10000
+        # max_volume = 10000 / 100000 = 0.1 → does not cap a 0.05 lot request
+        ctx = self._make_context(daily_realized_pnl=5000.0, daily_max_loss=10000.0)
+        volume = rm._apply_account_caps(0.05, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.05, places=5)
+
+    def test_daily_loss_cap_full_budget_when_no_loss(self):
+        """With no losses today, the full daily budget is available."""
+        rm = self._make_risk_manager()
+        ctx = self._make_context(daily_realized_pnl=0.0, daily_max_loss=10000.0)
+        # max_volume = 10000 / 100000 = 0.1
+        volume = rm._apply_account_caps(0.1, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.1, places=5)
+
+    # ── total risk cap ────────────────────────────────────────────────────────
+
+    def test_total_risk_cap_converts_monetary_budget_to_lots(self):
+        """Remaining total risk budget (monetary) must be divided by stop×contract_size to get max lots."""
+        rm = self._make_risk_manager()
+        # max_total_loss_risk = 5000 (already-computed remaining budget from account manager)
+        # stop_distance = 1.0, contract_size = 100000 → max_volume = 5000 / 100000 = 0.05
+        ctx = self._make_context(max_total_loss_risk=5000.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.05, places=5)
+
+    def test_total_risk_cap_no_double_subtraction(self):
+        """open_positions_loss_risk in context must NOT be subtracted again inside _apply_account_caps.
+
+        get_max_total_loss_risk() on account.Manager already returns the remaining budget
+        with open position risk deducted. Subtracting it again here would over-restrict volume.
+        """
+        rm = self._make_risk_manager()
+        # Simulate: total budget = 20000, open_risk = 15000 → remaining passed in = 5000
+        # If double-subtraction were present: 5000 - 15000 = 0 (wrong)
+        # Correct result: max_volume = 5000 / 100000 = 0.05
+        ctx = self._make_context(open_positions_loss_risk=15000.0, max_total_loss_risk=5000.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.05, places=5)
+
+    def test_total_risk_cap_zero_when_budget_exhausted(self):
+        """When no remaining total risk budget, volume should be reduced to zero."""
+        rm = self._make_risk_manager()
+        ctx = self._make_context(max_total_loss_risk=0.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertEqual(volume, 0.0)
+
+    # ── min volume floor ──────────────────────────────────────────────────────
+
+    def test_min_volume_floor_applied_when_uncapped(self):
+        """Volume below min_volume is raised to min_volume when no risk cap overrides it."""
+        rm = self._make_risk_manager()
+        # No caps active; input volume 0.001 < min_volume 0.01
+        ctx = self._make_context()
+        volume = rm._apply_account_caps(0.001, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.01, places=5)
+
+    def test_daily_limit_exhausted_overrides_min_volume(self):
+        """When the daily loss limit is fully consumed, volume reaches 0 even if below min_volume.
+
+        Risk limits take priority: if there is no budget left, no trade should be placed.
+        """
+        rm = self._make_risk_manager()
+        ctx = self._make_context(daily_realized_pnl=-10000.0, daily_max_loss=10000.0)
+        volume = rm._apply_account_caps(0.05, stop_distance=1.0, context=ctx)
+        self.assertEqual(volume, 0.0)
+
+    # ── no caps ───────────────────────────────────────────────────────────────
+
+    def test_no_caps_returns_original_volume(self):
+        """When no cap parameters are set, the input volume is returned unchanged."""
+        rm = self._make_risk_manager()
+        ctx = self._make_context()
+        volume = rm._apply_account_caps(0.5, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 0.5, places=5)
+
+
 if __name__ == "__main__":
-    unittest.main()
     unittest.main()

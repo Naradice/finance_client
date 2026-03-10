@@ -9,10 +9,33 @@ from finance_client.account import AccountRiskConfig, Manager
 from finance_client.position import POSITION_SIDE, Position
 
 
+_DEFAULT_ACCOUNT_CONFIG = AccountRiskConfig(
+    base_currency="JPY",
+    max_single_trade_percent=3.0,
+    max_total_risk_percent=6.0,
+    daily_max_loss_percent=None,   # None so update_daily_max_loss() skips get_balance() at init
+    allow_aggressive_mode=False,
+    aggressive_multiplier=None,
+    enforce_volume_reduction=False,
+    atr_ratio_min_stop_loss=None,
+)
+
+
+_TEST_DB = "./unit_test.db"
+
+
+def _make_manager(free_margin, **kwargs):
+    if "position_storage" not in kwargs:
+        kwargs["position_storage"] = db.PositionSQLiteStorage(_TEST_DB, "test_default", username="test_default")
+    return Manager(account_risk_config=_DEFAULT_ACCOUNT_CONFIG, free_margin=free_margin, **kwargs)
+
+
 class ManagerTest(unittest.TestCase):
 
     def setUp(self):
         # clean up before each test
+        if os.path.exists(_TEST_DB):
+            os.remove(_TEST_DB)
         base_path = os.path.dirname(os.getcwd())
         if os.path.exists(f"{base_path}/unit_test.db"):
             os.remove(f"{base_path}/unit_test.db")
@@ -36,7 +59,7 @@ class ManagerTest(unittest.TestCase):
 
     def test_risk_config(self):
         self.setUp()
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         # valid config
         risk_config = AccountRiskConfig(
             base_currency="USD",
@@ -111,7 +134,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.daily_max_loss, 100.0)
 
     def test_update_daily_max_loss(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         risk_config = AccountRiskConfig(
             base_currency="USD",
             max_single_trade_percent=0.1,
@@ -137,26 +160,26 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.daily_max_loss, 5000.0)
 
     def test_open_position_without_price(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=None, volume=1)
         self.assertEqual(position.price, None)
         self.assertEqual(position.volume, 1)
 
     def test_close_position_without_price(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=None, volume=1)
         closed_result = manager.close_position(position.id, price=None)
         self.assertTrue(closed_result.error)
         self.assertEqual(closed_result.msg, "either id or price is None")
 
     def test_close_position_with_nonexistent_id(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         closed_result = manager.close_position(id="nonexistent_id", price=100)
         self.assertTrue(closed_result.error)
         self.assertEqual(closed_result.msg, "position id is not found")
 
     def test_close_position_with_partial_volume(self):
-        manager = Manager(1000000)
+        manager = _make_manager(1000000)
         trade_unit = 100000
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, trade_unit=trade_unit)
         closed_result = manager.close_position(position.id, price=110, volume=0.5)
@@ -165,7 +188,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, trade_unit * 0.5 * 10)
 
     def test_close_position_with_excess_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         trade_unit = 100000
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, trade_unit=trade_unit)
         closed_result = manager.close_position(position.id, price=110, volume=2)
@@ -174,7 +197,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, 10 * trade_unit * 1)
 
     def test_close_position_with_exact_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=110, volume=1)
         self.assertFalse(closed_result.error)
@@ -182,7 +205,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, 10 * position.trade_unit * 1)
 
     def test_close_position_with_zero_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=110, volume=0)
         self.assertFalse(closed_result.error)
@@ -190,7 +213,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, 0)
 
     def test_close_position_with_negative_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=110, volume=-1)
         self.assertFalse(closed_result.error)
@@ -198,7 +221,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, -10 * position.trade_unit * 1)
 
     def test_close_position_with_price_better_than_open(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=90, volume=1)
         self.assertFalse(closed_result.error)
@@ -206,7 +229,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, -10 * position.trade_unit * 1)
 
     def test_close_position_with_price_worse_than_open(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=110, volume=1)
         self.assertFalse(closed_result.error)
@@ -214,7 +237,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, 10 * position.trade_unit * 1)
 
     def test_close_position_with_price_equal_to_open(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=100, volume=1)
         self.assertFalse(closed_result.error)
@@ -222,7 +245,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, 0)
 
     def test_close_position_with_price_zero(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=0, volume=1)
         trade_unit = position.trade_unit
@@ -231,7 +254,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, -100 * trade_unit * 1)
 
     def test_close_position_with_price_negative(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         closed_result = manager.close_position(position.id, price=-10, volume=1)
         self.assertFalse(closed_result.error)
@@ -239,7 +262,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(closed_result.profit, -110 * position.trade_unit * 1)
 
     def test_update_position_with_tp_sl(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=110, sl=90)
         self.assertTrue(updated)
@@ -247,7 +270,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, 90)
 
     def test_update_position_remove_tp_sl(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=110, sl=90)
         self.assertTrue(updated)
@@ -260,7 +283,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, None)
 
     def test_update_position_with_only_tp(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=110)
         self.assertTrue(updated)
@@ -268,7 +291,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, None)
 
     def test_update_position_with_only_sl(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, sl=90)
         self.assertTrue(updated)
@@ -276,7 +299,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, 90)
 
     def test_update_position_with_invalid_tp_sl(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=-10, sl=-20)
         self.assertTrue(updated)
@@ -284,7 +307,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, -20)
 
     def test_update_position_with_tp_sl_equal_to_price(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=100, sl=100)
         self.assertTrue(updated)
@@ -292,7 +315,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, 100)
 
     def test_update_position_with_tp_sl_zero(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=0, sl=0)
         self.assertTrue(updated)
@@ -300,7 +323,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, 0)
 
     def test_update_position_with_tp_sl_negative(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         updated = manager.update_position(position, tp=-10, sl=-20)
         self.assertTrue(updated)
@@ -308,7 +331,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(position.sl, -20)
 
     def test_update_position_with_nonexistent_position(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = Position(
             POSITION_SIDE.long, "test", trade_unit=1.0, leverage=1.0, price=100, volume=1, tp=None, sl=None, id="nonexistent_id_to_update"
         )
@@ -316,14 +339,14 @@ class ManagerTest(unittest.TestCase):
         self.assertFalse(updated)
 
     def test_update_position_with_none_position(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         updated = manager.update_position(None, tp=110, sl=90)
         self.assertFalse(updated)
 
     def test_get_positions(self):
         key = "account_test"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
-        manager = Manager(10000, position_storage=storage)
+        manager = _make_manager(10000, position_storage=storage)
         manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
@@ -335,17 +358,17 @@ class ManagerTest(unittest.TestCase):
 
     def test_get_balance(self):
 
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         self.assertEqual(manager.get_balance(), 10000)
 
     def test_get_balance_after_opening_position(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         # balance should not change after opening position
         self.assertEqual(manager.get_balance(), 10000)
 
     def test_get_balance_after_closing_position(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=110, volume=1)
         # balance should increase by profit after closing position
@@ -353,7 +376,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_balance(), expected_balance)
 
     def test_get_balance_after_closing_position_with_loss(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=90, volume=1)
         # balance should decrease by loss after closing position
@@ -361,14 +384,14 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_balance(), expected_balance)
 
     def test_get_balance_after_closing_position_with_no_profit_loss(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=100, volume=1)
         # balance should not change if there is no profit or loss after closing position
         self.assertEqual(manager.get_balance(), 10000)
 
     def test_get_balance_after_closing_position_with_partial_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=110, volume=0.5)
         # balance should increase by profit for the closed volume after closing position
@@ -376,7 +399,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_balance(), expected_balance)
 
     def test_get_balance_after_closing_position_with_excess_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=110, volume=2)
         # balance should increase by profit for the whole volume of position even if closed volume is greater than position volume
@@ -384,14 +407,14 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_balance(), expected_balance)
 
     def test_get_balance_after_closing_position_with_zero_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=110, volume=0)
         # balance should not change if closed volume is zero
         self.assertEqual(manager.get_balance(), 10000)
 
     def test_get_balance_after_closing_position_with_negative_volume(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position = manager.open_position(POSITION_SIDE.long, "test", 100.0, 1)
         manager.close_position(position.id, price=110, volume=-1)
         # balance should decrease by loss for the negative closed volume
@@ -402,7 +425,7 @@ class ManagerTest(unittest.TestCase):
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         # log storage is generated with CSV storage
-        manager = Manager(10000, position_storage=storage)
+        manager = _make_manager(10000, position_storage=storage)
         position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
         manager.close_position(position1.id, price=110, volume=1)
@@ -416,7 +439,7 @@ class ManagerTest(unittest.TestCase):
     def test_get_daily_realized_pnl_tzinfo(self):
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
-        manager = Manager(10000, position_storage=storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
+        manager = _make_manager(10000, position_storage=storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
         now = pd.Timestamp.now(tz=manager.tz_info)
         # index which is definitely today in JST but may be yesterday in UTC, to test if tz_info is correctly handled
         today_index = pd.Timestamp(year=now.year, month=now.month, day=now.day, hour=4, minute=0, second=0, tz=manager.tz_info)
@@ -435,7 +458,7 @@ class ManagerTest(unittest.TestCase):
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         client_tz_info = datetime.timezone(datetime.timedelta(hours=0))  # UTC
-        manager = Manager(10000, position_storage=storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
+        manager = _make_manager(10000, position_storage=storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
         # as timezone of index is depends on client, it is possible that tzinfo of index is different from manager's tz_info, so test if it is correctly handled
         now = pd.Timestamp.now(tz=client_tz_info)
         yesterday_index = pd.Timestamp(year=now.year, month=now.month, day=now.day, hour=4, minute=0, second=0, tz=client_tz_info) - pd.Timedelta(
@@ -455,7 +478,7 @@ class ManagerTest(unittest.TestCase):
     def test_get_daily_realized_pnl_with_no_closed_positions(self):
         key = "account_test_pnl"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
-        manager = Manager(10000, position_storage=storage)
+        manager = _make_manager(10000, position_storage=storage)
         daily_realized_pnl = manager.get_daily_realized_pnl()
         position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         self.assertEqual(daily_realized_pnl, 0)
@@ -467,7 +490,7 @@ class ManagerTest(unittest.TestCase):
         key = "account_test_pnl_sql"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         log_storage = db.LogSQLiteStorage("./unit_test.db", key, username=key)
-        manager = Manager(10000, position_storage=storage, log_storage=log_storage)
+        manager = _make_manager(10000, position_storage=storage, log_storage=log_storage)
         position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
         manager.close_position(position1.id, price=110, volume=1)
@@ -484,7 +507,7 @@ class ManagerTest(unittest.TestCase):
         key = "account_test_pnl_sql_tz"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         log_storage = db.LogSQLiteStorage("./unit_test.db", key, username=key)
-        manager = Manager(10000, position_storage=storage, log_storage=log_storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
+        manager = _make_manager(10000, position_storage=storage, log_storage=log_storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
         now = pd.Timestamp.now(tz=manager.tz_info)
         today_index = pd.Timestamp(year=now.year, month=now.month, day=now.day, hour=4, minute=0, second=0, tz=manager.tz_info)
         position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, index=today_index)
@@ -504,7 +527,7 @@ class ManagerTest(unittest.TestCase):
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
         log_storage = db.LogSQLiteStorage("./unit_test.db", key, username=key)
         client_tz_info = datetime.timezone(datetime.timedelta(hours=0))  # UTC
-        manager = Manager(10000, position_storage=storage, log_storage=log_storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
+        manager = _make_manager(10000, position_storage=storage, log_storage=log_storage, tz_info=datetime.timezone(datetime.timedelta(hours=9)))
         now = pd.Timestamp.now(tz=client_tz_info)
         yesterday_index = pd.Timestamp(year=now.year, month=now.month, day=now.day, hour=4, minute=0, second=0, tz=client_tz_info) - pd.Timedelta(
             days=1
@@ -519,7 +542,7 @@ class ManagerTest(unittest.TestCase):
         self.assertEqual(manager.get_daily_realized_pnl(), (110 - 100) * position2.trade_unit * position2.leverage * position2.volume)
 
     def test_get_risk_volume_of_open_positions(self):
-        manager = Manager(10000)
+        manager = _make_manager(10000)
         position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
         manager.update_position(position1, sl=90)
@@ -530,10 +553,100 @@ class ManagerTest(unittest.TestCase):
         ) * position2.trade_unit * position2.leverage * position2.volume
         self.assertEqual(total_risk_volume, expected_risk_volume)
 
+    def test_get_max_total_loss_risk_with_no_open_positions_or_daily_loss(self):
+        config = AccountRiskConfig(
+            base_currency="JPY",
+            max_single_trade_percent=3.0,
+            max_total_risk_percent=10.0,
+            daily_max_loss_percent=None,
+            allow_aggressive_mode=False,
+            aggressive_multiplier=None,
+            enforce_volume_reduction=False,
+            atr_ratio_min_stop_loss=None,
+        )
+        key = "account_test_max_risk_no_loss"
+        storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
+        manager = _make_manager(10000, position_storage=storage)
+        manager.risk_config = config
+        # balance = 10000, max_total = 10% * 10000 = 1000, no open positions, no daily loss
+        self.assertAlmostEqual(manager.get_max_total_loss_risk(), 1000.0)
+
+    def test_get_max_total_loss_risk_reduced_by_open_position_risk(self):
+        config = AccountRiskConfig(
+            base_currency="JPY",
+            max_single_trade_percent=3.0,
+            max_total_risk_percent=10.0,
+            daily_max_loss_percent=None,
+            allow_aggressive_mode=False,
+            aggressive_multiplier=None,
+            enforce_volume_reduction=False,
+            atr_ratio_min_stop_loss=None,
+        )
+        key = "account_test_max_risk_open_pos"
+        storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
+        manager = _make_manager(10000, position_storage=storage)
+        manager.risk_config = config
+        # open a position with SL so it has risk
+        position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, trade_unit=1)
+        manager.update_position(position, sl=90)
+        # open_risk = |100 - 90| * trade_unit * volume = 10 * 1 * 1 = 10
+        # remaining = 1000 - 10 = 990
+        self.assertAlmostEqual(manager.get_max_total_loss_risk(), 990.0)
+
+    def test_get_max_total_loss_risk_reduced_by_daily_loss(self):
+        key = "account_test_max_risk_loss"
+        storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
+        log_storage = db.LogSQLiteStorage("./unit_test.db", key, username=key)
+        config = AccountRiskConfig(
+            base_currency="JPY",
+            max_single_trade_percent=3.0,
+            max_total_risk_percent=10.0,
+            daily_max_loss_percent=None,
+            allow_aggressive_mode=False,
+            aggressive_multiplier=None,
+            enforce_volume_reduction=False,
+            atr_ratio_min_stop_loss=None,
+        )
+        manager = _make_manager(10000, position_storage=storage, log_storage=log_storage)
+        manager.risk_config = config
+        # close a position at a loss: profit = trade_unit(1) * volume(1) * (50-100) = -50
+        position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, trade_unit=1)
+        manager.close_position(position.id, price=50, volume=1)
+        # daily_realized_pnl = -50, daily_loss = 50
+        # balance ≈ 9950 (10000 - 50), max_total = 10% * 9950 = 995
+        # remaining = 995 - 0 (no open positions) - 50 = 945
+        balance = manager.get_balance()
+        expected = balance * 0.10 - 50.0
+        self.assertAlmostEqual(manager.get_max_total_loss_risk(), expected, places=5)
+
+    def test_get_max_total_loss_risk_not_reduced_by_profit(self):
+        key = "account_test_max_risk_profit"
+        storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
+        log_storage = db.LogSQLiteStorage("./unit_test.db", key, username=key)
+        config = AccountRiskConfig(
+            base_currency="JPY",
+            max_single_trade_percent=3.0,
+            max_total_risk_percent=10.0,
+            daily_max_loss_percent=None,
+            allow_aggressive_mode=False,
+            aggressive_multiplier=None,
+            enforce_volume_reduction=False,
+            atr_ratio_min_stop_loss=None,
+        )
+        manager = _make_manager(10000, position_storage=storage, log_storage=log_storage)
+        manager.risk_config = config
+        position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, trade_unit=1)
+        manager.close_position(position.id, price=150, volume=1)
+        # daily_realized_pnl = +50 (profit), daily_loss = 0
+        # balance ≈ 10050, max_total = 10% * 10050 = 1005, remaining = 1005 - 0 - 0 = 1005
+        balance = manager.get_balance()
+        expected = balance * 0.10
+        self.assertAlmostEqual(manager.get_max_total_loss_risk(), expected, places=5)
+
     def test_get_risk_volume_of_open_positions_with_sql(self):
         key = "account_test_risk"
         storage = db.PositionSQLiteStorage("./unit_test.db", key, username=key)
-        manager = Manager(10000, position_storage=storage)
+        manager = _make_manager(10000, position_storage=storage)
         position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
         position2 = manager.open_position(POSITION_SIDE.short, "test", price=200, volume=2)
         manager.update_position(position1, sl=90)
@@ -546,6 +659,8 @@ class ManagerTest(unittest.TestCase):
 
     def tearDown(self):
         # clean up after each test
+        if os.path.exists(_TEST_DB):
+            os.remove(_TEST_DB)
         base_path = os.path.dirname(os.getcwd())
         if os.path.exists(f"{base_path}/unit_test.db"):
             os.remove(f"{base_path}/unit_test.db")
