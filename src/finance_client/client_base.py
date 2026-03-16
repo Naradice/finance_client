@@ -278,8 +278,9 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.error("price must be specified for limit/stop order.")
                 return False, None
-            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1.0
-            leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
+            symbol_risk_config = self.risk_manager.get_symbol_config(symbol)
+            trade_unit = symbol_risk_config.contract_size if symbol_risk_config else 1.0
+            leverage = symbol_risk_config.leverage if symbol_risk_config else 1.0
             p = Position(
                 POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short,
                 price=price,
@@ -484,8 +485,9 @@ class ClientBase(metaclass=ABCMeta):
                 return default_closed_result
             if volume is None:
                 volume = 1
-            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1
-            leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
+            symbol_risk_config = self.risk_manager.get_symbol_config(symbol)
+            trade_unit = symbol_risk_config.contract_size if symbol_risk_config else 1
+            leverage = symbol_risk_config.leverage if symbol_risk_config else 1.0
             position = Position(
                 position_side=position_side,
                 symbol=symbol,
@@ -658,7 +660,7 @@ class ClientBase(metaclass=ABCMeta):
         if account_risk_config is not None:
             self.account.risk_config = account_risk_config
         if symbol_risk_config is not None:
-            self.symbol_risk_config = symbol_risk_config
+            self.risk_manager.symbol_risk_config = symbol_risk_config
 
     def _sync_positions(self, actual_positions):
         long_positions, short_positions = self.account.storage.get_positions()

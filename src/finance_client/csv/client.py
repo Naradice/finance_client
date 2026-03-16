@@ -551,8 +551,10 @@ class CSVClient(CSVClientBase):
         slip_type="random",
         free_margin=1000000,
         storage=None,
+        log_storage=None,
         do_render=False,
         seed=1017,
+        provider="csv",
         enable_trade_log=False,
         user_name:str = None,
         risk_option: RiskOption = None,
@@ -611,10 +613,11 @@ class CSVClient(CSVClientBase):
             slip_type=slip_type,
             free_margin=free_margin,
             storage=storage,
+            log_storage=log_storage,
             do_render=do_render,
             seed=seed,
             user_name=user_name,
-            provider="csv",
+            provider=provider,
             enable_trade_log=enable_trade_log,
             risk_option=risk_option,
             account_risk_config=account_risk_config,
@@ -796,9 +799,7 @@ class CSVClient(CSVClientBase):
                         # todo initialize based on parameters
                         self._step_index = random.randint(0, len(self.data))
                     else:
-                        if self.keep_observation_length:
-                            logger.warning(f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index")
-                            self._step_index = self._step_index - 1
+                        raise StopIteration("CSV data exhausted")
                 index = self._step_index
 
         if length is not None:
