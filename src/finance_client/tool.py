@@ -755,15 +755,195 @@ class AgentTool:
             renko_df.index = renko_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = renko_df.to_csv()
         return csv_data
+    
+    def get_indicator_params(self, indicator: str) -> dict:
+        """Get the required parameters for a given indicator to use with get_indicator.
+
+        Args:
+            indicator (str): Name of the indicator. One of: MACD, EMA, SMA, MA, BBAND, ATR, RSI, Renko, Slope, LRM, CCI
+
+        Returns:
+            dict: {
+                param_name (str): description of the parameter
+            }
+            or {"error": "..."} if the indicator is unknown.
+        """
+        indicator_upper = indicator.upper()
+        params_map = {
+            "MACD": {
+                "short_window": "short EMA window. Typical: 12",
+                "long_window": "long EMA window. Typical: 26",
+                "signal_window": "signal line window. Typical: 9",
+            },
+            "EMA": {"window": "window size. Typical: 14"},
+            "SMA": {"window": "window size. Typical: 14"},
+            "MA": {"window": "window size. Typical: 14"},
+            "BBAND": {
+                "window": "window size. Typical: 20",
+                "alpha": "standard deviation multiplier. Typical: 2.0",
+            },
+            "BB": {
+                "window": "window size. Typical: 20",
+                "alpha": "standard deviation multiplier. Typical: 2.0",
+            },
+            "BOLLINGERBANDS": {
+                "window": "window size. Typical: 20",
+                "alpha": "standard deviation multiplier. Typical: 2.0",
+            },
+            "ATR": {"window": "window size. Typical: 14"},
+            "RSI": {"window": "window size. Typical: 14"},
+            "RENKO": {"window": "ATR window for brick size calculation. Typical: 14"},
+            "SLOPE": {"window": "window size. Typical: 14"},
+            "LRM": {"window": "window size. Typical: 14"},
+            "LRMOMENTUM": {"window": "window size. Typical: 14"},
+            "LINEARREGRESSIONMOMENTUM": {"window": "window size. Typical: 14"},
+            "CCI": {"window": "window size. Typical: 20"},
+        }
+        if indicator_upper not in params_map:
+            available = ["MACD", "EMA", "SMA", "MA", "BBAND", "ATR", "RSI", "Renko", "Slope", "LRM", "CCI"]
+            return {"error": f"Unknown indicator '{indicator}'. Available indicators: {', '.join(available)}"}
+        return params_map[indicator_upper]
+
+    def get_indicator(self, indicator: str, symbol: str, length: int, frame: str, params: dict) -> str:
+        """Get indicator values for a given symbol. Call get_indicator_params first to know which params to pass.
+
+        Args:
+            indicator (str): Name of the indicator. One of: MACD, EMA, SMA, MA, BBAND, ATR, RSI, Renko, Slope, LRM, CCI
+            symbol (str): symbol of currency, stock etc. ex USDJPY.
+            length (int): specify data length > 0.
+            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            params (dict): indicator-specific parameters. Use get_indicator_params to get required keys.
+
+        Returns:
+            str: CSV format data with index and indicator value columns.
+                 MACD -> MACD, SIGNAL
+                 EMA -> EMA
+                 SMA/MA -> MA
+                 BBAND -> UpperBand, LowerBand, Width, StdDev
+                 ATR -> ATR
+                 RSI -> RSI, Gain, Loss
+                 Renko -> Renko
+                 Slope -> Slope
+                 LRM -> LRM
+                 CCI -> CCI
+        """
+        logger.debug(f"tool: get_indicator {indicator} for {symbol}, {length}, {frame}")
+        if length > self.max_length:
+            length = self.max_length
+
+        indicator_upper = indicator.upper()
+
+        if indicator_upper == "MACD":
+            short_window = params["short_window"]
+            long_window = params["long_window"]
+            signal_window = params["signal_window"]
+            process = idcprocess.MACDProcess(target_column="close", short_window=short_window, long_window=long_window, signal_window=signal_window)
+            query_length = length + long_window + signal_window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_MACD, process.KEY_SIGNAL]]
+            result_df.columns = ["MACD", "SIGNAL"]
+
+        elif indicator_upper == "EMA":
+            window = params["window"]
+            process = idcprocess.EMAProcess(window=window, key="EMA", column="close")
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.key]]
+            result_df.columns = ["EMA"]
+
+        elif indicator_upper in ("SMA", "MA"):
+            window = params["window"]
+            process = idcprocess.MAProcess(window=window, key="MA", column="close")
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_EMA]]
+            result_df.columns = ["MA"]
+
+        elif indicator_upper in ("BBAND", "BB", "BOLLINGERBANDS"):
+            window = params["window"]
+            alpha = params["alpha"]
+            process = idcprocess.BBANDProcess(window=window, key="Bollinger", target_column="close", alpha=alpha)
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_UPPER_VALUE, process.KEY_LOWER_VALUE, process.KEY_WIDTH_VALUE, process.KEY_STD_VALUE]]
+            result_df.columns = ["UpperBand", "LowerBand", "Width", "StdDev"]
+
+        elif indicator_upper == "ATR":
+            window = params["window"]
+            process = idcprocess.ATRProcess(window=window, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_ATR]]
+            result_df.columns = ["ATR"]
+
+        elif indicator_upper == "RSI":
+            window = params["window"]
+            process = idcprocess.RSIProcess(window=window, key="RSI", ohlc_column_name=("open", "high", "low", "close"))
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_RSI, process.KEY_GAIN, process.KEY_LOSS]]
+            result_df.columns = ["RSI", "Gain", "Loss"]
+
+        elif indicator_upper == "RENKO":
+            window = params["window"]
+            process = idcprocess.RenkoProcess(window=window, key="Renko", ohlc_column=("open", "high", "low", "close"))
+            query_length = length + process.get_minimum_required_length()
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_VALUE]]
+            result_df.columns = ["Renko"]
+
+        elif indicator_upper == "SLOPE":
+            window = params["window"]
+            process = idcprocess.SlopeProcess(window=window, key="Slope", column="close")
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_SLOPE]]
+            result_df.columns = ["Slope"]
+
+        elif indicator_upper in ("LRM", "LRMOMENTUM", "LINEARREGRESSIONMOMENTUM"):
+            window = params["window"]
+            process = idcprocess.LinearRegressionMomentumProcess(window=window, key="LRM", column="close")
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_MOMENTUM]]
+            result_df.columns = ["LRM"]
+
+        elif indicator_upper == "CCI":
+            window = params["window"]
+            process = idcprocess.CCIProcess(window=window, key="CCI", ohlc_column=("open", "high", "low", "close"))
+            query_length = length + window
+            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+            result_df = process.run(ohlc_df)
+            result_df = result_df[[process.KEY_CCI]]
+            result_df.columns = ["CCI"]
+
+        else:
+            available = ["MACD", "EMA", "SMA", "MA", "BBAND", "ATR", "RSI", "Renko", "Slope", "LRM", "CCI"]
+            return f"Unknown indicator '{indicator}'. Available indicators: {', '.join(available)}"
+
+        result_df = result_df.iloc[-length:]
+        result_df = result_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+        if isinstance(result_df.index, pd.DatetimeIndex):
+            result_df.index = result_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+        return result_df.to_csv()
 
     def get_budget(self):
-        """return current budget
+        """return current free margin as budget
 
         Returns:
             budget (str)
         """
         logger.debug(f"tool: get_budget")
-        budget, _, _ = self.client.get_budget()
+        budget = self.client.get_free_margin()
         logger.debug(f"get_budget result: {budget}")
         try:
             budget = str(budget)
