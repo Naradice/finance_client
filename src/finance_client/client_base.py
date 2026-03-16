@@ -1159,6 +1159,10 @@ class ClientBase(metaclass=ABCMeta):
                     do_add_eco_idc=do_add_eco_idc,
                     data_freq=data_freq,
                 )
+            except StopIteration as e:
+                if disable_step:
+                    self.auto_step_index = auto_step_index
+                raise e
             except Exception as e:
                 logger.error(f"Failed to get trading data: {e}")
                 if disable_step:
