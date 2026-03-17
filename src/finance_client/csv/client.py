@@ -490,7 +490,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         pass
 
     def get_current_datetime(self):
-        index = self.data.index[self._step_index - 1]
+        idx = min(self._step_index - 1, len(self.data) - 1)
+        index = self.data.index[idx]
         try:
             return self._index_to_datetime(index)
         except Exception as e:
