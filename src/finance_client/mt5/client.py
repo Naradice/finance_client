@@ -1159,7 +1159,7 @@ class MT5Client(ClientBase):
                 for order in self._open_orders:
                     if order == m_position.magic and order.symbol == m_position.symbol:
                         positions_by_order.append(order.id)
-                position_side = 1 if mt5.POSITION_SIDE_BUY == m_position.type else -1
+                position_side = 1 if mt5.POSITION_TYPE_BUY == m_position.type else -1
                 symbol = m_position.symbol
                 position_price = m_position.price_open
                 volume = m_position.volume
