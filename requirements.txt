@@ -1,0 +1,13 @@
+numpy
+pandas
+statsmodels
+matplotlib
+MetaTrader5
+websocket-client
+python-dotenv
+PyYAML
+yfinance
+selenium
+pandas_datareader
+setuptools
+google_auth_oauthlib
