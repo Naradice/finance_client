@@ -1144,8 +1144,12 @@ class MT5Client(ClientBase):
             return super().get_positions(symbols=symbols)
         else:
             mt5_positions = mt5.positions_get()
+            logger.debug("mt5.positions_get() returned: %s (type=%s)", mt5_positions, type(mt5_positions).__name__)
             positions = []
             positions_by_order = []
+            if mt5_positions is None:
+                logger.warning("mt5.positions_get() returned None — error: %s", mt5.last_error())
+                return positions
             # convert mt5 position to client position
             if symbols is not None:
                 if isinstance(symbols, str):

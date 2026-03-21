@@ -839,7 +839,8 @@ class ClientBase(metaclass=ABCMeta):
                         else:
                             logger.info(f"short position is opened by limit/stop order: {open_price}")
                             if self.__open_short_position(
-                                symbol=order.symbol, sold_rate=open_price, volume=order.volume, tp=order.tp, sl=order.sl, result=None
+                                symbol=order.symbol, sold_rate=open_price, volume=order.volume, trade_unit=order.trade_unit, leverage=order.leverage,
+                                tp=order.tp, sl=order.sl, result=None
                             ):
                                 closed_orders.append(id)
             # remove closed orders

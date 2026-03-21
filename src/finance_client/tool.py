@@ -19,6 +19,7 @@ M_EMA_KEY = "EMA50"
 L_EMA_KEY = "EMA200"
 MACD_KEY = "MACD"
 MACD_SIG_KEY = "MACD_Signal"
+SMA20_KEY = "SMA20"
 
 
 class AgentTool:
@@ -36,24 +37,29 @@ class AgentTool:
         self._Bollinger = idcprocess.BBANDProcess(window=20, key="Bollinger", target_column="close", alpha=2)
         self._ATR = idcprocess.ATRProcess(window=14, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
         self._CCI = idcprocess.CCIProcess(window=20, key="CCI", ohlc_column=("open", "high", "low", "close"))
+        self._SMA20 = idcprocess.MAProcess(window=20, key=SMA20_KEY, column="close")
         self.max_length = max_length
 
     def order(self, is_buy: bool, price: float, volume: float, symbol: str, order_type: int, tp: float, sl: float):
-        """order to open a position
+        """Place an order to open a new position.
+
         Args:
-            is_buy (bool): buy order or not
-            price (float): order price for limit or stop order. Specify 0 if you order with market price
-            volume (float): volume of trade volume. base_unit (e.g. lot) * volume will be ordered.
-            symbol (str): symbol of currency, stock etc. ex USDJPY.
-            order_type (int): 0: Market, 1: Limit, 2: Stop
-            tp (float): specify take profit price. if less than 0 is specified, order without tp
-            sl (float): specify stop loss price. if less than 0 is specified, order without sl
+            is_buy (bool): True for a buy (long) order, False for a sell (short) order.
+            price (float): order price for limit or stop orders. Specify 0 for market orders.
+            volume (float): trade size in lots. The actual notional = base_unit * volume.
+            symbol (str): currency pair or instrument symbol, e.g. "USDJPY".
+            order_type (int): 0 = Market order (executes immediately at current price),
+                              1 = Limit order (buy below / sell above the specified price),
+                              2 = Stop order (buy above / sell below the specified price).
+            tp (float): take-profit price. Specify 0 or a negative value to place the order without a take-profit.
+            sl (float): stop-loss price. Specify 0 or a negative value to place the order without a stop-loss.
 
         Returns:
-            {
-                price (float): price returned from client. 0 if order is failed.
-                id (str): id of position or order. error message is returned if order is failed.
-            }
+            On success: {"price": str, "id": str}
+                price — actual fill price returned by the broker.
+                id    — position or pending-order ID assigned by the broker.
+            On failure: {"price": "0", "msg": str}
+                msg — error description from the broker.
         """
         logger.debug(f"tool:open_trade with {is_buy}, {price}, {volume}, {symbol}, {order_type}, {tp}, {sl}")
         if tp is None or tp <= 0:
@@ -100,20 +106,23 @@ class AgentTool:
         return result
 
     def get_orders(self):
-        """get all orders
+        """Return all currently pending (unfilled) orders.
+
+        An empty dict {} is the normal response when no pending orders exist —
+        it does NOT indicate an error.
+
         Returns:
-            {
-                $id : {
-                    price (float): price of order,
-                    volume (float): volume of order,
-                    symbol (str): symbol of order,
-                    is_buy (bool): True if long position,
-                    tp (float): take profit price of order,
-                    sl (float): stop loss price of order,
-                    order_type (str): "limit", "stop",
-                    mins_from_created (int): minutes from order creation
-                }
-            }
+            dict keyed by order ID string. Each value contains:
+                price (str): trigger price of the pending order.
+                volume (str): order size in lots.
+                symbol (str): instrument symbol, e.g. "USDJPY".
+                is_buy (bool): True for a buy order, False for a sell order.
+                tp (str): take-profit price, or "0" if not set.
+                sl (str): stop-loss price, or "0" if not set.
+                order_type (str): "limit" or "stop".
+                mins_from_created (str): minutes elapsed since the order was placed.
+            Example with one order: {"123": {"price": "155.00", "volume": "0.1", ...}}
+            Example with no orders: {}
         """
         # logger.debug("tool:get_orders")
         return_orders_dict = {}
@@ -141,16 +150,18 @@ class AgentTool:
         return return_orders_dict
 
     def close_position(self, id: str, volume: float):
-        """closed a position based on id. id should be specified which is returned when order it.
+        """Close an open position by its ID.
+
         Args:
-            id (str): id if position
-            volume (float): volume of position to close. base_unit * volume will be closed. if 0 is specified, close all volume.
+            id (str): position ID as returned by order() when the position was opened.
+            volume (float): volume to close in lots. Specify 0 to close the entire position.
+
         Returns:
-            {
-                closed_price (float): closed price. 0 if order is failed.
-                profit(float): profit of your trade result. 0 if order is failed.
-                msg (str): error message if order is failed.
-            }
+            On success: {"closed_price": str, "profit": str}
+                closed_price — actual execution price at which the position was closed.
+                profit       — realised profit/loss for this trade in account currency.
+            On failure: {"closed_price": "0", "profit": "0", "msg": str}
+                msg — error description (e.g. position ID not found).
         """
         logger.debug(f"close_position with {id}, {volume}")
         try:
@@ -166,14 +177,19 @@ class AgentTool:
         return result
 
     def close_all_positions(self):
-        """
+        """Close every open position at the current market price.
+
+        An empty dict {} is the normal response when there were no open positions to close —
+        it does NOT indicate an error.
+
         Returns:
-            {
-                $id:{
-                    closed_price (float): price,
-                    profit(float): profit by your order
-                }
-            }
+            dict keyed by position ID string. Each value contains:
+                closed_price (str): execution price at which the position was closed.
+                profit (str): realised profit/loss for that position.
+            On partial failure an additional "msg" key is included for that position.
+            Example: {"456": {"closed_price": "155.20", "profit": "320.00"}}
+            Example with nothing to close: {}
+            On total failure: {"msg": "failed to close all positions"}
         """
         logger.debug("tool:close_all_positions")
         try:
@@ -195,25 +211,36 @@ class AgentTool:
         return result_dict
 
     def get_positions(self):
-        """
+        """Return all currently open positions.
+
+        IMPORTANT: An empty dict {} is the completely normal response when no positions
+        are held (e.g. after a take-profit or stop-loss has closed them). An empty result
+        is NOT an error and should NOT be treated as a failure to retrieve data.
+        Only a dict containing a "msg" key indicates an actual error.
+
         Returns:
-            {
-                $id: {
-                    price (float): price of position,
-                    volume (float): volume of position,
-                    symbol (str): symbol of position,
-                    is_buy (bool): True if long position,
-                    tp (float): take profit price of position,
-                    sl (float): stop loss price of position,
-                }
-            }
+            dict keyed by position ID string. Each value contains:
+                price (str): average open price of the position.
+                volume (str): position size in lots.
+                symbol (str): instrument symbol, e.g. "USDJPY".
+                is_buy (bool): True for a long position, False for a short position.
+                tp (str): take-profit price, or "0" if not set.
+                sl (str): stop-loss price, or "0" if not set.
+            Example with one position: {"789": {"price": "154.80", "volume": "0.1", "symbol": "USDJPY", "is_buy": true, "tp": "156.00", "sl": "153.50"}}
+            Example with no positions (flat / all closed): {}
+            On error: {"msg": "failed to get positions"}
         """
-        # logger.debug("tool: get_positions")
+        logger.debug("tool: get_positions called")
         try:
             self.__advance_step(None)
         except Exception as e:
             logger.error(f"Error in advancing step for positions: {e}")
-        positions = self.client.get_positions()
+        try:
+            positions = self.client.get_positions()
+        except Exception:
+            logger.exception("tool: get_positions raised exception")
+            return {"msg": "failed to get positions"}
+        logger.debug("tool: get_positions raw result count=%s", len(positions) if positions is not None else "None")
         return_positions_dict = {}
         for position in positions:
             return_positions_dict[str(position.id)] = {
@@ -224,17 +251,20 @@ class AgentTool:
                 "tp": "0" if position.tp is None else str(position.tp),
                 "sl": "0" if position.sl is None else str(position.sl),
             }
-        # logger.debug(f"get_positions result: {len(return_positions_dict)}")
+        logger.debug("tool: get_positions returning %s positions: %s", len(return_positions_dict), list(return_positions_dict.keys()))
         return return_positions_dict
 
     def cancel_order(self, id: str):
-        """
+        """Cancel a pending (unfilled) order by its ID.
+
         Args:
-            id(str): id of order
+            id (str): order ID as returned by order() when a limit or stop order was placed.
+
         Returns:
-            {
-                result(bool): True if Success
-            }
+            {"result": bool, "message": str}
+                result  — True if the order was successfully cancelled.
+                message — "cancel_order success" on success, or a description of the problem
+                          (e.g. "already canceled" if the order no longer exists).
         """
         logger.debug(f"tool: cancel_order for {id}")
         try:
@@ -248,12 +278,16 @@ class AgentTool:
         return {"result": suc, "message": message}
 
     def get_ask_rate(self, symbol: str):
-        """return current ask rate of specified symbol
+        """Return the current ask (offer) price for a symbol.
+
+        Use this for buy orders — the ask is the price you pay when buying.
 
         Args:
-            symbol (str): symbol of currency, stock etc. ex USDJPY.]
+            symbol (str): instrument symbol, e.g. "USDJPY".
+
         Returns:
-            ask_rate (str)
+            str: current ask price as a string (e.g. "154.823").
+                 Returns "failed to get ask rate" if the price could not be retrieved.
         """
         logger.debug(f"tool: get_ask_rate for {symbol}")
         self.__advance_step(symbol)
@@ -266,12 +300,16 @@ class AgentTool:
         return ask_rate
 
     def get_bid_rate(self, symbol: str):
-        """return current bid rate of specified symbol
+        """Return the current bid price for a symbol.
+
+        Use this for sell orders — the bid is the price you receive when selling.
 
         Args:
-            symbol (str): symbol of currency, stock etc. ex USDJPY.]
+            symbol (str): instrument symbol, e.g. "USDJPY".
+
         Returns:
-            rate (str)
+            str: current bid price as a string (e.g. "154.820").
+                 Returns "failed to get bid rate" if the price could not be retrieved.
         """
         logger.debug(f"tool: get_bid_rate for {symbol}")
         self.__advance_step(symbol)
@@ -410,8 +448,9 @@ class AgentTool:
             ohlc_df = self._EMA10.run(ohlc_df)
             ohlc_df = self._EMA50.run(ohlc_df)
             ohlc_df = self._EMA200.run(ohlc_df)
+            ohlc_df = self._SMA20.run(ohlc_df)
         except Exception as e:
-            logger.exception("Error occurred while calculating EMA indicators")
+            logger.exception("Error occurred while calculating EMA/SMA indicators")
 
         ohlc_df = ohlc_df.iloc[-length:]  # Get the last 'length' rows
         return ohlc_df
@@ -937,10 +976,14 @@ class AgentTool:
         return result_df.to_csv()
 
     def get_budget(self):
-        """return current free margin as budget
+        """Return the current free margin available for new trades.
+
+        Free margin = account equity minus the margin already used by open positions.
+        This is the maximum capital available to place new orders.
 
         Returns:
-            budget (str)
+            str: free margin in account currency (e.g. "250000.00").
+                 Returns "failed to get budget" if the value could not be retrieved.
         """
         logger.debug(f"tool: get_budget")
         budget = self.client.get_free_margin()
