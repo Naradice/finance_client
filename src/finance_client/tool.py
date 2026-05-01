@@ -10,6 +10,7 @@ from . import frames as Frame
 from .client_base import ClientBase
 from .fprocess import idcprocess
 from .fprocess.fprocess.indicaters import technical
+from .risk_manager.risk_options.percent_equity import PercentEquityRisk
 from .position import POSITION_SIDE
 
 logger = logging.getLogger(__name__)
@@ -24,9 +25,10 @@ SMA20_KEY = "SMA20"
 
 class AgentTool:
 
-    def __init__(self, client: ClientBase, max_volume=None, max_length=100):
+    def __init__(self, client: ClientBase, max_volume=None, max_length=100, risk_option=None):
         self.client = client
         self.max_volume = max_volume
+        self.risk_option = risk_option or PercentEquityRisk(percent=1.0)
         # for simulation, step index is used to simulate time
         self._step_index = self.client._step_index if hasattr(self.client, "_step_index") else 0
         self._EMA10 = idcprocess.EMAProcess(window=10, key=S_EMA_KEY, column="close")
@@ -103,6 +105,75 @@ class AgentTool:
             else:
                 result = {"price": "0", "msg": "unknown error"}
         logger.debug(f"tool:open_trade result: {result}")
+        return result
+
+    def smart_order(self, is_buy: bool, price: float, symbol: str, order_type: int, tp: float, sl: float):
+        """Place an order to open a new position. volume is calculated by risk management module based on stop loss level and risk percentage.
+
+        Args:
+            is_buy (bool): True for a buy (long) order, False for a sell (short) order.
+            price (float): order price for limit or stop orders. Specify 0 for market orders.
+            symbol (str): currency pair or instrument symbol, e.g. "USDJPY".
+            order_type (int): 0 = Market order (executes immediately at current price),
+                              1 = Limit order (buy below / sell above the specified price),
+                              2 = Stop order (buy above / sell below the specified price).
+            tp (float): take-profit price.
+            sl (float): stop-loss price.
+
+        Returns:
+            On success: {"price": str, "id": str}
+                price — actual fill price returned by the broker.
+                id    — position or pending-order ID assigned by the broker.
+            On failure: {"price": "0", "msg": str}
+                msg — error description from the broker.
+        """
+        logger.debug(f"tool:smart_order with {is_buy}, {price}, {volume}, {symbol}, {order_type}, {tp}, {sl}")
+        if tp is None or tp <= 0:
+            tp = None
+        else:
+            tp = float(tp)
+        if sl is None or sl <= 0:
+            sl = None
+        else:
+            sl = float(sl)
+        if order_type is None:
+            logger.info("order_type is None, set to Market order")
+            order_type = 0
+        if order_type == 0:
+            price = None
+            logger.info("Market order, price is set to None")
+        if price is not None:
+            price = float(price)
+        if self.max_volume is not None and volume > self.max_volume:
+            volume = self.max_volume
+        # sometimes AI Agent order limit order as stop order. So if price is invalid, it will be treated as a stop order.
+        if order_type == 1:
+            if is_buy:
+                ask_price = self.get_ask_rate(symbol)
+                if price >= float(ask_price):
+                    order_type = 2
+                    logger.debug("Changed order type to Stop")
+            else:
+                bid_price = self.get_bid_rate(symbol)
+                if price <= float(bid_price):
+                    order_type = 2
+                    logger.debug("Changed order type to Stop")
+
+        if self.client.risk_option:
+            suc, position = self.client.smart_order(is_buy=is_buy, entry_price=price, symbol=symbol, order_type=order_type, tp=tp, sl=sl)
+        else:
+            suc, position = self.client.smart_order(
+                is_buy=is_buy, entry_price=price, symbol=symbol, risk_option=self.risk_option, order_type=order_type, tp=tp, sl=sl
+            )
+        if suc and position is not None:
+            result = {"price": str(position.price), "id": str(position.id)}
+            self._step_index = 0
+        else:
+            if isinstance(position, str):
+                result = {"price": "0", "msg": position}
+            else:
+                result = {"price": "0", "msg": "unknown error"}
+        logger.debug(f"tool:smart_order result: {result}")
         return result
 
     def get_orders(self):
@@ -414,7 +485,7 @@ class AgentTool:
             ohlc_df.index = ohlc_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         logger.debug(f"get_ohlc result: {ohlc_df.shape}")
         return ohlc_df.T.to_dict()
-    
+
     def _get_ohlc_with_indicators(self, symbol: str, length: int, frame: str):
         ohlc_df = self.__get_ohlc(symbol, length + 210, frame)
         if isinstance(ohlc_df, dict):
@@ -512,8 +583,8 @@ class AgentTool:
                 logger.debug(f"tool: advance_step to {self._step_index}")
         return self._step_index
 
-    def get_MACD(self, symbol:str, length: int, frame:str, short_window:int, long_window:int, signal_window:int):
-        """ get MACD and it's signal values based on close value. 
+    def get_MACD(self, symbol: str, length: int, frame: str, short_window: int, long_window: int, signal_window: int):
+        """get MACD and it's signal values based on close value.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -543,10 +614,10 @@ class AgentTool:
             macd_df.index = macd_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = macd_df.to_csv()
         return csv_data
-    
+
     # idcprocess.ATRProcess
-    def get_ATR(self, symbol:str, length: int, frame:str, window:int):
-        """ get ATR values based on OHLC values. 
+    def get_ATR(self, symbol: str, length: int, frame: str, window: int):
+        """get ATR values based on OHLC values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -574,10 +645,10 @@ class AgentTool:
             atr_df.index = atr_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = atr_df.to_csv()
         return csv_data
-    
+
     # idcprocess.BBANDProcess
-    def get_BollingerBands(self, symbol:str, length: int, frame:str, window:int, alpha:float):
-        """ get Bollinger Bands values based on close values. 
+    def get_BollingerBands(self, symbol: str, length: int, frame: str, window: int, alpha: float):
+        """get Bollinger Bands values based on close values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -598,9 +669,7 @@ class AgentTool:
         query_length = length + window
         ohlc_df = self.__get_ohlc(symbol, query_length, frame)
         bband_df = process.run(ohlc_df)
-        bband_df = bband_df[
-            [process.KEY_UPPER_VALUE, process.KEY_LOWER_VALUE, process.KEY_WIDTH_VALUE, process.KEY_STD_VALUE]
-        ]
+        bband_df = bband_df[[process.KEY_UPPER_VALUE, process.KEY_LOWER_VALUE, process.KEY_WIDTH_VALUE, process.KEY_STD_VALUE]]
         bband_df.columns = ["UpperBand", "LowerBand", "Width", "StdDev"]
         bband_df = bband_df.iloc[-length:]
         bband_df = bband_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
@@ -610,8 +679,8 @@ class AgentTool:
         return csv_data
 
     # idcprocess.RSIProcess
-    def get_RSI(self, symbol:str, length: int, frame:str, window:int):
-        """ get RSI values based on close values. 
+    def get_RSI(self, symbol: str, length: int, frame: str, window: int):
+        """get RSI values based on close values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -639,10 +708,10 @@ class AgentTool:
             rsi_df.index = rsi_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = rsi_df.to_csv()
         return csv_data
-    
+
     # idcprocess.MAProcess
-    def get_SMA(self, symbol:str, length: int, frame:str, window:int):
-        """ get Simple Mean Average values based on close values. 
+    def get_SMA(self, symbol: str, length: int, frame: str, window: int):
+        """get Simple Mean Average values based on close values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -672,8 +741,8 @@ class AgentTool:
         return csv_data
 
     # idcprocess.EMAProcess
-    def get_EMA(self, symbol:str, length: int, frame:str, window:int):
-        """ get Exponential Mean Average values based on close values. 
+    def get_EMA(self, symbol: str, length: int, frame: str, window: int):
+        """get Exponential Mean Average values based on close values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -701,10 +770,10 @@ class AgentTool:
             ema_df.index = ema_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = ema_df.to_csv()
         return csv_data
-    
+
     # idcprocess.CCIProcess
-    def get_CCI(self, symbol:str, length: int, frame:str, window:int):
-        """ get CCI values based on OHLC values. 
+    def get_CCI(self, symbol: str, length: int, frame: str, window: int):
+        """get CCI values based on OHLC values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -732,10 +801,10 @@ class AgentTool:
             cci_df.index = cci_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = cci_df.to_csv()
         return csv_data
-    
+
     # idcprocess.LinearRegressionMomentumProcess
-    def get_LinearRegressionMomentum(self, symbol:str, length: int, frame:str, window:int):
-        """ get Linear Regression Momentum values based on close values. 
+    def get_LinearRegressionMomentum(self, symbol: str, length: int, frame: str, window: int):
+        """get Linear Regression Momentum values based on close values.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -765,8 +834,8 @@ class AgentTool:
         return csv_data
 
     # idcprocess.RenkoProcess
-    def get_Renko(self, symbol:str, length: int, frame:str, window:int):
-        """ get Renko values based on close values. Brick size is calculated by ATR of specified window.
+    def get_Renko(self, symbol: str, length: int, frame: str, window: int):
+        """get Renko values based on close values. Brick size is calculated by ATR of specified window.
 
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
@@ -794,7 +863,7 @@ class AgentTool:
             renko_df.index = renko_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
         csv_data = renko_df.to_csv()
         return csv_data
-    
+
     def get_indicator_params(self, indicator: str) -> dict:
         """Get the required parameters for a given indicator to use with get_indicator.
 
@@ -993,6 +1062,8 @@ class AgentTool:
         except Exception:
             budget = "failed to get budget"
         return budget
+
+
 class PriceMonitor:
 
     def __init__(self, client_tool, event_queue):
