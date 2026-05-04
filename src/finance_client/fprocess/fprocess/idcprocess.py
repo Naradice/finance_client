@@ -875,8 +875,8 @@ class RangeTrendProcess(ProcessBase):
                     bb_df = self.__preprocess.run(data, symbols, grouped_by_symbol=True)
                     data = pd.concat([data, bb_df], axis=1)
                     required_columns = [
-                        self.__preprocess.columns[self.__preprocess.KEY_MEAN_VALUE],
-                        self.__preprocess.columns[self.__preprocess.KEY_WIDTH_VALUE],
+                        self.__preprocess.KEY_WIDTH_VALUE,
+                        self.__preprocess.KEY_MEAN_VALUE,
                     ]
                 else:
                     raise Exception("Neither close column nor BBand columns are missing")

@@ -100,7 +100,8 @@ class YahooClient(CSVClient):
         initialize_rate_after_mins: int = 0,
         risk_option: RiskOption = None,
         account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: str | SymbolRiskConfig = None
+        symbol_risk_config: str | SymbolRiskConfig = None,
+        data_only: bool = False,
     ):
         """Get ohlc rate from yfinance
         Args:
@@ -172,6 +173,7 @@ class YahooClient(CSVClient):
             enable_trade_log=enable_trade_log,
             free_margin=free_margin,
             user_name=user_name,
+            data_only=data_only,
         )
         if initialize_rate_after_mins <= 0:
             self.__get_rates(self._symbols)

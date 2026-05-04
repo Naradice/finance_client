@@ -1,3 +1,5 @@
+import json
+import json
 import os
 import unittest
 
@@ -139,6 +141,66 @@ class TestDB(unittest.TestCase):
         storage.store_log(close_position, order_type=-1)
         profit = storage._get_profit(close_position)
         self.assertEqual(profit, expected_profit)
+
+    def test_csv_log_stores_position_context(self):
+        if os.path.exists("test_logs.csv"):
+            os.remove("test_logs.csv")
+        storage = db.LogCSVStorage(provider="Default", trade_log_path="test_logs.csv")
+        provider = storage.provider
+        user = storage.username
+
+        option = {"indicators": {"rsi": 68.2, "ema_fast": 152.1}, "strategy": "test"}
+        result = {"order_id": "abc123", "status": "filled"}
+        position = Position(
+            position_side=POSITION_SIDE.long,
+            symbol="USDJPY",
+            trade_unit=100000,
+            leverage=5.0,
+            price=150.0,
+            volume=0.1,
+            tp=151.0,
+            sl=149.0,
+            time_index=pd.Timestamp("2026-01-03"),
+            option=option,
+            result=result,
+        )
+
+        storage.store_log(position, order_type=1)
+
+        retrieved_logs = storage.get_logs(provider, user)
+        self.assertEqual(len(retrieved_logs), 1)
+        self.assertEqual(json.loads(retrieved_logs.iloc[0]["option"]), option)
+        self.assertEqual(json.loads(retrieved_logs.iloc[0]["result"]), result)
+
+    def test_csv_log_stores_position_context(self):
+        if os.path.exists("test_logs.csv"):
+            os.remove("test_logs.csv")
+        storage = db.LogCSVStorage(provider="Default", trade_log_path="test_logs.csv")
+        provider = storage.provider
+        user = storage.username
+
+        option = {"indicators": {"rsi": 68.2, "ema_fast": 152.1}, "strategy": "test"}
+        result = {"order_id": "abc123", "status": "filled"}
+        position = Position(
+            position_side=POSITION_SIDE.long,
+            symbol="USDJPY",
+            trade_unit=100000,
+            leverage=5.0,
+            price=150.0,
+            volume=0.1,
+            tp=151.0,
+            sl=149.0,
+            time_index=pd.Timestamp("2026-01-03"),
+            option=option,
+            result=result,
+        )
+
+        storage.store_log(position, order_type=1)
+
+        retrieved_logs = storage.get_logs(provider, user)
+        self.assertEqual(len(retrieved_logs), 1)
+        self.assertEqual(json.loads(retrieved_logs.iloc[0]["option"]), option)
+        self.assertEqual(json.loads(retrieved_logs.iloc[0]["result"]), result)
 
     # sqlite
     def test_sqlite_storage(self):

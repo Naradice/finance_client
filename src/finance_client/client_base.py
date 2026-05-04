@@ -52,6 +52,7 @@ class ClientBase(metaclass=ABCMeta):
         storage: db.PositionStorageBase = None,
         log_storage: db.LogStorageBase = None,
         risk_option: RiskOption = None,
+        data_only: bool = False,
     ):
         """Base Class of Finance Client. Each Client should overwride required method.
 
@@ -75,6 +76,7 @@ class ClientBase(metaclass=ABCMeta):
             storage (db.PositionStorageBase, optional): Specify supported storage. Defaults to None, then use SQLite.
             log_storage (db.LogStorageBase, optional): Specify supported log storage. Defaults to None, then use CSV.
             risk_option (RiskOption, optional): risk option to use for smart_order when risk_option is not specified in smart_order. Defaults to None.
+            data_only (bool, optional): When True, skip account and risk manager initialization. Use this when the client is used only for data download, not for trading. Defaults to False.
         """
         self.auto_index = None
         self._step_index = start_index
@@ -117,22 +119,27 @@ class ClientBase(metaclass=ABCMeta):
                     ohlc_dict[col] = col
             self.ohlc_columns = ohlc_dict
 
-        if storage is None:
-            db_path = os.path.join(os.getcwd(), "finance_client.db")
-            storage = db.PositionSQLiteStorage(db_path, provider, user_name)
-        self.account = account.Manager(
-            account_risk_config=self._default_account_config_path if account_risk_config is None else account_risk_config,
-            free_margin=free_margin,
-            used_margin=used_margin,
-            position_storage=storage,
-            log_storage=log_storage,
-            provider=provider,
-        )
-        self.risk_option = risk_option
-        self.risk_manager = RiskManager(
-            self.account, 
-            self._default_symbol_config_path if symbol_risk_config is None else symbol_risk_config
-        )
+        if data_only:
+            self.account = None
+            self.risk_option = None
+            self.risk_manager = None
+        else:
+            if storage is None:
+                db_path = os.path.join(os.getcwd(), "finance_client.db")
+                storage = db.PositionSQLiteStorage(db_path, provider, user_name)
+            self.account = account.Manager(
+                account_risk_config=self._default_account_config_path if account_risk_config is None else account_risk_config,
+                free_margin=free_margin,
+                used_margin=used_margin,
+                position_storage=storage,
+                log_storage=log_storage,
+                provider=provider,
+            )
+            self.risk_option = risk_option
+            self.risk_manager = RiskManager(
+                self.account,
+                self._default_symbol_config_path if symbol_risk_config is None else symbol_risk_config
+            )
         # update max_daily_loss when date is changed. This is used to consider max daily loss limit in risk management.
         self.__last_date = None
 
@@ -183,6 +190,7 @@ class ClientBase(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
         """
+        kwargs.pop("ohlc_df", None)
         if volume is None:
             if self.risk_option is None and risk_option is None:
                 raise ValueError("volume must be specified or set risk_option at client init.")

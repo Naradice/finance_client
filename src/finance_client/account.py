@@ -235,6 +235,8 @@ class Manager:
                 position.tp,
                 position.sl,
                 index,
+                option=position.option,
+                result=position.result,
                 id=position.id,
             )
             self._trade_log_db.store_log(
@@ -261,6 +263,8 @@ class Manager:
     def update_daily_max_loss(self):
         if self.risk_config is not None and self.risk_config.daily_max_loss_percent is not None:
             self.daily_max_loss = self.risk_config.daily_max_loss_percent * self.get_balance() / 100.0
+        else:
+            self.daily_max_loss = None
 
     def get_positions(self, symbols: List[str] = None) -> Tuple[List[Position], List[Position]]:
         """

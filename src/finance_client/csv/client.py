@@ -308,7 +308,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         enable_trade_log=False,
         risk_option: RiskOption = None,
         account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: str | SymbolRiskConfig = None
+        symbol_risk_config: str | SymbolRiskConfig = None,
+        data_only: bool = False,
     ):
         """CSV Client Base
         Need to change codes to use settings file
@@ -339,7 +340,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             log_storage=log_storage,
             risk_option=risk_option,
             account_risk_config=account_risk_config,
-            symbol_risk_config=symbol_risk_config
+            symbol_risk_config=symbol_risk_config,
+            data_only=data_only,
         )
         random.seed(seed)
         self.data = None

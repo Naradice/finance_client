@@ -127,7 +127,7 @@ class AgentTool:
             On failure: {"price": "0", "msg": str}
                 msg — error description from the broker.
         """
-        logger.debug(f"tool:smart_order with {is_buy}, {price}, {volume}, {symbol}, {order_type}, {tp}, {sl}")
+        logger.debug(f"tool:smart_order with {is_buy}, {price}, {symbol}, {order_type}, {tp}, {sl}")
         if tp is None or tp <= 0:
             tp = None
         else:
@@ -144,8 +144,6 @@ class AgentTool:
             logger.info("Market order, price is set to None")
         if price is not None:
             price = float(price)
-        if self.max_volume is not None and volume > self.max_volume:
-            volume = self.max_volume
         # sometimes AI Agent order limit order as stop order. So if price is invalid, it will be treated as a stop order.
         if order_type == 1:
             if is_buy:

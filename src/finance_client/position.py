@@ -106,7 +106,7 @@ class Position:
                     self.timestamp = timestamp
 
     def __str__(self):
-        return f"(position_side:{self.position_side}, price:{self.price}, volume:{self.volume}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, resilt: {self.result}, time_index:{self.index}, id:{self.id})"
+        return f"(position_side:{self.position_side}, price:{self.price}, volume:{self.volume}, tp: {self.tp}, sl:{self.sl}, symbol:{self.symbol}, result: {self.result}, time_index:{self.index}, id:{self.id})"
 
     def __repr__(self):
         return self.__str__()

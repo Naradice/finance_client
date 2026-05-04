@@ -54,6 +54,21 @@ def _index_to_str(index):
     return time_index
 
 
+def _serialize_json_value(value):
+    return json.dumps(value)
+
+
+def _deserialize_json_value(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
 class LogStorageBase(metaclass=ABCMeta):
 
     def __init__(self, provider: str, username: str) -> None:
@@ -174,8 +189,14 @@ class LogCSVStorage(LogStorageBase):
         self.account_history_path = _check_path(account_history_path, "logs/finance_account_history.csv")
         self.__trade_logs = pd.DataFrame()
 
-    def store_log(self, position: Position, order_type: int, profit: float = None):
+    def _convert_position_to_csv_log(self, position: Position, order_type: int) -> dict:
         log_item = self._convert_position_to_log(position, order_type)
+        log_item["option"] = _serialize_json_value(position.option)
+        log_item["result"] = _serialize_json_value(position.result)
+        return log_item
+
+    def store_log(self, position: Position, order_type: int, profit: float = None):
+        log_item = self._convert_position_to_csv_log(position, order_type)
         df = pd.DataFrame.from_dict([log_item])
         if len(df) == 0:
             logger.warning("No log item to store.")
@@ -202,7 +223,7 @@ class LogCSVStorage(LogStorageBase):
             if isinstance(items, dict) is False:
                 log_items = {}
                 for item in items:
-                    log_item = self._convert_position_to_log(*item)
+                    log_item = self._convert_position_to_csv_log(*item)
                     log_items[log_item["position_id"]] = log_item
             else:
                 log_items = items
@@ -936,6 +957,8 @@ class PositionSQLiteStorage(PositionStorageBase):
         for record in records:
             kwargs = {}
             for index, value in enumerate(record):
+                if keys[index] in {"result", "option"}:
+                    value = _deserialize_json_value(value)
                 kwargs[keys[index]] = value
             positions.append(Position(**kwargs))
         return positions
@@ -959,8 +982,8 @@ class PositionSQLiteStorage(PositionStorageBase):
             time_index,
             position.volume,
             position.timestamp,
-            position.result,
-            position.option,
+            _serialize_json_value(position.result),
+            _serialize_json_value(position.option),
         )
         query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__commit(query, values)
@@ -982,8 +1005,8 @@ class PositionSQLiteStorage(PositionStorageBase):
                 position.index,
                 position.volume,
                 position.timestamp,
-                position.result,
-                position.option,
+                _serialize_json_value(position.result),
+                _serialize_json_value(position.option),
             )
             for position in positions
         ]
@@ -1057,8 +1080,8 @@ class PositionSQLiteStorage(PositionStorageBase):
             index,
             position.volume,
             timestamp,
-            position.result,
-            position.option,
+            _serialize_json_value(position.result),
+            _serialize_json_value(position.option),
             position.id,
         )
         query = f"UPDATE {self.POSITION_TABLE_NAME} SET {', '.join(targets)} WHERE id = ?"
@@ -1147,6 +1170,542 @@ class PositionSQLiteStorage(PositionStorageBase):
             cond = "WHERE id = ? AND provider = ? AND username = ?"
             params = (id, self.provider, self.username)
         query = f"{query} {cond}"
+        try:
+            self.__commit(query, params)
+            return True, p
+        except Exception:
+            return False, p
+
+
+class LogPostgresStorage(LogStorageBase):
+    TRADE_TABLE_NAME = "trade"
+    _TRADE_TABLE_KEYS = {
+        "id": "SERIAL PRIMARY KEY",
+        "position_id": "TEXT",
+        "provider": "TEXT",
+        "username": "TEXT",
+        "symbol": "TEXT",
+        "time_index": "TEXT",
+        "price": "DOUBLE PRECISION",
+        "volume": "DOUBLE PRECISION",
+        "tp": "DOUBLE PRECISION",
+        "sl": "DOUBLE PRECISION",
+        "trade_unit": "DOUBLE PRECISION",
+        "leverage": "DOUBLE PRECISION",
+        "position_side": "INT",
+        "order_type": "INT",
+        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    }
+
+    _PROFIT_TABLE_KEYS = {
+        "id": "SERIAL PRIMARY KEY",
+        "position_id": "TEXT",
+        "provider": "TEXT",
+        "username": "TEXT",
+        "symbol": "TEXT",
+        "time_index": "TEXT",
+        "profit": "DOUBLE PRECISION",
+        "logged_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    }
+
+    __lock = threading.Lock()
+
+    def __init__(self, provider: str, username=None, host="localhost", port=5432, database="postgres", user="postgres", password="") -> None:
+        super().__init__(provider=provider, username=username)
+        self._conn_params = dict(host=host, port=port, dbname=database, user=user, password=password)
+        self._table_init()
+
+    def _connect(self):
+        import psycopg2
+
+        params = {**self._conn_params, "options": "-c lc_messages=C"}
+        return psycopg2.connect(**params)
+
+    def _create_place_holder(self, num: int):
+        return f"({', '.join(['%s'] * num)})"
+
+    def _table_init(self):
+        conn = self._connect()
+        cursor = conn.cursor()
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._TRADE_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.TRADE_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
+        conn.commit()
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS profit (
+                {','.join([f"{key} {attr}" for key, attr in self._PROFIT_TABLE_KEYS.items()])}
+            )
+            """
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def __commit(self, query, params: tuple):
+        with self.__lock:
+            conn = self._connect()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+    def __multi_commit(self, query, params_list: list):
+        with self.__lock:
+            conn = self._connect()
+            cursor = conn.cursor()
+            cursor.executemany(query, params_list)
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+    def store_log(self, position: Position, order_type: int, profit: float = None):
+        values_dict = self._convert_position_to_log(position, order_type)
+        keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__commit(query, tuple(values_dict.values()))
+
+        if order_type == -1:
+            if profit is None:
+                profit = self._get_profit(position)
+            self.store_profit_logs(position, profit)
+
+    def store_logs(self, items: List[Union[Position, int]], profits: List[float] = None):
+        log_values = [tuple(self._convert_position_to_log(*item).values()) for item in items]
+        keys, place_holders = self._create_basic_query(list(self._TRADE_TABLE_KEYS.keys())[1:])
+        query = f"INSERT INTO {self.TRADE_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        self.__multi_commit(query, log_values)
+
+        profit_log_items = []
+        for item, profit in zip(items, profits) if profits is not None else zip(items, [None] * len(items)):
+            position, order_type = item
+            if order_type == -1:
+                if profit is None:
+                    profit = self._get_profit(position)
+                logger.info(f"profit for position id {position.id}: {profit}")
+                profit_log_item = {
+                    "position_id": position.id,
+                    "provider": self.provider,
+                    "username": self.username,
+                    "symbol": position.symbol,
+                    "time_index": _index_to_str(position.index),
+                    "profit": profit,
+                    "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+                }
+                profit_log_items.append(tuple(profit_log_item.values()))
+        if len(profit_log_items) > 0:
+            keys, place_holders = self._create_basic_query(list(self._PROFIT_TABLE_KEYS.keys())[1:])
+            query = f"INSERT INTO profit ({keys}) VALUES {place_holders}"
+            self.__multi_commit(query, profit_log_items)
+
+    def store_profit_logs(self, position: Position, profit: float):
+        if profit is not None:
+            logger.info(f"profit for position id {position.id}: {profit}")
+            profit_log_item = {
+                "position_id": position.id,
+                "provider": self.provider,
+                "username": self.username,
+                "symbol": position.symbol,
+                "time_index": _index_to_str(position.index),
+                "profit": profit,
+                "logged_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            }
+            keys, place_holders = self._create_basic_query(list(self._PROFIT_TABLE_KEYS.keys())[1:])
+            query = f"INSERT INTO profit ({keys}) VALUES {place_holders}"
+            self.__commit(query, tuple(profit_log_item.values()))
+        else:
+            logger.warning(f"Profit is None for position id {position.id}. profit cannot be calculated.")
+
+    def _get_log_with_id(self, provider, username, id):
+        with self.__lock:
+            conn = self._connect()
+            query = f"SELECT * FROM {self.TRADE_TABLE_NAME} WHERE provider=%s AND username=%s AND position_id=%s"
+            df = pd.read_sql_query(query, conn, params=(provider, username, id))
+            conn.close()
+            if len(df) > 0:
+                df = df.sort_values(by="logged_at", ascending=False)
+                df = df.iloc[-1:]
+            return df
+
+    def _get_open_log_with_id(self, provider, username, id):
+        with self.__lock:
+            conn = self._connect()
+            query = f"SELECT * FROM {self.TRADE_TABLE_NAME} WHERE provider=%s AND username=%s AND position_id=%s AND order_type=1"
+            df = pd.read_sql_query(query, conn, params=(provider, username, id), parse_dates=["time_index", "logged_at"])
+            conn.close()
+            if len(df) > 0:
+                df = df.sort_values(by="logged_at", ascending=False)
+                df = df.iloc[-1:]
+            return df
+
+    def get_logs(self, provider, username, start=None, end=None) -> pd.DataFrame:
+        with self.__lock:
+            conn = self._connect()
+            query = f"SELECT * FROM {self.TRADE_TABLE_NAME} WHERE provider=%s AND username=%s"
+            df = pd.read_sql_query(query, conn, params=(provider, username), parse_dates=["time_index", "logged_at"])
+            conn.close()
+        if start is not None:
+            df = df[df["time_index"] >= start]
+        if end is not None:
+            df = df[df["time_index"] <= end]
+        return df
+
+    def get_profit_logs(self, provider=None, username=None, start=None, end=None) -> pd.DataFrame:
+        with self.__lock:
+            if provider is None:
+                provider = self.provider
+            if username is None:
+                username = self.username
+            conn = self._connect()
+            query = "SELECT * FROM profit WHERE provider=%s AND username=%s"
+            df = pd.read_sql_query(query, conn, params=(provider, username), parse_dates=["time_index", "logged_at"])
+            conn.close()
+        if start is not None:
+            df = df[df["time_index"] >= start]
+        if end is not None:
+            df = df[df["time_index"] <= end]
+        return df
+
+
+class PositionPostgresStorage(PositionStorageBase):
+    POSITION_TABLE_NAME = "position"
+    _POSITION_TABLE_KEYS = {
+        "id": "TEXT PRIMARY KEY",
+        "provider": "TEXT",
+        "username": "TEXT",
+        "symbol": "TEXT",
+        "position_side": "INTEGER",
+        "trade_unit": "DOUBLE PRECISION",
+        "leverage": "DOUBLE PRECISION",
+        "price": "DOUBLE PRECISION",
+        "tp": "DOUBLE PRECISION",
+        "sl": "DOUBLE PRECISION",
+        "time_index": "TEXT",
+        "volume": "DOUBLE PRECISION",
+        "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        "result": "TEXT",
+        "option": "TEXT",
+    }
+    SYMBOL_TABLE_NAME = "symbol"
+    _SYMBOL_TABLE_KEYS = {
+        "id": "SERIAL PRIMARY KEY",
+        "code": "TEXT",
+        "name": "TEXT",
+        "market": "TEXT",
+    }
+
+    RATING_TABLE_NAME = "rating"
+    _RATING_TABLE_KEYT = {
+        "id": "SERIAL PRIMARY KEY",
+        "symbol_id": "INTEGER",
+        "ratings": "TEXT",
+        "created_at": "DATE DEFAULT CURRENT_DATE",
+        "source": "TEXT",
+    }
+
+    __lock = threading.Lock()
+
+    def __init__(self, provider: str, username: str, host="localhost", port=5432, database="postgres", user="postgres", password="") -> None:
+        super().__init__(provider, username)
+        if username is None:
+            self.username = "__none__"
+        self._conn_params = dict(host=host, port=port, dbname=database, user=user, password=password)
+        self._table_init()
+
+    def _connect(self):
+        import psycopg2
+
+        params = {**self._conn_params, "options": "-c lc_messages=C"}
+        return psycopg2.connect(**params)
+
+    def _create_place_holder(self, num: int):
+        return f"({', '.join(['%s'] * num)})"
+
+    def _table_init(self):
+        conn = self._connect()
+        cursor = conn.cursor()
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._POSITION_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.POSITION_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._SYMBOL_TABLE_KEYS.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.SYMBOL_TABLE_NAME} (
+                {table_schema}
+            )
+            """
+        )
+        table_schema = ",".join([f"{key} {attr}" for key, attr in self._RATING_TABLE_KEYT.items()])
+        cursor.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.RATING_TABLE_NAME} (
+                {table_schema},
+                FOREIGN KEY (symbol_id) REFERENCES {self.SYMBOL_TABLE_NAME}(id)
+            )
+            """
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def __commit(self, query, params):
+        with self.__lock:
+            conn = self._connect()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+    def __multi_commit(self, query, params_list):
+        with self.__lock:
+            conn = self._connect()
+            cursor = conn.cursor()
+            cursor.executemany(query, params_list)
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+    def __fetch(self, query, params):
+        with self.__lock:
+            conn = self._connect()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            records = cursor.fetchall()
+            cursor.close()
+            conn.close()
+        return records
+
+    def __records_to_positions(self, records, keys) -> List[Position]:
+        positions = []
+        keys = list(keys)
+        for record in records:
+            kwargs = {}
+            for index, value in enumerate(record):
+                if keys[index] in {"result", "option"}:
+                    value = _deserialize_json_value(value)
+                kwargs[keys[index]] = value
+            positions.append(Position(**kwargs))
+        return positions
+
+    def store_position(self, position: Position):
+        keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        time_index = _index_to_str(position.index)
+        if position.timestamp is None:
+            position.timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+        values = (
+            position.id,
+            self.provider,
+            self.username,
+            position.symbol,
+            position.position_side.value,
+            position.trade_unit,
+            position.leverage,
+            position.price,
+            position.tp,
+            position.sl,
+            time_index,
+            position.volume,
+            position.timestamp,
+            _serialize_json_value(position.result),
+            _serialize_json_value(position.option),
+        )
+        query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders} ON CONFLICT (id) DO NOTHING"
+        self.__commit(query, values)
+
+    def store_positions(self, positions: List[Position]):
+        keys, place_holders = self._create_basic_query(self._POSITION_TABLE_KEYS.keys())
+        values = [
+            (
+                position.id,
+                self.provider,
+                self.username,
+                position.symbol,
+                position.position_side.value,
+                position.trade_unit,
+                position.leverage,
+                position.price,
+                position.tp,
+                position.sl,
+                position.index,
+                position.volume,
+                position.timestamp,
+                _serialize_json_value(position.result),
+                _serialize_json_value(position.option),
+            )
+            for position in positions
+        ]
+        query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders} ON CONFLICT (id) DO NOTHING"
+        self.__multi_commit(query, values)
+
+    def __get_symbol_id(self, symbol, name=None, market=None):
+        if symbol is not None and isinstance(symbol, (str, int)):
+            get_query = f"SELECT id FROM {self.SYMBOL_TABLE_NAME} WHERE code = %s"
+            ids = self.__fetch(get_query, (str(symbol),))
+            if len(ids) > 0:
+                return ids[0][0]
+            else:
+                keys, place_holders = self._create_basic_query(list(self._SYMBOL_TABLE_KEYS.keys())[1:])
+                query = f"INSERT INTO {self.SYMBOL_TABLE_NAME} ({keys}) VALUES {place_holders} RETURNING id"
+                with self.__lock:
+                    conn = self._connect()
+                    cursor = conn.cursor()
+                    cursor.execute(query, (symbol, name, market))
+                    new_id = cursor.fetchone()[0]
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                return new_id
+
+    def store_symbol_info(self, symbol, rating: str = None, date: datetime.date = None, source=None, market=None):
+        id = self.__get_symbol_id(symbol, name=None, market=market)
+        if id is not None:
+            if date is None:
+                date = datetime.datetime.now(tz=datetime.timezone.utc).date()
+            key_list = list(self._RATING_TABLE_KEYT.keys())
+            keys, place_holders = self._create_basic_query(key_list[1:])
+            query = f"""
+            INSERT INTO {self.RATING_TABLE_NAME} ({keys})
+            SELECT %s, %s, %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {self.RATING_TABLE_NAME}
+                WHERE symbol_id = %s
+                AND created_at >= %s
+            );
+            """
+            values = (id, rating, date, source, id, date)
+            self.__commit(query, values)
+
+    def store_symbols_info(self, symbols_info_list: List[List]):
+        for item in symbols_info_list:
+            self.store_symbol_info(*item)
+
+    def update_position(self, position: Position):
+        keys = self._POSITION_TABLE_KEYS.keys()
+        targets = [f"{key} = %s" for key in keys]
+        if isinstance(position.index, datetime.datetime):
+            index = position.index.isoformat()
+        else:
+            index = position.index
+        if position.timestamp is None:
+            timestamp = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+        elif isinstance(position.timestamp, datetime.datetime):
+            timestamp = position.timestamp.isoformat()
+        else:
+            timestamp = position.timestamp
+        values = (
+            position.id,
+            self.provider,
+            self.username,
+            position.symbol,
+            position.position_side.value,
+            position.trade_unit,
+            position.leverage,
+            position.price,
+            position.tp,
+            position.sl,
+            index,
+            position.volume,
+            timestamp,
+            _serialize_json_value(position.result),
+            _serialize_json_value(position.option),
+            position.id,
+        )
+        query = f"UPDATE {self.POSITION_TABLE_NAME} SET {', '.join(targets)} WHERE id = %s"
+        self.__commit(query, values)
+
+    def get_position(self, id) -> Position:
+        if self.username == "__none__":
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = %s AND provider = %s"
+            records = self.__fetch(query, (id, self.provider))
+        else:
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE id = %s AND provider = %s AND username = %s"
+            records = self.__fetch(query, (id, self.provider, self.username))
+        positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
+        if len(positions) == 0:
+            logger.info(f"no record found for position_id: {id}")
+            return None
+        else:
+            return positions[0]
+
+    def get_positions(self, symbols: list = None, position_side: POSITION_SIDE = None):
+        if self.username == "__none__":
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = %s"
+            params = [self.provider]
+        else:
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = %s AND username = %s"
+            params = [self.provider, self.username]
+        if symbols is not None and len(symbols) > 0:
+            place_holders = self._create_place_holder(len(symbols))
+            query = f"{query} AND symbol in {place_holders}"
+            params.extend(symbols)
+        if position_side is not None:
+            query = f"{query} AND position_side = %s"
+            params.append(position_side.value)
+        records = self.__fetch(query, params)
+        positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
+        if len(positions) == 0:
+            return [], []
+        else:
+            long_positions = []
+            short_positions = []
+            for position in positions:
+                if position.position_side == POSITION_SIDE.long:
+                    long_positions.append(position)
+                else:
+                    short_positions.append(position)
+            return long_positions, short_positions
+
+    def get_long_positions(self, symbols: List[str] = None) -> List[Position]:
+        long_positions, _ = self.get_positions(symbols, POSITION_SIDE.long)
+        return long_positions
+
+    def get_short_positions(self, symbols: List[str] = None) -> List[Position]:
+        _, short_positions = self.get_positions(symbols, POSITION_SIDE.short)
+        return short_positions
+
+    def get_symbol_info(self, symbol, source):
+        id = self.__get_symbol_id(symbol)
+        if id is not None:
+            query = f"SELECT ratings, MAX(created_at), source FROM {self.RATING_TABLE_NAME} WHERE symbol_id = %s AND source = %s GROUP BY ratings, source"
+            params = (id, source)
+            result = self.__fetch(query, params)
+            return result[0]
+        else:
+            return []
+
+    def _get_listening_positions(self):
+        if self.username == "__none__":
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = %s AND (tp IS NOT NULL OR sl IS NOT NULL)"
+            records = self.__fetch(query, (self.provider,))
+        else:
+            query = f"SELECT * FROM {self.POSITION_TABLE_NAME} WHERE provider = %s AND username = %s AND (tp IS NOT NULL OR sl IS NOT NULL)"
+            records = self.__fetch(query, (self.provider, self.username))
+        positions = self.__records_to_positions(records, self._POSITION_TABLE_KEYS.keys())
+        positions_dict = {}
+        for position in positions:
+            positions_dict[position.id] = position
+        return positions_dict
+
+    def delete_position(self, id):
+        p = self.get_position(id)
+        if self.username == "__none__":
+            query = f"DELETE FROM {self.POSITION_TABLE_NAME} WHERE id = %s AND provider = %s"
+            params = (id, self.provider)
+        else:
+            query = f"DELETE FROM {self.POSITION_TABLE_NAME} WHERE id = %s AND provider = %s AND username = %s"
+            params = (id, self.provider, self.username)
         try:
             self.__commit(query, params)
             return True, p

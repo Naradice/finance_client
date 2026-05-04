@@ -503,14 +503,18 @@ class MT5Client(ClientBase):
                 logger.error(f"order failed due to unkown reason: {result.comment}, retcode={result.retcode}")
                 return enum.TRADE_ERROR
 
-    def __request_order(self, request):
+    def __request_order(self, request, _retry=0):
         result = mt5.order_send(request)
         retcode = self.__check_trade_result(result)
         if retcode in [enum.TRADE_DONE, enum.TRADE_PARTIAL_DONE]:
             return True, result
         elif retcode == enum.TRADE_CONTEXT_BUSY:
+            if _retry >= 3:
+                error_details = mt5.last_error()[1] if result is None else result.comment
+                logger.error(f"order failed after {_retry} retries: {error_details}")
+                return False, error_details
             sleep(1)
-            return self.__request_order(request)
+            return self.__request_order(request, _retry + 1)
         else:
             if result is None:
                 error_details = mt5.last_error()[1]
@@ -1148,8 +1152,8 @@ class MT5Client(ClientBase):
             positions = []
             positions_by_order = []
             if mt5_positions is None:
-                logger.warning("mt5.positions_get() returned None — error: %s", mt5.last_error())
-                return positions
+                logger.warning("mt5.positions_get() returned None — error: %s. Falling back to cached positions.", mt5.last_error())
+                return super().get_positions(symbols=symbols)
             # convert mt5 position to client position
             if symbols is not None:
                 if isinstance(symbols, str):
