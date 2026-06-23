@@ -107,7 +107,7 @@ class AgentTool:
         logger.debug(f"tool:open_trade result: {result}")
         return result
 
-    def smart_order(self, is_buy: bool, price: float, symbol: str, order_type: int, tp: float, sl: float):
+    def smart_order(self, is_buy: bool, price: float, symbol: str, order_type: int, tp: float, sl: float, expiration_hours: float = None):
         """Place an order to open a new position. volume is calculated by risk management module based on stop loss level and risk percentage.
 
         Args:
@@ -119,6 +119,10 @@ class AgentTool:
                               2 = Stop order (buy above / sell below the specified price).
             tp (float): take-profit price.
             sl (float): stop-loss price.
+            expiration_hours (float, optional): hours until the pending order expires and is
+                automatically cancelled. For example, 4.0 means the order expires in 4 hours.
+                Only applies to limit/stop orders (order_type 1 or 2). Omit or pass None for
+                GTC (Good-Till-Cancelled, no automatic expiry).
 
         Returns:
             On success: {"price": str, "id": str}
@@ -127,7 +131,7 @@ class AgentTool:
             On failure: {"price": "0", "msg": str}
                 msg — error description from the broker.
         """
-        logger.debug(f"tool:smart_order with {is_buy}, {price}, {symbol}, {order_type}, {tp}, {sl}")
+        logger.debug(f"tool:smart_order with {is_buy}, {price}, {symbol}, {order_type}, {tp}, {sl}, expiration_hours={expiration_hours}")
         if tp is None or tp <= 0:
             tp = None
         else:
@@ -157,11 +161,13 @@ class AgentTool:
                     order_type = 2
                     logger.debug("Changed order type to Stop")
 
+        expiration = float(expiration_hours) if expiration_hours is not None and expiration_hours > 0 else None
+
         if self.client.risk_option:
-            suc, position = self.client.smart_order(is_buy=is_buy, entry_price=price, symbol=symbol, order_type=order_type, tp=tp, sl=sl)
+            suc, position = self.client.smart_order(is_buy=is_buy, entry_price=price, symbol=symbol, order_type=order_type, tp=tp, sl=sl, expiration=expiration)
         else:
             suc, position = self.client.smart_order(
-                is_buy=is_buy, entry_price=price, symbol=symbol, risk_option=self.risk_option, order_type=order_type, tp=tp, sl=sl
+                is_buy=is_buy, entry_price=price, symbol=symbol, risk_option=self.risk_option, order_type=order_type, tp=tp, sl=sl, expiration=expiration
             )
         if suc and position is not None:
             result = {"price": str(position.price), "id": str(position.id)}
@@ -715,12 +721,14 @@ class AgentTool:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
             frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
-            window (int): window for MA calculation
+            window (int): window for MA calculation. Must be greater than 2. Typical values: 5, 10, 20, 50, 200.
 
         Returns:
             str: CSV format data with index, MA columns
         """
         logger.debug(f"tool: get_SMA for {symbol}, {length}, {frame}, {window}")
+        if window is None or window <= 2:
+            return {"error": f"window must be greater than 2, got {window}. Typical values: 5, 10, 20, 50, 200."}
         process = idcprocess.MAProcess(window=window, key="MA", column="close")
         # clip length by max_length
         if length > self.max_length:
@@ -746,12 +754,14 @@ class AgentTool:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
             frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
-            window (int): window for EMA calculation
+            window (int): window for EMA calculation. Must be greater than 2. Typical values: 9, 12, 20, 26, 50, 200.
 
         Returns:
             str: CSV format data with index, EMA columns
         """
         logger.debug(f"tool: get_EMA for {symbol}, {length}, {frame}, {window}")
+        if window is None or window <= 2:
+            return {"error": f"window must be greater than 2, got {window}. Typical values: 9, 12, 20, 26, 50, 200."}
         process = idcprocess.EMAProcess(window=window, key="EMA", column="close")
         # clip length by max_length
         if length > self.max_length:
@@ -777,12 +787,14 @@ class AgentTool:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
             frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
-            window (int): window for CCI calculation
+            window (int): window for CCI calculation. Must be greater than 2. Typical value: 20.
 
         Returns:
             str: CSV format data with index, CCI columns
         """
         logger.debug(f"tool: get_CCI for {symbol}, {length}, {frame}, {window}")
+        if window is None or window <= 2:
+            return {"error": f"window must be greater than 2, got {window}. Typical value: 20."}
         process = idcprocess.CCIProcess(window=window, key="CCI", ohlc_column=("open", "high", "low", "close"))
         # clip length by max_length
         if length > self.max_length:
@@ -934,113 +946,125 @@ class AgentTool:
                  CCI -> CCI
         """
         logger.debug(f"tool: get_indicator {indicator} for {symbol}, {length}, {frame}")
+        if params is None:
+            params = {}
         if length > self.max_length:
             length = self.max_length
 
         indicator_upper = indicator.upper()
+        try:
+            if indicator_upper == "MACD":
+                short_window = params["short_window"]
+                long_window = params["long_window"]
+                signal_window = params["signal_window"]
+                process = idcprocess.MACDProcess(target_column="close", short_window=short_window, long_window=long_window, signal_window=signal_window)
+                query_length = length + long_window + signal_window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_MACD, process.KEY_SIGNAL]]
+                result_df.columns = ["MACD", "SIGNAL"]
 
-        if indicator_upper == "MACD":
-            short_window = params["short_window"]
-            long_window = params["long_window"]
-            signal_window = params["signal_window"]
-            process = idcprocess.MACDProcess(target_column="close", short_window=short_window, long_window=long_window, signal_window=signal_window)
-            query_length = length + long_window + signal_window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_MACD, process.KEY_SIGNAL]]
-            result_df.columns = ["MACD", "SIGNAL"]
+            elif indicator_upper == "EMA":
+                window = params["window"]
+                process = idcprocess.EMAProcess(window=window, key="EMA", column="close")
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.key]]
+                result_df.columns = ["EMA"]
 
-        elif indicator_upper == "EMA":
-            window = params["window"]
-            process = idcprocess.EMAProcess(window=window, key="EMA", column="close")
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.key]]
-            result_df.columns = ["EMA"]
+            elif indicator_upper in ("SMA", "MA"):
+                window = params["window"]
+                process = idcprocess.MAProcess(window=window, key="MA", column="close")
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_EMA]]
+                result_df.columns = ["MA"]
 
-        elif indicator_upper in ("SMA", "MA"):
-            window = params["window"]
-            process = idcprocess.MAProcess(window=window, key="MA", column="close")
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_EMA]]
-            result_df.columns = ["MA"]
+            elif indicator_upper in ("BBAND", "BB", "BOLLINGERBANDS"):
+                window = params["window"]
+                alpha = params["alpha"]
+                process = idcprocess.BBANDProcess(window=window, key="Bollinger", target_column="close", alpha=alpha)
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_UPPER_VALUE, process.KEY_LOWER_VALUE, process.KEY_WIDTH_VALUE, process.KEY_STD_VALUE]]
+                result_df.columns = ["UpperBand", "LowerBand", "Width", "StdDev"]
 
-        elif indicator_upper in ("BBAND", "BB", "BOLLINGERBANDS"):
-            window = params["window"]
-            alpha = params["alpha"]
-            process = idcprocess.BBANDProcess(window=window, key="Bollinger", target_column="close", alpha=alpha)
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_UPPER_VALUE, process.KEY_LOWER_VALUE, process.KEY_WIDTH_VALUE, process.KEY_STD_VALUE]]
-            result_df.columns = ["UpperBand", "LowerBand", "Width", "StdDev"]
+            elif indicator_upper == "ATR":
+                window = params["window"]
+                process = idcprocess.ATRProcess(window=window, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_ATR]]
+                result_df.columns = ["ATR"]
 
-        elif indicator_upper == "ATR":
-            window = params["window"]
-            process = idcprocess.ATRProcess(window=window, key="ATR", ohlc_column_name=("open", "high", "low", "close"))
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_ATR]]
-            result_df.columns = ["ATR"]
+            elif indicator_upper == "RSI":
+                window = params["window"]
+                process = idcprocess.RSIProcess(window=window, key="RSI", ohlc_column_name=("open", "high", "low", "close"))
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_RSI, process.KEY_GAIN, process.KEY_LOSS]]
+                result_df.columns = ["RSI", "Gain", "Loss"]
 
-        elif indicator_upper == "RSI":
-            window = params["window"]
-            process = idcprocess.RSIProcess(window=window, key="RSI", ohlc_column_name=("open", "high", "low", "close"))
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_RSI, process.KEY_GAIN, process.KEY_LOSS]]
-            result_df.columns = ["RSI", "Gain", "Loss"]
+            elif indicator_upper == "RENKO":
+                window = params["window"]
+                process = idcprocess.RenkoProcess(window=window, key="Renko", ohlc_column=("open", "high", "low", "close"))
+                query_length = length + process.get_minimum_required_length()
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_VALUE]]
+                result_df.columns = ["Renko"]
 
-        elif indicator_upper == "RENKO":
-            window = params["window"]
-            process = idcprocess.RenkoProcess(window=window, key="Renko", ohlc_column=("open", "high", "low", "close"))
-            query_length = length + process.get_minimum_required_length()
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_VALUE]]
-            result_df.columns = ["Renko"]
+            elif indicator_upper == "SLOPE":
+                window = params["window"]
+                process = idcprocess.SlopeProcess(window=window, key="Slope", column="close")
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_SLOPE]]
+                result_df.columns = ["Slope"]
 
-        elif indicator_upper == "SLOPE":
-            window = params["window"]
-            process = idcprocess.SlopeProcess(window=window, key="Slope", column="close")
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_SLOPE]]
-            result_df.columns = ["Slope"]
+            elif indicator_upper in ("LRM", "LRMOMENTUM", "LINEARREGRESSIONMOMENTUM"):
+                window = params["window"]
+                process = idcprocess.LinearRegressionMomentumProcess(window=window, key="LRM", column="close")
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_MOMENTUM]]
+                result_df.columns = ["LRM"]
 
-        elif indicator_upper in ("LRM", "LRMOMENTUM", "LINEARREGRESSIONMOMENTUM"):
-            window = params["window"]
-            process = idcprocess.LinearRegressionMomentumProcess(window=window, key="LRM", column="close")
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_MOMENTUM]]
-            result_df.columns = ["LRM"]
+            elif indicator_upper == "CCI":
+                window = params["window"]
+                process = idcprocess.CCIProcess(window=window, key="CCI", ohlc_column=("open", "high", "low", "close"))
+                query_length = length + window
+                ohlc_df = self.__get_ohlc(symbol, query_length, frame)
+                result_df = process.run(ohlc_df)
+                result_df = result_df[[process.KEY_CCI]]
+                result_df.columns = ["CCI"]
 
-        elif indicator_upper == "CCI":
-            window = params["window"]
-            process = idcprocess.CCIProcess(window=window, key="CCI", ohlc_column=("open", "high", "low", "close"))
-            query_length = length + window
-            ohlc_df = self.__get_ohlc(symbol, query_length, frame)
-            result_df = process.run(ohlc_df)
-            result_df = result_df[[process.KEY_CCI]]
-            result_df.columns = ["CCI"]
+            else:
+                available = ["MACD", "EMA", "SMA", "MA", "BBAND", "ATR", "RSI", "Renko", "Slope", "LRM", "CCI"]
+                return f"Unknown indicator '{indicator}'. Available indicators: {', '.join(available)}"
 
-        else:
-            available = ["MACD", "EMA", "SMA", "MA", "BBAND", "ATR", "RSI", "Renko", "Slope", "LRM", "CCI"]
-            return f"Unknown indicator '{indicator}'. Available indicators: {', '.join(available)}"
+            result_df = result_df.iloc[-length:]
+            result_df = result_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
+            if isinstance(result_df.index, pd.DatetimeIndex):
+                result_df.index = result_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
+            return result_df.to_csv()
 
-        result_df = result_df.iloc[-length:]
-        result_df = result_df.map(lambda x: f"{x:.5f}" if isinstance(x, float) else str(x))
-        if isinstance(result_df.index, pd.DatetimeIndex):
-            result_df.index = result_df.index.strftime("%Y-%m-%dT%H:%M:%S%z")
-        return result_df.to_csv()
+        except KeyError as e:
+            required = self.get_indicator_params(indicator)
+            return (
+                f"Error: missing parameter {e} for indicator '{indicator}'. "
+                f"Call get_indicator_params('{indicator}') first. Required params: {required}"
+            )
+        except Exception as e:
+            logger.exception("get_indicator failed for %s", indicator)
+            return f"Error computing indicator '{indicator}': {e}"
 
     def get_budget(self):
         """Return the current free margin available for new trades.

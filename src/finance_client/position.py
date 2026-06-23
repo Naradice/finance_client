@@ -148,6 +148,7 @@ class Order:
         sl: float,
         magic_number: int,
         id=None,
+        expiration=None,
     ):
         if id is None:
             self.id = str(uuid.uuid4())
@@ -164,6 +165,14 @@ class Order:
         self.sl = sl
         self.magic_number = magic_number
         self.created = datetime.datetime.now(tz=datetime.timezone.utc)
+        if expiration is None:
+            self.expiration = None
+        elif isinstance(expiration, datetime.datetime):
+            self.expiration = expiration
+        elif isinstance(expiration, (int, float)):
+            self.expiration = self.created + datetime.timedelta(hours=float(expiration))
+        else:
+            self.expiration = None
 
     def to_dict(self):
         return {

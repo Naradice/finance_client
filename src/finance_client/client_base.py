@@ -191,6 +191,7 @@ class ClientBase(metaclass=ABCMeta):
             Position (Position): position or id which is required to close the position
         """
         kwargs.pop("ohlc_df", None)
+        expiration = kwargs.get("expiration", None)
         if volume is None:
             if self.risk_option is None and risk_option is None:
                 raise ValueError("volume must be specified or set risk_option at client init.")
@@ -327,6 +328,7 @@ class ClientBase(metaclass=ABCMeta):
                         sl=sl,
                         id=ticket_id,
                         magic_number=magic_number,
+                        expiration=expiration,
                     )
                     return suc, p
                 else:
@@ -355,6 +357,7 @@ class ClientBase(metaclass=ABCMeta):
                         sl=sl,
                         id=ticket_id,
                         magic_number=magic_number,
+                        expiration=expiration,
                     )
                     p.id = ticket_id
                     return suc, p
@@ -413,6 +416,7 @@ class ClientBase(metaclass=ABCMeta):
         sl: float = None,
         order_type: int = 0,
         ohlc_df=None,
+        expiration=None,
     ):
         """open or order a position with risk management. volume is calculated by risk_option.
 
@@ -426,6 +430,9 @@ class ClientBase(metaclass=ABCMeta):
             sl (float, optional): specify stop loss price. Default is None
             ohlc_df (pd.DataFrame, optional): Recent OHLC data forwarded to risk_option.calculate()
                 so indicators can be computed inside the risk option.
+            expiration (datetime | float | None): order expiration. A datetime is used as-is;
+                a float is treated as hours from now. None means GTC (no expiry). Only applies
+                to limit/stop orders.
         Returns:
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
@@ -436,7 +443,7 @@ class ClientBase(metaclass=ABCMeta):
         original = self.risk_option
         self.risk_option = effective_risk_option
         try:
-            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type, ohlc_df=ohlc_df)
+            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type, ohlc_df=ohlc_df, expiration=expiration)
         finally:
             self.risk_option = original
 
@@ -810,6 +817,12 @@ class ClientBase(metaclass=ABCMeta):
                 return
             for id, order in orders.items():
                 logger.debug(f"checking order: {id}")
+                if order.expiration is not None:
+                    now = datetime.datetime.now(tz=datetime.timezone.utc)
+                    if now >= order.expiration:
+                        logger.info(f"order {id} expired at {order.expiration}, cancelling")
+                        closed_orders.append(id)
+                        continue
                 if order.order_type == ORDER_TYPE.limit or order.order_type == ORDER_TYPE.stop:
                     self.ohlc_columns = self.get_ohlc_columns()
                     high_column = self.ohlc_columns["High"]

@@ -445,9 +445,17 @@ class MT5Client(ClientBase):
                 return False
         return True
 
-    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, magic=0, position=None, order=None):
+    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, magic=0, position=None, order=None, expiration=None):
         if not self.__check_args(symbol, price, vol, dev, sl, tp):
             return None
+        if expiration is not None:
+            import datetime as _dt
+            if isinstance(expiration, (int, float)):
+                expiration = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=expiration)
+            # ORDER_TIME_SPECIFIED (2) = good-till-date; fall back to literal 2 for older builds
+            type_time = getattr(mt5, "ORDER_TIME_SPECIFIED", 2)
+        else:
+            type_time = mt5.ORDER_TIME_GTC
         request = {
             "action": action,
             "symbol": symbol,
@@ -455,11 +463,13 @@ class MT5Client(ClientBase):
             "price": price,
             "deviation": dev,
             "magic": magic,
-            "type_time": mt5.ORDER_TIME_GTC,
+            "type_time": type_time,
             "type": _type,
             "type_filling": mt5.ORDER_FILLING_IOC,
             "comment": self.user_name if self.user_name is not None else "",
         }
+        if expiration is not None:
+            request["expiration"] = expiration
         if sl is not None:
             request["sl"] = sl
         if tp is not None:
@@ -684,7 +694,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
+    def _sell_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
@@ -704,6 +714,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 order=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -713,7 +724,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
+    def _sell_stop(self, symbol, price, volume, tp, sl, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
@@ -733,6 +744,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 magic=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -797,7 +809,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
+    def _buy_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg
@@ -818,6 +830,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 magic=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -827,7 +840,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
+    def _buy_stop(self, symbol, price, volume, tp, sl, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg
@@ -848,6 +861,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 magic=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
