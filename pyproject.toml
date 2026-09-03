@@ -33,3 +33,11 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# logger.py's setup_logging() unconditionally opens one of these at import time (finance_client/
+# __init__.py -> logger.setup_logging()) -- without this, a normal (non-editable) `pip install`
+# omits them (setuptools only includes .py files by default), so `import finance_client` fails
+# with FileNotFoundError on any environment that installed it via `pip install .` or a git URL
+# instead of `pip install -e`. Confirmed live installing from a git URL into a clean container.
+finance_client = ["logging.yaml", "logging_test.yaml"]
