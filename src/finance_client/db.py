@@ -364,6 +364,18 @@ class LogCSVStorage(LogStorageBase):
         else:
             return pd.DataFrame()
 
+    def clear_all(self):
+        """Remove all trade/profit log rows for this storage's (provider, username) scope."""
+        self.__trade_logs = pd.DataFrame()
+        for path in (self.trade_log_path, self.account_history_path):
+            if not os.path.exists(path):
+                continue
+            df = pd.read_csv(path)
+            if "provider" not in df.columns or "username" not in df.columns:
+                continue
+            remaining = df[~((df["provider"] == self.provider) & (df["username"] == self.username))]
+            remaining.to_csv(path, index=False)
+
 
 class LogSQLiteStorage(LogStorageBase):
     TRADE_TABLE_NAME = "trade"
@@ -557,6 +569,11 @@ class LogSQLiteStorage(LogStorageBase):
             df = df[df["time_index"] <= end]
         return df
 
+    def clear_all(self):
+        """Remove all trade/profit log rows for this storage's (provider, username) scope."""
+        self.__commit(f"DELETE FROM {self.TRADE_TABLE_NAME} WHERE provider = ? AND username = ?", (self.provider, self.username))
+        self.__commit("DELETE FROM profit WHERE provider = ? AND username = ?", (self.provider, self.username))
+
     def close(self):
         return super().close()
 
@@ -640,6 +657,10 @@ class PositionStorageBase:
             position = self._positions[POSITION_SIDE.short].pop(id)
             return True, position
         return False, None
+
+    def clear_all(self):
+        """Remove all stored positions for this storage's (provider, username) scope."""
+        self._positions = {POSITION_SIDE.long: {}, POSITION_SIDE.short: {}}
 
     def update_position(self, position):
         self.store_position(position)
@@ -772,6 +793,11 @@ class PositionFileStorage(PositionStorageBase):
             self.__update_positions_file()
         self.__update_required = True
         return suc, p
+
+    def clear_all(self):
+        super().clear_all()
+        self.__update_positions_file()
+        self.__update_required = False
 
     def store_position(self, position: Position):
         super().store_position(position)
@@ -1176,6 +1202,12 @@ class PositionSQLiteStorage(PositionStorageBase):
         except Exception:
             return False, p
 
+    def clear_all(self):
+        """Remove all rows for this storage's (provider, username) scope."""
+        query = f"DELETE FROM {self.POSITION_TABLE_NAME} WHERE provider = ? AND username = ?"
+        self.__commit(query, (self.provider, self.username))
+        self._positions = {POSITION_SIDE.long: {}, POSITION_SIDE.short: {}}
+
 
 class LogPostgresStorage(LogStorageBase):
     TRADE_TABLE_NAME = "trade"
@@ -1371,6 +1403,11 @@ class LogPostgresStorage(LogStorageBase):
         if end is not None:
             df = df[df["time_index"] <= end]
         return df
+
+    def clear_all(self):
+        """Remove all trade/profit log rows for this storage's (provider, username) scope."""
+        self.__commit(f"DELETE FROM {self.TRADE_TABLE_NAME} WHERE provider = %s AND username = %s", (self.provider, self.username))
+        self.__commit("DELETE FROM profit WHERE provider = %s AND username = %s", (self.provider, self.username))
 
 
 class PositionPostgresStorage(PositionStorageBase):
@@ -1711,3 +1748,9 @@ class PositionPostgresStorage(PositionStorageBase):
             return True, p
         except Exception:
             return False, p
+
+    def clear_all(self):
+        """Remove all rows for this storage's (provider, username) scope."""
+        query = f"DELETE FROM {self.POSITION_TABLE_NAME} WHERE provider = %s AND username = %s"
+        self.__commit(query, (self.provider, self.username))
+        self._positions = {POSITION_SIDE.long: {}, POSITION_SIDE.short: {}}

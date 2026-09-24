@@ -159,6 +159,63 @@ class ClientBase(metaclass=ABCMeta):
 
         self._indices = None
 
+    def reset_state(self):
+        """Clear all stored positions and trade logs for this client's account scope.
+
+        Call before starting a new run when resuming after a long pause, so
+        stale positions/orders from a previous run are not treated as current.
+        No-op when the client was constructed with data_only=True.
+        """
+        if self.account is not None:
+            self.account.reset()
+
+    def _get_quote_to_account_rate(self, symbol: str) -> float:
+        """Return the conversion rate from `symbol`'s quote currency into the
+        account's base currency (e.g. ~153 for a JPY account trading a
+        USD-quoted pair like EURUSD -- 1 USD of stop-loss/profit distance is
+        worth ~153 JPY). Returns 1.0 when they already match -- the common
+        case (USDJPY/EURJPY on a JPY account) -- which preserves prior
+        behavior exactly.
+
+        Assumes a standard 6-character FX symbol (BASEQUOTE, 3 chars each).
+        Falls back to 1.0 (with an error logged) if the account's base
+        currency is unknown or no live conversion pair can be found: silently
+        mis-costing risk is the exact bug this method exists to fix, so a
+        fallback here means risk sizing has reverted to that unconverted
+        (dangerous for non-account-currency pairs) behavior for this trade --
+        treat a logged fallback as this symbol needing attention, not as safe.
+        """
+        risk_config = self.account.risk_config if self.account is not None else None
+        account_currency = risk_config.base_currency if risk_config is not None else None
+        if not account_currency or len(symbol) < 6:
+            return 1.0
+
+        quote_currency = symbol[3:6]
+        if quote_currency == account_currency:
+            return 1.0
+
+        direct = f"{quote_currency}{account_currency}"
+        try:
+            rate = self.get_current_ask(direct)
+            if rate:
+                return float(rate)
+        except Exception:
+            logger.debug(f"No direct rate for {direct}; trying inverse {account_currency}{quote_currency}.")
+
+        inverse = f"{account_currency}{quote_currency}"
+        try:
+            rate = self.get_current_ask(inverse)
+            if rate:
+                return 1.0 / float(rate)
+        except Exception:
+            pass
+
+        logger.error(
+            f"Could not determine {quote_currency}->{account_currency} conversion rate for {symbol}; "
+            f"falling back to 1.0, which mis-sizes risk for any pair not quoted in {account_currency}."
+        )
+        return 1.0
+
     def open_trade(
         self,
         is_buy: bool,
@@ -191,7 +248,7 @@ class ClientBase(metaclass=ABCMeta):
             Position (Position): position or id which is required to close the position
         """
         kwargs.pop("ohlc_df", None)
-        expiration = kwargs.get("expiration", None)
+        expiration = kwargs.pop("expiration", None)
         if volume is None:
             if self.risk_option is None and risk_option is None:
                 raise ValueError("volume must be specified or set risk_option at client init.")
@@ -212,6 +269,7 @@ class ClientBase(metaclass=ABCMeta):
                     stop_loss=sl,
                     take_profit=tp,
                     ohlc_df=ohlc_df,
+                    quote_to_account_rate=self._get_quote_to_account_rate(symbol),
                 )
                 volume = risk_result.volume
                 if sl is None:

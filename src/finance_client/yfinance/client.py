@@ -236,7 +236,7 @@ class YahooClient(CSVClient):
 
         end = datetime.datetime.now(tz=datetime.timezone.utc).date()
         delta = None
-        kwargs = {"group_by": "ticker", "auto_adjust": self.adjust_close, "prepost": False, "threads": True, "proxy": None}
+        kwargs = {"group_by": "ticker", "auto_adjust": self.adjust_close, "prepost": False, "threads": True}
         isDataRemaining = False
         if interval in self.max_periods:
             delta = self.max_periods[interval]
@@ -278,7 +278,7 @@ class YahooClient(CSVClient):
 
                 print(f"from {start} to {end} of {symbol}")
                 sleep(1)  # to avoid a load
-                df = yf.download(symbol, interval=interval, group_by="ticker", start=start, end=end, auto_adjust=self.adjust_close, prepost=False, threads=True, proxy=None)
+                df = yf.download(symbol, interval=interval, group_by="ticker", start=start, end=end, auto_adjust=self.adjust_close, prepost=False, threads=True)
                 if isinstance(df.columns, pd.MultiIndex):
                     df = df[symbol]
                 if len(df) != 0:

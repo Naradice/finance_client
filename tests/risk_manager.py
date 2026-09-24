@@ -22,7 +22,7 @@ def _make_symbol_config(min_volume=0.01, volume_step=0.01):
     )
 
 
-def _make_context(is_buy=True, entry_price=150.0, stop_loss=None, take_profit=None, equity=1_000_000.0):
+def _make_context(is_buy=True, entry_price=150.0, stop_loss=None, take_profit=None, equity=1_000_000.0, quote_to_account_rate=1.0):
     return RiskContext(
         is_buy=is_buy,
         account_equity=equity,
@@ -35,6 +35,7 @@ def _make_context(is_buy=True, entry_price=150.0, stop_loss=None, take_profit=No
         take_profit=take_profit,
         max_total_loss_risk=None,
         daily_max_loss=None,
+        quote_to_account_rate=quote_to_account_rate,
     )
 
 
@@ -193,6 +194,7 @@ class TestApplyAccountCaps(unittest.TestCase):
         daily_max_loss=None,
         entry_price=150.0,
         stop_loss=149.0,
+        quote_to_account_rate=1.0,
     ):
         return RiskContext(
             is_buy=True,
@@ -206,6 +208,7 @@ class TestApplyAccountCaps(unittest.TestCase):
             take_profit=None,
             max_total_loss_risk=max_total_loss_risk,
             daily_max_loss=daily_max_loss,
+            quote_to_account_rate=quote_to_account_rate,
         )
 
     # ── daily loss cap ────────────────────────────────────────────────────────
@@ -303,6 +306,71 @@ class TestApplyAccountCaps(unittest.TestCase):
         ctx = self._make_context()
         volume = rm._apply_account_caps(0.5, stop_distance=1.0, context=ctx)
         self.assertAlmostEqual(volume, 0.5, places=5)
+
+    # ── quote_to_account_rate (currency conversion) ─────────────────────────────
+
+    def test_total_risk_cap_applies_quote_to_account_rate(self):
+        """The remaining monetary budget must be converted through
+        quote_to_account_rate before dividing by stop_distance*contract_size —
+        without it, a quote-currency-denominated cap is silently compared
+        against an account-currency budget."""
+        rm = self._make_risk_manager()
+        # budget=5000 JPY, stop_distance=1.0 (USD units), contract_size=100000,
+        # rate=150 (1 USD = 150 JPY) -> max_volume = 5000 / (1.0*100000*150)
+        ctx = self._make_context(max_total_loss_risk=5000.0, quote_to_account_rate=150.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 5000.0 / (100000 * 150.0), places=8)
+
+    def test_daily_loss_cap_applies_quote_to_account_rate(self):
+        rm = self._make_risk_manager()
+        ctx = self._make_context(daily_max_loss=10000.0, quote_to_account_rate=150.0)
+        volume = rm._apply_account_caps(1.0, stop_distance=1.0, context=ctx)
+        self.assertAlmostEqual(volume, 10000.0 / (100000 * 150.0), places=8)
+
+
+class TestQuoteToAccountRateSizing(unittest.TestCase):
+    """Regression tests reproducing the actual incident: a real EURUSD order
+    on a JPY account sized to 1.2 lots against a Y30,000 budget (should have
+    been ~0.01) because loss_per_unit was computed in EURUSD's quote currency
+    (USD) and divided straight into a JPY budget with no conversion."""
+
+    def test_percent_equity_risk_reproduces_and_fixes_the_eurusd_incident(self):
+        # Unconverted (the bug): rate=1.0 treats the USD-denominated loss as JPY.
+        risk = PercentEquityRisk(percent=1.0)
+        buggy_ctx = _make_context(entry_price=1.1645, stop_loss=1.1670, equity=30_000.0, quote_to_account_rate=1.0)
+        buggy_result = risk.calculate(buggy_ctx)
+        self.assertAlmostEqual(buggy_result.volume, 1.2, places=5)  # exactly what actually got sent to the broker
+
+        # Converted (the fix): ~153.42 JPY per USD, matching the real USDJPY rate at the time.
+        fixed_ctx = _make_context(entry_price=1.1645, stop_loss=1.1670, equity=30_000.0, quote_to_account_rate=153.42)
+        fixed_result = risk.calculate(fixed_ctx)
+        self.assertAlmostEqual(fixed_result.volume, 0.01, places=5)  # floored to min_volume, ~120x smaller
+
+    def test_atr_risk_scales_down_with_quote_to_account_rate(self):
+        # A large equity keeps both raw volumes well clear of the min_volume/
+        # volume_step floor, so the proportional relationship is observable
+        # instead of both collapsing to the same rounded floor value.
+        risk = ATRRisk(percent=1.0, atr_multiplier=2.0, rr_ratio=2.0, ohlc_columns=["Open", "High", "Low", "Close"])
+        ohlc_df = pd.DataFrame({"Open": [1.1645], "High": [1.1660], "Low": [1.1630], "Close": [1.1645]})
+        unconverted = risk.calculate(_make_context(entry_price=1.1645, equity=10_000_000.0, quote_to_account_rate=1.0), ohlc_df=ohlc_df)
+        converted = risk.calculate(_make_context(entry_price=1.1645, equity=10_000_000.0, quote_to_account_rate=153.42), ohlc_df=ohlc_df)
+        self.assertGreater(unconverted.volume, converted.volume)
+        self.assertAlmostEqual(unconverted.volume / 153.42, converted.volume, delta=converted.volume * 0.05)
+
+    def test_fixed_amount_risk_scales_down_with_quote_to_account_rate(self):
+        risk = FixedAmountRisk(allowed_loss_volume=300.0)
+        unconverted = risk.calculate(_make_context(entry_price=1.1645, stop_loss=1.1670, quote_to_account_rate=1.0))
+        converted = risk.calculate(_make_context(entry_price=1.1645, stop_loss=1.1670, quote_to_account_rate=153.42))
+        self.assertGreater(unconverted.volume, converted.volume)
+
+    def test_same_currency_pair_is_unaffected_by_the_fix(self):
+        """JPY-quoted pairs on a JPY account (the case this system already
+        traded correctly) must produce identical sizing before and after —
+        quote_to_account_rate defaults to 1.0, a pure no-op."""
+        risk = PercentEquityRisk(percent=1.0)
+        explicit_default = risk.calculate(_make_context(entry_price=150.0, stop_loss=149.0, quote_to_account_rate=1.0))
+        implicit_default = risk.calculate(_make_context(entry_price=150.0, stop_loss=149.0))
+        self.assertEqual(explicit_default.volume, implicit_default.volume)
 
 
 if __name__ == "__main__":

@@ -25,9 +25,10 @@ SMA20_KEY = "SMA20"
 
 class AgentTool:
 
-    def __init__(self, client: ClientBase, max_volume=None, max_length=100, risk_option=None):
+    def __init__(self, client: ClientBase, max_volume=None, max_length=100, risk_option=None, portfolio_risk=None):
         self.client = client
         self.max_volume = max_volume
+        self.portfolio_risk = portfolio_risk
         self.risk_option = risk_option or PercentEquityRisk(percent=1.0)
         # for simulation, step index is used to simulate time
         self._step_index = self.client._step_index if hasattr(self.client, "_step_index") else 0
@@ -82,6 +83,10 @@ class AgentTool:
             price = float(price)
         if self.max_volume is not None and volume > self.max_volume:
             volume = self.max_volume
+        if self.portfolio_risk is not None:
+            volume = self.portfolio_risk.cap_volume(volume, symbol)
+            if volume <= 0:
+                return {"price": "0", "msg": "portfolio risk cap reached"}
         # sometimes AI Agent order limit order as stop order. So if price is invalid, it will be treated as a stop order.
         if order_type == 1:
             if is_buy:
@@ -162,6 +167,10 @@ class AgentTool:
                     logger.debug("Changed order type to Stop")
 
         expiration = float(expiration_hours) if expiration_hours is not None and expiration_hours > 0 else None
+
+        if self.portfolio_risk is not None:
+            if self.portfolio_risk.cap_volume(1.0, symbol) <= 0:
+                return {"price": "0", "msg": "portfolio risk cap reached"}
 
         if self.client.risk_option:
             suc, position = self.client.smart_order(is_buy=is_buy, entry_price=price, symbol=symbol, order_type=order_type, tp=tp, sl=sl, expiration=expiration)
@@ -328,6 +337,42 @@ class AgentTool:
             }
         logger.debug("tool: get_positions returning %s positions: %s", len(return_positions_dict), list(return_positions_dict.keys()))
         return return_positions_dict
+
+    def update_position(self, id: str, stop_loss: float = None, take_profit: float = None):
+        """Modify the stop-loss and/or take-profit of an already-open position, in place.
+
+        Use this to move a stop-loss to breakeven, tighten a trailing stop, or adjust
+        a take-profit on a position you are already holding — it does NOT close the
+        position or change its entry price/volume. This is the only way to apply a
+        profit-protection rule (e.g. "once price passes X, raise SL to entry price")
+        without closing and re-opening the position.
+
+        Args:
+            id (str): position ID as returned by get_positions().
+            stop_loss (float, optional): new stop-loss price. Omit (or None) to leave
+                the current stop-loss unchanged.
+            take_profit (float, optional): new take-profit price. Omit (or None) to
+                leave the current take-profit unchanged.
+
+        Returns:
+            {"result": bool, "message": str}
+                result  — True if the position's SL/TP was successfully updated.
+                message — "update_position success" on success, or a description of
+                          the problem (e.g. "position not found", or that neither
+                          stop_loss nor take_profit was given).
+        """
+        logger.debug(f"tool: update_position for {id}, sl={stop_loss}, tp={take_profit}")
+        if stop_loss is None and take_profit is None:
+            return {"result": False, "message": "must specify stop_loss and/or take_profit"}
+        try:
+            suc = self.client.update_position(id, tp=take_profit, sl=stop_loss)
+            message = "update_position success" if suc else "position not found or update rejected"
+        except Exception as e:
+            logger.exception("Error in update_position")
+            suc = False
+            message = str(e)
+        logger.debug(f"update_position result {suc}")
+        return {"result": suc, "message": message}
 
     def cancel_order(self, id: str):
         """Cancel a pending (unfilled) order by its ID.

@@ -266,6 +266,16 @@ class Manager:
         else:
             self.daily_max_loss = None
 
+    def reset(self):
+        """Clear all stored positions and trade logs for this account's (provider, username) scope.
+
+        Use this to resume clean after a long pause, so stale positions/orders
+        from a previous run are not picked up as still open.
+        """
+        self.storage.clear_all()
+        self._trade_log_db.clear_all()
+        self.listening_positions = {}
+
     def get_positions(self, symbols: List[str] = None) -> Tuple[List[Position], List[Position]]:
         """
             get all positions and separate long and short positions

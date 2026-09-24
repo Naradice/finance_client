@@ -17,7 +17,7 @@ from finance_client.risk_manager.risk_options.risk_option import RiskOption
 from .. import enum
 from .. import frames as Frame
 from ..client_base import ClientBase
-from ..position import ClosedResult, Position
+from ..position import ClosedResult, Order, ORDER_TYPE, Position, POSITION_SIDE
 
 try:
     from ..fprocess.fprocess.csvrw import (get_datafolder_path, read_csv,
@@ -1142,16 +1142,61 @@ class MT5Client(ClientBase):
             logger.warning("pending order is not available on backtest and simulator")
             return super().cancel_order(id)
 
+    # Maps a raw MT5 pending-order type to our (ORDER_TYPE, POSITION_SIDE) pair.
+    # Stop-limit variants aren't placed by this client (see _buy_limit/_sell_limit/
+    # _buy_stop/_sell_stop) so they're intentionally left unmapped.
+    _MT5_ORDER_TYPE_MAP = {
+        mt5.ORDER_TYPE_BUY_LIMIT: (ORDER_TYPE.limit, POSITION_SIDE.long),
+        mt5.ORDER_TYPE_SELL_LIMIT: (ORDER_TYPE.limit, POSITION_SIDE.short),
+        mt5.ORDER_TYPE_BUY_STOP: (ORDER_TYPE.stop, POSITION_SIDE.long),
+        mt5.ORDER_TYPE_SELL_STOP: (ORDER_TYPE.stop, POSITION_SIDE.short),
+    }
+
     def get_orders(self):
         if self.__ignore_order:
             return super().get_orders()
         else:
             mt5_orders = mt5.orders_get()
+            if mt5_orders is None:
+                logger.warning("mt5.orders_get() returned None — error: %s. Falling back to cached orders.", mt5.last_error())
+                return super().get_orders()
             living_orders = []
-            for order in mt5_orders:
-                ticket_id = str(order.ticket)
+            for m_order in mt5_orders:
+                if self.user_name is not None:
+                    if self.user_name != m_order.comment:
+                        continue
+                ticket_id = str(m_order.ticket)
                 if ticket_id in self._open_orders:
                     living_orders.append(self._open_orders[ticket_id])
+                    continue
+                # Not in our in-memory cache — either placed by a previous
+                # process instance (this client never persists _open_orders
+                # across restarts) or otherwise untracked. Reconcile it
+                # directly from the broker so a restart doesn't lose
+                # visibility into a still-pending order.
+                mapped = self._MT5_ORDER_TYPE_MAP.get(m_order.type)
+                if mapped is None:
+                    logger.debug("get_orders: skipping unsupported broker order type %s for ticket %s", m_order.type, ticket_id)
+                    continue
+                order_type, position_side = mapped
+                symbol_info = mt5.symbol_info(m_order.symbol)
+                trade_unit = symbol_info.trade_contract_size if symbol_info is not None else 1
+                order = Order(
+                    order_type,
+                    position_side,
+                    m_order.symbol,
+                    m_order.price_open,
+                    m_order.volume_current,
+                    trade_unit=trade_unit,
+                    leverage=self.leverage,
+                    tp=None if m_order.tp == 0.0 else m_order.tp,
+                    sl=None if m_order.sl == 0.0 else m_order.sl,
+                    id=ticket_id,
+                    magic_number=m_order.magic,
+                )
+                order.created = datetime.datetime.fromtimestamp(m_order.time_setup, tz=datetime.timezone.utc)
+                self._open_orders[ticket_id] = order
+                living_orders.append(order)
             return living_orders
 
     def _update_client_positions(self, actual_positions):
@@ -1221,14 +1266,31 @@ class MT5Client(ClientBase):
         if self.__ignore_order is False:
             if hasattr(position, "order"):
                 position = position.order
-            request = {"action": mt5.TRADE_ACTION_SLTP, "position": int(position)}
-            if tp is not None:
-                request["tp"] = float(tp)
-            if sl is not None:
-                request["sl"] = float(sl)
-            suc, _ = self.__request_order(request)
-            super().update_position(position, tp=tp, sl=sl)
-            return suc
+            # TRADE_ACTION_SLTP treats an omitted sl/tp as 0 (= remove it), so a
+            # SL-only update would silently wipe an existing TP. Fill whichever
+            # side wasn't given from the live position so it stays unchanged.
+            live = mt5.positions_get(ticket=int(position))
+            if not live:
+                logger.error(f"position {position} is not found on MT5.")
+                return False
+            live = live[0]
+            request = {
+                "action": mt5.TRADE_ACTION_SLTP,
+                "position": int(position),
+                "symbol": live.symbol,
+                "sl": float(sl) if sl is not None else float(live.sl),
+                "tp": float(tp) if tp is not None else float(live.tp),
+            }
+            suc, detail = self.__request_order(request)
+            if not suc:
+                logger.error(f"update_position {position} rejected: {detail}")
+                return False
+            try:
+                super().update_position(position, tp=tp, sl=sl)
+            except Exception:
+                # broker side already succeeded; local storage sync is best-effort
+                logger.exception(f"local storage sync failed after update_position {position}")
+            return True
         else:
             super().update_position(position, tp=tp, sl=sl)
             return True

@@ -47,8 +47,14 @@ class FixedAmountRisk(RiskOption):
             raise ValueError("stop_loss must be provided in RiskContext for FixedAmountRisk.")
 
         sl_diff = abs(context.entry_price - context.stop_loss)
-        # TODO: currency exchange if needed
-        raw_volume = self.allowed_loss_volume / sl_diff
+        # contract_size and quote_to_account_rate convert the raw price
+        # distance into an account-currency loss per lot — see RiskContext's
+        # docstring. Without contract_size this divided a whole-account-currency
+        # budget by a bare price difference, off by exactly contract_size (e.g.
+        # 100000x); without quote_to_account_rate it additionally mixed up
+        # quote-currency and account-currency units whenever they differ.
+        loss_per_unit = sl_diff * context.symbol_risk_config.contract_size * context.quote_to_account_rate
+        raw_volume = self.allowed_loss_volume / loss_per_unit
 
         volume = self._round_volume(raw_volume, context)
 

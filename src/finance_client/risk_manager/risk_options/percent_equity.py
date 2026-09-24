@@ -52,8 +52,10 @@ class PercentEquityRisk(RiskOption):
         # ② SL距離
         sl_distance = abs(context.entry_price - context.stop_loss)
 
-        # ③ 1通貨あたりの損失
-        loss_per_unit = sl_distance * context.symbol_risk_config.contract_size
+        # ③ 1通貨あたりの損失（口座通貨換算 — quote_to_account_rate は口座通貨と
+        # 決済通貨が一致する場合 1.0 のまま。異なる場合はこれを掛けないと
+        # 決済通貨建ての損失額を口座通貨建てと取り違えてサイズを誤る）
+        loss_per_unit = sl_distance * context.symbol_risk_config.contract_size * context.quote_to_account_rate
         raw_volume = allowed_loss / loss_per_unit
 
         # ④ volume丸め

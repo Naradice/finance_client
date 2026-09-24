@@ -562,7 +562,8 @@ class CSVClient(CSVClientBase):
         user_name:str = None,
         risk_option: RiskOption = None,
         account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: str | SymbolRiskConfig = None
+        symbol_risk_config: str | SymbolRiskConfig = None,
+        data_only: bool = False,
     ):
         """CSV Client for time series data like bitcoin, stock, finance
 
@@ -624,7 +625,8 @@ class CSVClient(CSVClientBase):
             enable_trade_log=enable_trade_log,
             risk_option=risk_option,
             account_risk_config=account_risk_config,
-            symbol_risk_config=symbol_risk_config
+            symbol_risk_config=symbol_risk_config,
+            data_only=data_only,
         )
         if out_frame is not None:
             if self.frame < out_frame:

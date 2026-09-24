@@ -64,14 +64,16 @@ class RiskOption(ABC):
 
         Args:
             volume (float): Trade volume in lots.
-            context (RiskContext): Provides entry_price and symbol_risk_config.contract_size.
+            context (RiskContext): Provides entry_price, symbol_risk_config.contract_size, and
+                quote_to_account_rate (converts the quote-currency-denominated raw loss into
+                account currency — 1.0 when they already match).
             stop_loss_price (float): Price at which the loss is realised.
 
         Returns:
-            float: Monetary loss = volume × |entry - stop| × contract_size.
+            float: Monetary loss (account currency) = volume × |entry - stop| × contract_size × quote_to_account_rate.
         """
         sl_distance = abs(context.entry_price - stop_loss_price)
-        return volume * sl_distance * context.symbol_risk_config.contract_size
+        return volume * sl_distance * context.symbol_risk_config.contract_size * context.quote_to_account_rate
     
     def _calc_margin(self, volume: float, context: RiskContext, entry_price: float) -> float:
         """Calculate the margin required for a given volume and entry price.

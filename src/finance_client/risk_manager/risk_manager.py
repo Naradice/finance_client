@@ -59,7 +59,7 @@ class RiskManager:
             logger.warning("symbol_risk_config is not initialized.")
             return None
         
-    def _build_risk_context(self, account_equity:float, symbol: str, is_buy: bool, entry_price: float, stop_loss: float, take_profit: float) -> RiskContext:
+    def _build_risk_context(self, account_equity:float, symbol: str, is_buy: bool, entry_price: float, stop_loss: float, take_profit: float, quote_to_account_rate: float = 1.0) -> RiskContext:
         symbol_risk_config = self.get_symbol_config(symbol)
         return RiskContext(
             is_buy=is_buy,
@@ -73,10 +73,12 @@ class RiskManager:
             take_profit=take_profit,
             max_total_loss_risk=self.account_manager.get_max_total_loss_risk(),
             daily_max_loss=self.account_manager.get_daily_max_loss(),
+            quote_to_account_rate=quote_to_account_rate,
         )
-    
-    def evaluate_risk(self, risk_option: RiskOption, account_equity:float, symbol: str, is_buy: bool, 
-                      entry_price: float, stop_loss: float, take_profit: float, ohlc_df=None) -> RiskResult:
+
+    def evaluate_risk(self, risk_option: RiskOption, account_equity:float, symbol: str, is_buy: bool,
+                      entry_price: float, stop_loss: float, take_profit: float, ohlc_df=None,
+                      quote_to_account_rate: float = 1.0) -> RiskResult:
         """Evaluate the risk of a potential trade and determine position sizing and SL/TP levels.
 
         Args:
@@ -88,11 +90,16 @@ class RiskManager:
             stop_loss (float): The intended stop loss price for the trade.
             take_profit (float): The intended take profit price for the trade.
             ohlc_df (pd.DataFrame, optional): DataFrame containing OHLC data for the symbol. Defaults to None.
+            quote_to_account_rate (float, optional): conversion rate from `symbol`'s quote currency
+                into the account's base currency (e.g. ~153 for a JPY account trading a USD-quoted
+                pair). Defaults to 1.0, correct when they already match — see RiskContext's docstring.
+                The caller (typically ClientBase.open_trade) is responsible for computing this from
+                live market data since RiskManager itself has no price-feed access.
 
         Returns:
             RiskResult: The result of the risk evaluation, including position size and SL/TP levels.
         """
-        context = self._build_risk_context(account_equity, symbol, is_buy, entry_price, stop_loss, take_profit)
+        context = self._build_risk_context(account_equity, symbol, is_buy, entry_price, stop_loss, take_profit, quote_to_account_rate=quote_to_account_rate)
         risk_result = risk_option.calculate(context, ohlc_df=ohlc_df)
         stop_distance = abs(entry_price - context.stop_loss) if context.stop_loss is not None else 0.0
         final_volume = self._apply_account_caps(risk_result.volume, stop_distance, context)
@@ -113,15 +120,19 @@ class RiskManager:
             volume = max(volume, context.symbol_risk_config.min_volume)
             logger.info(f"Applied min volume cap: {context.symbol_risk_config.min_volume}, volume after cap: {volume}")
 
+        # stop_distance*contract_size is denominated in the symbol's QUOTE currency;
+        # max_total_loss_risk/daily_max_loss are account-currency budgets. Multiplying
+        # by quote_to_account_rate (1.0 when they already match) converts units before
+        # comparing — see RiskContext's docstring for why this matters.
         if context.max_total_loss_risk is not None and stop_distance > 0:
-            max_volume_by_total_risk = context.max_total_loss_risk / (stop_distance * context.symbol_risk_config.contract_size)
+            max_volume_by_total_risk = context.max_total_loss_risk / (stop_distance * context.symbol_risk_config.contract_size * context.quote_to_account_rate)
             volume = min(volume, max_volume_by_total_risk)
             logger.info(f"Applied max total loss risk cap: {context.max_total_loss_risk}, volume after cap: {volume}")
 
         if context.daily_max_loss is not None and stop_distance > 0:
             daily_loss = max(0.0, -context.daily_realized_pnl)
             remaining_loss = max(0.0, context.daily_max_loss - daily_loss)
-            max_volume_by_loss = remaining_loss / (stop_distance * context.symbol_risk_config.contract_size)
+            max_volume_by_loss = remaining_loss / (stop_distance * context.symbol_risk_config.contract_size * context.quote_to_account_rate)
             volume = min(volume, max_volume_by_loss)
             logger.info(f"Applied daily max loss cap: {context.daily_max_loss}, volume after cap: {volume}")
 
