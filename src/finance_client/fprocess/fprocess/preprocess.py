@@ -681,6 +681,21 @@ class MinMaxPreProcess(ProcessBase):
         self.run(data, symbols, grouped_by_symbols)
         self.initialization_required = False
 
+    def fit(self, data: pd.DataFrame, mask=None, symbols: list = None, grouped_by_symbols=None):
+        """Set min/max from the rows selected by `mask` (all rows when None); later run() calls reuse
+        them. Use a mask to keep rows that never enter training (e.g. next to a data gap) out of
+        the statistics."""
+        if grouped_by_symbols is None:
+            grouped_by_symbols = self.grouped_by_symbols
+        if self.columns is None:
+            self.columns = data.columns
+        target_columns, _ = _get_columns(data, self.columns, symbols, grouped_by_symbols)
+        rows = data if mask is None else data[np.asarray(mask, dtype=bool)]
+        self.min_values = rows[target_columns].min()
+        self.max_values = rows[target_columns].max()
+        self.initialization_required = False
+        return self
+
     def run(self, data: pd.DataFrame, symbols: list = None, grouped_by_symbol=None) -> dict:
         if grouped_by_symbol is None:
             grouped_by_symbol = self.grouped_by_symbols
@@ -783,7 +798,13 @@ class STDPreProcess(ProcessBase):
 
     @property
     def option(self):
-        return {"columns": self.columns, "alpha": self.alpha}
+        option = {"columns": self.columns, "alpha": self.alpha}
+        if self.fitted:
+            # fitted statistics survive save_preprocesses/load_preprocess, so the same scaling can be
+            # reapplied at inference time (see fit()/transform())
+            option["mean_values"] = {str(k): float(v) for k, v in self.mean_values.items()}
+            option["std_values"] = {str(k): float(v) for k, v in self.std_values.items()}
+        return option
 
     @classmethod
     def load(self, key, params: dict):
@@ -793,7 +814,7 @@ class STDPreProcess(ProcessBase):
         process = STDPreProcess(key=key, **option)
         return process
 
-    def __init__(self, key="std", columns=None, alpha=1):
+    def __init__(self, key="std", columns=None, alpha=1, mean_values=None, std_values=None):
         super().__init__(key)
         if type(columns) is str:
             columns = [columns]
@@ -804,6 +825,38 @@ class STDPreProcess(ProcessBase):
             self.alpha = alpha
         else:
             raise TypeError("Please assign int or float as alpha")
+        if (mean_values is None) != (std_values is None):
+            raise ValueError("Both mean_values and std_values are required to restore a fitted process.")
+        self.fitted = mean_values is not None
+        if self.fitted:
+            self.mean_values = pd.Series(mean_values, dtype=np.float64)
+            self.std_values = pd.Series(std_values, dtype=np.float64)
+
+    def fit(self, df: pd.DataFrame, mask=None):
+        """Compute mean/std once and keep them (unlike run(), which refits on every call).
+
+        Args:
+            df (pd.DataFrame): data to fit on.
+            mask (array-like of bool, optional): rows to use for the statistics -- e.g. only rows that
+                actually enter training windows, excluding rows next to a data gap whose indicator
+                values span the gap. Defaults to None (all rows). NaN values are ignored.
+        """
+        target_columns, _ = _get_columns(df, self.columns)
+        rows = df if mask is None else df[np.asarray(mask, dtype=bool)]
+        self.mean_values = rows[target_columns].mean()
+        self.std_values = rows[target_columns].std()
+        self.fitted = True
+        return self
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply the statistics from fit() (or from restored mean_values/std_values) without refitting."""
+        if not self.fitted:
+            raise RuntimeError("STDPreProcess.transform() called before fit()")
+        target_columns, remaining_columns = _get_columns(df, self.columns)
+        target_df = (df[target_columns] - self.mean_values[target_columns]) / (self.std_values[target_columns] * self.alpha)
+        if len(remaining_columns) > 0:
+            target_df = pd.concat([target_df, df[remaining_columns]], axis=1)[df.columns]
+        return target_df
 
     def run(self, df):
         target_columns, remaining_columns = _get_columns(df, self.columns)

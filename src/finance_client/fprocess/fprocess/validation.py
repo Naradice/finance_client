@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 WEEKDAY_STR = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
@@ -198,3 +199,32 @@ def weekly_summary(df: pd.DataFrame):
         new_index = [WEEKDAY_STR[weekday] for weekday in weekday_df.index]
         weekday_df.index = new_index
         return weekday_df
+
+
+def gap_mask(index: pd.DatetimeIndex, expected_delta: pd.Timedelta = None) -> np.ndarray:
+    """bool array, True at position i when row i does not follow row i-1 by exactly the expected
+    sampling interval (a weekend/holiday gap, a missing bar, or the join between independently
+    generated runs). Position 0 is False.
+
+    Args:
+        index (pd.DatetimeIndex): timestamps of the rows, in order.
+        expected_delta (pd.Timedelta, optional): sampling interval. Defaults to the most frequent
+            difference between consecutive timestamps.
+    """
+    index = pd.DatetimeIndex(index)
+    n = len(index)
+    mask = np.zeros(n, dtype=bool)
+    if n < 2:
+        return mask
+    deltas = index[1:] - index[:-1]
+    if expected_delta is None:
+        expected_delta = pd.Series(deltas).mode().iloc[0]
+    mask[1:] = np.asarray(deltas != expected_delta)
+    return mask
+
+
+def contiguous_segment_ids(index: pd.DatetimeIndex, expected_delta: pd.Timedelta = None) -> np.ndarray:
+    """int array labelling each row with the id (0, 1, ...) of the gap-free run it belongs to -- rows
+    share an id iff no gap (see gap_mask) lies between them. Windows, returns and rolling indicators
+    are only meaningful within one segment."""
+    return np.cumsum(gap_mask(index, expected_delta))
