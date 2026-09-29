@@ -30,6 +30,9 @@ class ClientBase(metaclass=ABCMeta):
 
     simulation = False
     back_test = False
+    # Whether get_ohlc should simulate limit/stop fills and TP/SL hits locally.
+    # Live broker clients override this (see MT5Client).
+    simulates_order_fills = True
 
     def __init__(
         self,
@@ -1048,8 +1051,9 @@ class ClientBase(metaclass=ABCMeta):
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
             ohlc_df.dropna(how="all", inplace=True)
 
-        t = threading.Thread(target=self.__check_pending_positions_completion, args=(ohlc_df, symbols), daemon=True)
-        t.start()
+        if self.simulates_order_fills:
+            t = threading.Thread(target=self.__check_pending_positions_completion, args=(ohlc_df, symbols), daemon=True)
+            t.start()
 
         if do_run_process:
             if isinstance(ohlc_df, pd.DataFrame) and len(ohlc_df) >= required_length:

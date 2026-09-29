@@ -312,6 +312,7 @@ class MT5Client(ClientBase):
             risk_option=risk_option,
         )
         self.back_test = back_test
+        self._budget_cap = float(free_margin)
         self.debug = False
         self.provider = server
         isWorking = mt5.initialize()
@@ -1201,6 +1202,65 @@ class MT5Client(ClientBase):
 
     def _update_client_positions(self, actual_positions):
         self._sync_positions(actual_positions=actual_positions)
+
+    @property
+    def simulates_order_fills(self) -> bool:
+        # Live: the broker fills orders and hits TP/SL; get_orders/get_positions
+        # reconcile from MT5. Simulating fills locally as well re-"filled" a
+        # still-pending order on every OHLC fetch (reconciliation kept re-adding
+        # it), deducting its margin each time — budget went 100000 -> -800656.
+        return bool(self.back_test)
+
+    def get_free_margin(self) -> float:
+        """Budget cap minus margin held by this client's own open positions,
+        never more than the account's actual free margin (live only)."""
+        if self.back_test:
+            return super().get_free_margin()
+        try:
+            used = 0.0
+            for p in self._own_live_positions():
+                order_type = mt5.ORDER_TYPE_BUY if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_SELL
+                margin = mt5.order_calc_margin(order_type, p.symbol, p.volume, p.price_open)
+                used += float(margin or 0.0)
+            free = self._budget_cap - used
+            account = mt5.account_info()
+            if account is not None:
+                free = min(free, float(account.margin_free))
+            return free
+        except Exception:
+            logger.exception("get_free_margin failed; falling back to local account value")
+            return super().get_free_margin()
+
+    def _own_live_positions(self):
+        return [
+            p for p in (mt5.positions_get() or [])
+            if self.user_name is None or p.comment == self.user_name
+        ]
+
+    def get_equity(self) -> float:
+        """Live: budget cap plus unrealized PnL of this client's own positions,
+        never more than the account's actual equity. The local account value
+        drifts live (broker-side TP/SL closes never return margin locally)."""
+        if self.back_test:
+            return super().get_equity()
+        try:
+            pnl = sum(float(p.profit) for p in self._own_live_positions())
+            equity = self._budget_cap + pnl
+            account = mt5.account_info()
+            if account is not None:
+                equity = min(equity, float(account.equity))
+            return equity
+        except Exception:
+            logger.exception("get_equity failed; falling back to local account value")
+            return super().get_equity()
+
+    def get_balance(self) -> float:
+        if self.back_test:
+            return super().get_balance()
+        account = mt5.account_info()
+        if account is None:
+            return super().get_balance()
+        return min(self._budget_cap, float(account.balance))
 
     def get_positions(self, symbols: Union[str, List[str]] = None):
         if self.__ignore_order:
