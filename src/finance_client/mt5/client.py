@@ -486,6 +486,17 @@ class MT5Client(ClientBase):
         if result is None:
             logger.error(f"order failed. result is None.")
             return enum.TRADE_ERROR
+        # Decide by retcode first: requests that create no order (SL/TP
+        # modification via TRADE_ACTION_SLTP) succeed with order == 0, which
+        # the order == 0 check below reported as "order failed due to Request
+        # executed, retcode=10009" — the agent was told its breakeven SL was
+        # rejected when the broker had actually applied it.
+        if result.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED):
+            logger.info(f"order success {result.comment}")
+            return enum.TRADE_DONE
+        if result.retcode == mt5.TRADE_RETCODE_DONE_PARTIAL:
+            logger.warning(f"order partially done {result.comment}")
+            return enum.TRADE_PARTIAL_DONE
         if result.order == 0:
             # order failed
             logger.error(f"order failed due to {result.comment}, retcode={result.retcode}")
