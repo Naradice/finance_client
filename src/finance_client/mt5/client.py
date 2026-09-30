@@ -1211,8 +1211,15 @@ class MT5Client(ClientBase):
                 living_orders.append(order)
             return living_orders
 
+    _position_sync_lock = threading.Lock()
+
     def _update_client_positions(self, actual_positions):
-        self._sync_positions(actual_positions=actual_positions)
+        # get_positions() starts one of these threads per call; two running at
+        # once both saw a new broker position as missing locally and both
+        # inserted it -> "UNIQUE constraint failed: position.id" (~360 thread
+        # tracebacks/day in the multi-agent process). Serialize the sync.
+        with self._position_sync_lock:
+            self._sync_positions(actual_positions=actual_positions)
 
     @property
     def simulates_order_fills(self) -> bool:
