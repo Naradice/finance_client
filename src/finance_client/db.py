@@ -1011,7 +1011,12 @@ class PositionSQLiteStorage(PositionStorageBase):
             _serialize_json_value(position.result),
             _serialize_json_value(position.option),
         )
-        query = f"INSERT INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
+        # OR REPLACE: the same broker position may already be stored under
+        # another owner key (e.g. "__none__" from a client created without a
+        # user_name). The owner-filtered sync never sees that row, so a plain
+        # INSERT raised "UNIQUE constraint failed: position.id" on every sync;
+        # replacing hands the row to the client that actually owns it.
+        query = f"INSERT OR REPLACE INTO {self.POSITION_TABLE_NAME} ({keys}) VALUES {place_holders}"
         self.__commit(query, values)
 
     def store_positions(self, positions: List[Position]):
