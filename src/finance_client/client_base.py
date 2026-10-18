@@ -1383,6 +1383,14 @@ class ClientBase(metaclass=ABCMeta):
             return True
         return False
 
+    def get_recent_closed_trades(self, hours: float = 24.0) -> list:
+        """Recently closed positions of this client (live brokers only).
+
+        Returns:
+            list[dict]: see MT5Client.get_recent_closed_trades. Empty by default.
+        """
+        return []
+
     def get_orders(self):
         return self._open_orders.values()
 

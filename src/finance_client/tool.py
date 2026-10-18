@@ -374,6 +374,26 @@ class AgentTool:
         logger.debug(f"update_position result {suc}")
         return {"result": suc, "message": message}
 
+    def get_recent_closed_trades(self, hours: float = 24.0):
+        """Return this account's positions that were closed within the last `hours`.
+
+        Use this to see what just happened before planning a new entry — e.g. a
+        position that was stopped out a moment ago.
+
+        Args:
+            hours (float): look-back window in hours. Defaults to 24.
+
+        Returns:
+            list[dict]: oldest first; each has position_id, symbol, side ("LONG"/"SHORT"),
+            entry_price, exit_price, profit, closed_by ("sl" = stop loss, "tp" = take profit,
+            "manual_or_agent" = closed by an order), closed_at (UTC ISO time).
+        """
+        try:
+            return self.client.get_recent_closed_trades(hours=float(hours))
+        except Exception:
+            logger.exception("Error in get_recent_closed_trades")
+            return []
+
     def cancel_order(self, id: str):
         """Cancel a pending (unfilled) order by its ID.
 

@@ -1164,6 +1164,76 @@ class MT5Client(ClientBase):
         mt5.ORDER_TYPE_SELL_STOP: (ORDER_TYPE.stop, POSITION_SIDE.short),
     }
 
+    _OWNERSHIP_LOOKBACK_DAYS = 30
+    _last_server_utc_offset = None  # shared by all clients in the process
+
+    def _server_utc_offset(self, symbol: str) -> datetime.timedelta:
+        # MT5 times are broker-server wall clock packed into an epoch (OANDA runs
+        # UTC+2/+3). Infer the offset from a fresh tick. Over the weekend ticks are
+        # stale, so fall back to the last offset inferred in this process (0 only if
+        # none has been seen yet).
+        try:
+            tick = mt5.symbol_info_tick(symbol)
+            diff = float(tick.time) - datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
+            hours = round(diff / 3600)
+            if -12 <= hours <= 14 and abs(diff - hours * 3600) < 300:
+                MT5Client._last_server_utc_offset = datetime.timedelta(hours=hours)
+                return MT5Client._last_server_utc_offset
+        except Exception:
+            pass
+        return MT5Client._last_server_utc_offset or datetime.timedelta(0)
+
+    def get_recent_closed_trades(self, hours: float = 24.0) -> list:
+        """This client's positions closed within the last *hours* (live only).
+
+        A position belongs to this client if any of its deals carries our
+        comment (user_name); exits closed by TP/SL carry the broker's comment
+        ("[sl 109.100]"), so ownership is matched per position, not per deal.
+        Read-only: uses the existing terminal connection and never shuts it down.
+
+        Returns:
+            list[dict]: oldest first, each with position_id, symbol, side ("LONG"/
+            "SHORT"), entry_price, exit_price, profit, closed_by ("sl"/"tp"/
+            "manual_or_agent"), closed_at (ISO, UTC).
+        """
+        if self.back_test:
+            return []
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        try:
+            deals = mt5.history_deals_get(
+                now - datetime.timedelta(days=self._OWNERSHIP_LOOKBACK_DAYS), now + datetime.timedelta(days=1)
+            ) or []
+        except Exception:
+            logger.exception("get_recent_closed_trades: history_deals_get failed")
+            return []
+        owned = {d.position_id for d in deals if self.user_name is None or d.comment == self.user_name}
+        entries = {d.position_id: d for d in deals if d.entry == 0 and d.position_id in owned}
+        offsets = {}
+        result = []
+        for d in deals:
+            if d.entry == 0 or d.position_id not in owned:
+                continue
+            if d.symbol not in offsets:
+                offsets[d.symbol] = self._server_utc_offset(d.symbol)
+            closed_at = datetime.datetime.fromtimestamp(d.time, tz=datetime.timezone.utc) - offsets[d.symbol]
+            if closed_at < now - datetime.timedelta(hours=hours):
+                continue
+            comment = (d.comment or "").lower()
+            closed_by = "sl" if comment.startswith("[sl") else "tp" if comment.startswith("[tp") else "manual_or_agent"
+            entry = entries.get(d.position_id)
+            result.append({
+                "position_id": str(d.position_id),
+                "symbol": d.symbol,
+                "side": "LONG" if d.type == mt5.DEAL_TYPE_SELL else "SHORT",
+                "entry_price": entry.price if entry is not None else None,
+                "exit_price": d.price,
+                "profit": d.profit,
+                "closed_by": closed_by,
+                "closed_at": closed_at.isoformat(timespec="minutes"),
+            })
+        result.sort(key=lambda t: t["closed_at"])
+        return result
+
     def get_orders(self):
         if self.__ignore_order:
             return super().get_orders()
