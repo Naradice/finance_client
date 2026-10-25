@@ -658,7 +658,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             short_window (int): window for short EMA
             long_window (int): window for long EMA
             signal_window (int): window for signal line EMA
@@ -691,7 +691,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for ATR calculation
 
         Returns:
@@ -722,7 +722,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for Bollinger Bands calculation
             alpha (float): alpha value for Bollinger Bands calculation
 
@@ -754,7 +754,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for RSI calculation
 
         Returns:
@@ -785,7 +785,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for MA calculation. Must be greater than 2. Typical values: 5, 10, 20, 50, 200.
 
         Returns:
@@ -818,7 +818,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for EMA calculation. Must be greater than 2. Typical values: 9, 12, 20, 26, 50, 200.
 
         Returns:
@@ -851,7 +851,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for CCI calculation. Must be greater than 2. Typical value: 20.
 
         Returns:
@@ -884,7 +884,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for Linear Regression Momentum calculation
 
         Returns:
@@ -915,7 +915,7 @@ class AgentTool:
         Args:
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             window (int): window for ATR to calculate brick size
 
         Returns:
@@ -994,7 +994,7 @@ class AgentTool:
             indicator (str): Name of the indicator. One of: MACD, EMA, SMA, MA, BBAND, ATR, RSI, Renko, Slope, LRM, CCI
             symbol (str): symbol of currency, stock etc. ex USDJPY.
             length (int): specify data length > 0.
-            frame (str): specify frame to get time series data. any of Xmin (e.g. 1min), Xh (e.g. 1h), XD (e.g. 1D), WX (e.g. W1), MOX (e.g. MO1)
+            frame (str): time frame of the series: a number followed by a unit, e.g. "1min", "5min", "15min", "1h", "4h", "1D", "W1" (weekly), "MO1" (monthly). Always pass a concrete value such as "1D", never a placeholder like "XD".
             params (dict): indicator-specific parameters. Use get_indicator_params to get required keys.
 
         Returns:
