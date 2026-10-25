@@ -20,6 +20,8 @@ finance_client.egg-info
 .git/
 #IgnoreFolders
 .env
+.env.*
+!.env.example
 __pycache__/
 /dist
 *.npz

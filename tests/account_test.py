@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import unittest
 
@@ -541,6 +542,29 @@ class ManagerTest(unittest.TestCase):
         manager.close_position(position2.id, price=110, volume=1, index=today_index + pd.Timedelta(minutes=1))
         self.assertEqual(manager.get_daily_realized_pnl(), (110 - 100) * position2.trade_unit * position2.leverage * position2.volume)
 
+    def test_close_position_keeps_context_in_csv_log(self):
+        trade_log_path = os.path.join(os.path.dirname(__file__), "test_trade_context.csv")
+        account_history_path = os.path.join(os.path.dirname(__file__), "test_trade_context_history.csv")
+        username = "test_default"
+        log_storage = db.LogCSVStorage(
+            provider="Default",
+            username=username,
+            trade_log_path=trade_log_path,
+            account_history_path=account_history_path,
+        )
+        manager = _make_manager(10000, log_storage=log_storage)
+        option = {"indicators": {"rsi": 42.5, "atr": 0.87}}
+        result = {"ticket": "close-context-test"}
+
+        position = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1, option=option, result=result)
+        manager.close_position(position.id, price=110, volume=1)
+
+        logs = log_storage.get_logs(provider="Default", username=username)
+        self.assertEqual(len(logs), 2)
+        close_log = logs[logs["order_type"] == -1].iloc[0]
+        self.assertEqual(json.loads(close_log["option"]), option)
+        self.assertEqual(json.loads(close_log["result"]), result)
+
     def test_get_risk_volume_of_open_positions(self):
         manager = _make_manager(10000)
         position1 = manager.open_position(POSITION_SIDE.long, "test", price=100, volume=1)
@@ -677,6 +701,12 @@ class ManagerTest(unittest.TestCase):
             os.remove(f"{base_path}/tests/logs/finance_trade_log.csv")
         if os.path.exists(f"{base_path}/tests/logs/finance_account_history.csv"):
             os.remove(f"{base_path}/tests/logs/finance_account_history.csv")
+        test_trade_context_path = os.path.join(os.path.dirname(__file__), "test_trade_context.csv")
+        if os.path.exists(test_trade_context_path):
+            os.remove(test_trade_context_path)
+        test_trade_context_history_path = os.path.join(os.path.dirname(__file__), "test_trade_context_history.csv")
+        if os.path.exists(test_trade_context_history_path):
+            os.remove(test_trade_context_history_path)
         default_positions_path = os.path.abspath(f"{base_path}/tests/user/__none__/positions.json")
         if os.path.exists(default_positions_path):
             os.remove(default_positions_path)

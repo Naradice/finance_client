@@ -17,7 +17,7 @@ from finance_client.risk_manager.risk_options.risk_option import RiskOption
 from .. import enum
 from .. import frames as Frame
 from ..client_base import ClientBase
-from ..position import ClosedResult, Position
+from ..position import ClosedResult, Order, ORDER_TYPE, Position, POSITION_SIDE
 
 try:
     from ..fprocess.fprocess.csvrw import (get_datafolder_path, read_csv,
@@ -312,6 +312,7 @@ class MT5Client(ClientBase):
             risk_option=risk_option,
         )
         self.back_test = back_test
+        self._budget_cap = float(free_margin)
         self.debug = False
         self.provider = server
         isWorking = mt5.initialize()
@@ -445,9 +446,17 @@ class MT5Client(ClientBase):
                 return False
         return True
 
-    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, magic=0, position=None, order=None):
+    def __generate_common_request(self, action, symbol, _type, vol, price, dev, sl=None, tp=None, magic=0, position=None, order=None, expiration=None):
         if not self.__check_args(symbol, price, vol, dev, sl, tp):
             return None
+        if expiration is not None:
+            import datetime as _dt
+            if isinstance(expiration, (int, float)):
+                expiration = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=expiration)
+            # ORDER_TIME_SPECIFIED (2) = good-till-date; fall back to literal 2 for older builds
+            type_time = getattr(mt5, "ORDER_TIME_SPECIFIED", 2)
+        else:
+            type_time = mt5.ORDER_TIME_GTC
         request = {
             "action": action,
             "symbol": symbol,
@@ -455,11 +464,13 @@ class MT5Client(ClientBase):
             "price": price,
             "deviation": dev,
             "magic": magic,
-            "type_time": mt5.ORDER_TIME_GTC,
+            "type_time": type_time,
             "type": _type,
             "type_filling": mt5.ORDER_FILLING_IOC,
             "comment": self.user_name if self.user_name is not None else "",
         }
+        if expiration is not None:
+            request["expiration"] = expiration
         if sl is not None:
             request["sl"] = sl
         if tp is not None:
@@ -475,6 +486,17 @@ class MT5Client(ClientBase):
         if result is None:
             logger.error(f"order failed. result is None.")
             return enum.TRADE_ERROR
+        # Decide by retcode first: requests that create no order (SL/TP
+        # modification via TRADE_ACTION_SLTP) succeed with order == 0, which
+        # the order == 0 check below reported as "order failed due to Request
+        # executed, retcode=10009" — the agent was told its breakeven SL was
+        # rejected when the broker had actually applied it.
+        if result.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED):
+            logger.info(f"order success {result.comment}")
+            return enum.TRADE_DONE
+        if result.retcode == mt5.TRADE_RETCODE_DONE_PARTIAL:
+            logger.warning(f"order partially done {result.comment}")
+            return enum.TRADE_PARTIAL_DONE
         if result.order == 0:
             # order failed
             logger.error(f"order failed due to {result.comment}, retcode={result.retcode}")
@@ -503,14 +525,18 @@ class MT5Client(ClientBase):
                 logger.error(f"order failed due to unkown reason: {result.comment}, retcode={result.retcode}")
                 return enum.TRADE_ERROR
 
-    def __request_order(self, request):
+    def __request_order(self, request, _retry=0):
         result = mt5.order_send(request)
         retcode = self.__check_trade_result(result)
         if retcode in [enum.TRADE_DONE, enum.TRADE_PARTIAL_DONE]:
             return True, result
         elif retcode == enum.TRADE_CONTEXT_BUSY:
+            if _retry >= 3:
+                error_details = mt5.last_error()[1] if result is None else result.comment
+                logger.error(f"order failed after {_retry} retries: {error_details}")
+                return False, error_details
             sleep(1)
-            return self.__request_order(request)
+            return self.__request_order(request, _retry + 1)
         else:
             if result is None:
                 error_details = mt5.last_error()[1]
@@ -680,7 +706,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
+    def _sell_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
@@ -700,6 +726,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 order=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -709,7 +736,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _sell_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
+    def _sell_stop(self, symbol, price, volume, tp, sl, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(False, price, tp, sl)
         if suc is False:
             return False, msg
@@ -729,6 +756,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 magic=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -793,7 +821,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, *args, **kwargs):
+    def _buy_limit(self, symbol, price, volume, tp=None, sl=None, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg
@@ -814,6 +842,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 magic=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -823,7 +852,7 @@ class MT5Client(ClientBase):
         else:
             return True, numpy.random.randint(100, 100000)
 
-    def _buy_stop(self, symbol, price, volume, tp, sl, order_number=None, *args, **kwargs):
+    def _buy_stop(self, symbol, price, volume, tp, sl, order_number=None, expiration=None, *args, **kwargs):
         suc, msg = self.__check_params(True, price, tp, sl)
         if suc is False:
             return False, msg
@@ -844,6 +873,7 @@ class MT5Client(ClientBase):
                 sl=order_request.sl,
                 tp=order_request.tp,
                 magic=order_number,
+                expiration=expiration,
             )
             order_suc, result = self.__request_order(request)
             if order_suc:
@@ -1124,28 +1154,213 @@ class MT5Client(ClientBase):
             logger.warning("pending order is not available on backtest and simulator")
             return super().cancel_order(id)
 
+    # Maps a raw MT5 pending-order type to our (ORDER_TYPE, POSITION_SIDE) pair.
+    # Stop-limit variants aren't placed by this client (see _buy_limit/_sell_limit/
+    # _buy_stop/_sell_stop) so they're intentionally left unmapped.
+    _MT5_ORDER_TYPE_MAP = {
+        mt5.ORDER_TYPE_BUY_LIMIT: (ORDER_TYPE.limit, POSITION_SIDE.long),
+        mt5.ORDER_TYPE_SELL_LIMIT: (ORDER_TYPE.limit, POSITION_SIDE.short),
+        mt5.ORDER_TYPE_BUY_STOP: (ORDER_TYPE.stop, POSITION_SIDE.long),
+        mt5.ORDER_TYPE_SELL_STOP: (ORDER_TYPE.stop, POSITION_SIDE.short),
+    }
+
+    _OWNERSHIP_LOOKBACK_DAYS = 30
+    _last_server_utc_offset = None  # shared by all clients in the process
+
+    def _server_utc_offset(self, symbol: str) -> datetime.timedelta:
+        # MT5 times are broker-server wall clock packed into an epoch (OANDA runs
+        # UTC+2/+3). Infer the offset from a fresh tick. Over the weekend ticks are
+        # stale, so fall back to the last offset inferred in this process (0 only if
+        # none has been seen yet).
+        try:
+            tick = mt5.symbol_info_tick(symbol)
+            diff = float(tick.time) - datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
+            hours = round(diff / 3600)
+            if -12 <= hours <= 14 and abs(diff - hours * 3600) < 300:
+                MT5Client._last_server_utc_offset = datetime.timedelta(hours=hours)
+                return MT5Client._last_server_utc_offset
+        except Exception:
+            pass
+        return MT5Client._last_server_utc_offset or datetime.timedelta(0)
+
+    def get_recent_closed_trades(self, hours: float = 24.0) -> list:
+        """This client's positions closed within the last *hours* (live only).
+
+        A position belongs to this client if any of its deals carries our
+        comment (user_name); exits closed by TP/SL carry the broker's comment
+        ("[sl 109.100]"), so ownership is matched per position, not per deal.
+        Read-only: uses the existing terminal connection and never shuts it down.
+
+        Returns:
+            list[dict]: oldest first, each with position_id, symbol, side ("LONG"/
+            "SHORT"), entry_price, exit_price, profit, closed_by ("sl"/"tp"/
+            "manual_or_agent"), closed_at (ISO, UTC).
+        """
+        if self.back_test:
+            return []
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        try:
+            deals = mt5.history_deals_get(
+                now - datetime.timedelta(days=self._OWNERSHIP_LOOKBACK_DAYS), now + datetime.timedelta(days=1)
+            ) or []
+        except Exception:
+            logger.exception("get_recent_closed_trades: history_deals_get failed")
+            return []
+        owned = {d.position_id for d in deals if self.user_name is None or d.comment == self.user_name}
+        entries = {d.position_id: d for d in deals if d.entry == 0 and d.position_id in owned}
+        offsets = {}
+        result = []
+        for d in deals:
+            if d.entry == 0 or d.position_id not in owned:
+                continue
+            if d.symbol not in offsets:
+                offsets[d.symbol] = self._server_utc_offset(d.symbol)
+            closed_at = datetime.datetime.fromtimestamp(d.time, tz=datetime.timezone.utc) - offsets[d.symbol]
+            if closed_at < now - datetime.timedelta(hours=hours):
+                continue
+            comment = (d.comment or "").lower()
+            closed_by = "sl" if comment.startswith("[sl") else "tp" if comment.startswith("[tp") else "manual_or_agent"
+            entry = entries.get(d.position_id)
+            result.append({
+                "position_id": str(d.position_id),
+                "symbol": d.symbol,
+                "side": "LONG" if d.type == mt5.DEAL_TYPE_SELL else "SHORT",
+                "entry_price": entry.price if entry is not None else None,
+                "exit_price": d.price,
+                "profit": d.profit,
+                "closed_by": closed_by,
+                "closed_at": closed_at.isoformat(timespec="minutes"),
+            })
+        result.sort(key=lambda t: t["closed_at"])
+        return result
+
     def get_orders(self):
         if self.__ignore_order:
             return super().get_orders()
         else:
             mt5_orders = mt5.orders_get()
+            if mt5_orders is None:
+                logger.warning("mt5.orders_get() returned None — error: %s. Falling back to cached orders.", mt5.last_error())
+                return super().get_orders()
             living_orders = []
-            for order in mt5_orders:
-                ticket_id = str(order.ticket)
+            for m_order in mt5_orders:
+                if self.user_name is not None:
+                    if self.user_name != m_order.comment:
+                        continue
+                ticket_id = str(m_order.ticket)
                 if ticket_id in self._open_orders:
                     living_orders.append(self._open_orders[ticket_id])
+                    continue
+                # Not in our in-memory cache — either placed by a previous
+                # process instance (this client never persists _open_orders
+                # across restarts) or otherwise untracked. Reconcile it
+                # directly from the broker so a restart doesn't lose
+                # visibility into a still-pending order.
+                mapped = self._MT5_ORDER_TYPE_MAP.get(m_order.type)
+                if mapped is None:
+                    logger.debug("get_orders: skipping unsupported broker order type %s for ticket %s", m_order.type, ticket_id)
+                    continue
+                order_type, position_side = mapped
+                symbol_info = mt5.symbol_info(m_order.symbol)
+                trade_unit = symbol_info.trade_contract_size if symbol_info is not None else 1
+                order = Order(
+                    order_type,
+                    position_side,
+                    m_order.symbol,
+                    m_order.price_open,
+                    m_order.volume_current,
+                    trade_unit=trade_unit,
+                    leverage=self.leverage,
+                    tp=None if m_order.tp == 0.0 else m_order.tp,
+                    sl=None if m_order.sl == 0.0 else m_order.sl,
+                    id=ticket_id,
+                    magic_number=m_order.magic,
+                )
+                order.created = datetime.datetime.fromtimestamp(m_order.time_setup, tz=datetime.timezone.utc)
+                self._open_orders[ticket_id] = order
+                living_orders.append(order)
             return living_orders
 
+    _position_sync_lock = threading.Lock()
+
     def _update_client_positions(self, actual_positions):
-        self._sync_positions(actual_positions=actual_positions)
+        # get_positions() starts one of these threads per call; two running at
+        # once both saw a new broker position as missing locally and both
+        # inserted it -> "UNIQUE constraint failed: position.id" (~360 thread
+        # tracebacks/day in the multi-agent process). Serialize the sync.
+        with self._position_sync_lock:
+            self._sync_positions(actual_positions=actual_positions)
+
+    @property
+    def simulates_order_fills(self) -> bool:
+        # Live: the broker fills orders and hits TP/SL; get_orders/get_positions
+        # reconcile from MT5. Simulating fills locally as well re-"filled" a
+        # still-pending order on every OHLC fetch (reconciliation kept re-adding
+        # it), deducting its margin each time — budget went 100000 -> -800656.
+        return bool(self.back_test)
+
+    def get_free_margin(self) -> float:
+        """Budget cap minus margin held by this client's own open positions,
+        never more than the account's actual free margin (live only)."""
+        if self.back_test:
+            return super().get_free_margin()
+        try:
+            used = 0.0
+            for p in self._own_live_positions():
+                order_type = mt5.ORDER_TYPE_BUY if p.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_SELL
+                margin = mt5.order_calc_margin(order_type, p.symbol, p.volume, p.price_open)
+                used += float(margin or 0.0)
+            free = self._budget_cap - used
+            account = mt5.account_info()
+            if account is not None:
+                free = min(free, float(account.margin_free))
+            return free
+        except Exception:
+            logger.exception("get_free_margin failed; falling back to local account value")
+            return super().get_free_margin()
+
+    def _own_live_positions(self):
+        return [
+            p for p in (mt5.positions_get() or [])
+            if self.user_name is None or p.comment == self.user_name
+        ]
+
+    def get_equity(self) -> float:
+        """Live: budget cap plus unrealized PnL of this client's own positions,
+        never more than the account's actual equity. The local account value
+        drifts live (broker-side TP/SL closes never return margin locally)."""
+        if self.back_test:
+            return super().get_equity()
+        try:
+            pnl = sum(float(p.profit) for p in self._own_live_positions())
+            equity = self._budget_cap + pnl
+            account = mt5.account_info()
+            if account is not None:
+                equity = min(equity, float(account.equity))
+            return equity
+        except Exception:
+            logger.exception("get_equity failed; falling back to local account value")
+            return super().get_equity()
+
+    def get_balance(self) -> float:
+        if self.back_test:
+            return super().get_balance()
+        account = mt5.account_info()
+        if account is None:
+            return super().get_balance()
+        return min(self._budget_cap, float(account.balance))
 
     def get_positions(self, symbols: Union[str, List[str]] = None):
         if self.__ignore_order:
             return super().get_positions(symbols=symbols)
         else:
             mt5_positions = mt5.positions_get()
+            logger.debug("mt5.positions_get() returned: %s (type=%s)", mt5_positions, type(mt5_positions).__name__)
             positions = []
             positions_by_order = []
+            if mt5_positions is None:
+                logger.warning("mt5.positions_get() returned None — error: %s. Falling back to cached positions.", mt5.last_error())
+                return super().get_positions(symbols=symbols)
             # convert mt5 position to client position
             if symbols is not None:
                 if isinstance(symbols, str):
@@ -1159,7 +1374,7 @@ class MT5Client(ClientBase):
                 for order in self._open_orders:
                     if order == m_position.magic and order.symbol == m_position.symbol:
                         positions_by_order.append(order.id)
-                position_side = 1 if mt5.POSITION_SIDE_BUY == m_position.type else -1
+                position_side = 1 if mt5.POSITION_TYPE_BUY == m_position.type else -1
                 symbol = m_position.symbol
                 position_price = m_position.price_open
                 volume = m_position.volume
@@ -1199,14 +1414,31 @@ class MT5Client(ClientBase):
         if self.__ignore_order is False:
             if hasattr(position, "order"):
                 position = position.order
-            request = {"action": mt5.TRADE_ACTION_SLTP, "position": int(position)}
-            if tp is not None:
-                request["tp"] = float(tp)
-            if sl is not None:
-                request["sl"] = float(sl)
-            suc, _ = self.__request_order(request)
-            super().update_position(position, tp=tp, sl=sl)
-            return suc
+            # TRADE_ACTION_SLTP treats an omitted sl/tp as 0 (= remove it), so a
+            # SL-only update would silently wipe an existing TP. Fill whichever
+            # side wasn't given from the live position so it stays unchanged.
+            live = mt5.positions_get(ticket=int(position))
+            if not live:
+                logger.error(f"position {position} is not found on MT5.")
+                return False
+            live = live[0]
+            request = {
+                "action": mt5.TRADE_ACTION_SLTP,
+                "position": int(position),
+                "symbol": live.symbol,
+                "sl": float(sl) if sl is not None else float(live.sl),
+                "tp": float(tp) if tp is not None else float(live.tp),
+            }
+            suc, detail = self.__request_order(request)
+            if not suc:
+                logger.error(f"update_position {position} rejected: {detail}")
+                return False
+            try:
+                super().update_position(position, tp=tp, sl=sl)
+            except Exception:
+                # broker side already succeeded; local storage sync is best-effort
+                logger.exception(f"local storage sync failed after update_position {position}")
+            return True
         else:
             super().update_position(position, tp=tp, sl=sl)
             return True

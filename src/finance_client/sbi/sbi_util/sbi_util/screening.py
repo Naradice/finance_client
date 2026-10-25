@@ -6,13 +6,14 @@ import time
 import pandas as pd
 from selenium import webdriver
 from selenium.common import exceptions
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from . import auth, utils
+from .selenium_recovery import HealingDriver, enable_recovery
+from .chrome_session import open_chrome
 from .sbi_enum import *
 
 logger = logging.getLogger(__name__)
@@ -21,18 +22,16 @@ ADVANCED_OPTION_LIMIT = 10
 
 class StatefulScreening:
 
-    def __init__(self, id, password, driver: webdriver.Chrome = None):
+    def __init__(self, id, password, driver: webdriver.Chrome = None, operation_recovery=None):
         if driver is None:
-            options = Options()
-            options.add_argument(f"--user-data-dir={os.path.join(utils.BASE_PATH, "profile")}")
-            options.add_argument("user-agent=Mozilla/5.0 ... Chrome/114.0.0.0 Safari/537.36")
-            self.driver = webdriver.Chrome(options=options)
+            self.driver = open_chrome()
+            self.driver = enable_recovery(self.driver, operation_recovery)
             self.driver.implicitly_wait(5)
             self.driver.get(utils.URL)
             logger.debug("start initial login process.")
             auth.login(driver=self.driver, id=id, password=password)
         else:
-            self.driver = driver
+            self.driver = enable_recovery(driver, operation_recovery)
         
         # check opened page and logged in or not
         if utils.domain in self.driver.current_url:
@@ -69,6 +68,21 @@ class StatefulScreening:
         return False
     
     def transit_to_screening_page(self):
+        try:
+            return self._transit_to_screening_legacy()
+        except (exceptions.NoSuchElementException, IndexError, UnboundLocalError):
+            if not isinstance(self.driver, HealingDriver):
+                raise
+            self.driver.find_semantic(("国内株式",)).click()
+            try:
+                link = self.driver.find_semantic(("銘柄スクリーニング",))
+            except exceptions.NoSuchElementException:
+                self.driver.find_semantic(("銘柄検索",)).click()
+                link = self.driver.find_semantic(("銘柄スクリーニング",))
+            link.click()
+            return True
+
+    def _transit_to_screening_legacy(self):
         # transit to screening page
         try:
             target_class_name = "slc-global-nav-container"
@@ -82,11 +96,14 @@ class StatefulScreening:
         
         try:
             nav_headers = self.driver.find_elements(By.CLASS_NAME, "slc-nav-accordion-item")
+            nav_header = None
             # open dialog
             for nav_header in nav_headers:
                 if "銘柄検索" in nav_header.text:
                     nav_header.click()
                     break
+            else:
+                raise exceptions.NoSuchElementException("Stock search navigation is missing")
             nav_items = nav_header.find_elements(By.XPATH, "ul/li")
             for nav_item in nav_items:
                 if "銘柄スクリーニング" in nav_item.text:
@@ -94,6 +111,8 @@ class StatefulScreening:
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", nav_item)
                     nav_item.click()
                     break
+            else:
+                raise exceptions.NoSuchElementException("Screening navigation is missing")
             logger.debug("transit to screening page")
         except exceptions.NoSuchElementException as e:
             logger.error(f"failed to transit to screening page: {e}")

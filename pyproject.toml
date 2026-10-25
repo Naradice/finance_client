@@ -13,6 +13,7 @@ dependencies = [
     "matplotlib",
     "MetaTrader5",
     "websocket-client",
+    "websockets>=15,<16",
     "python-dotenv",
     "PyYAML",
     "yfinance",
@@ -22,6 +23,10 @@ dependencies = [
     "setuptools",
     "google_auth_oauthlib"
 ]
+
+[project.optional-dependencies]
+postgres = ["psycopg2-binary"]
+sbi-ai = ["openai>=1.68.0"]
 
 [tool.black]
 line-length = 150

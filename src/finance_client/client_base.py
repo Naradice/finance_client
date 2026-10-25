@@ -30,6 +30,9 @@ class ClientBase(metaclass=ABCMeta):
 
     simulation = False
     back_test = False
+    # Whether get_ohlc should simulate limit/stop fills and TP/SL hits locally.
+    # Live broker clients override this (see MT5Client).
+    simulates_order_fills = True
 
     def __init__(
         self,
@@ -52,6 +55,7 @@ class ClientBase(metaclass=ABCMeta):
         storage: db.PositionStorageBase = None,
         log_storage: db.LogStorageBase = None,
         risk_option: RiskOption = None,
+        data_only: bool = False,
     ):
         """Base Class of Finance Client. Each Client should overwride required method.
 
@@ -75,6 +79,7 @@ class ClientBase(metaclass=ABCMeta):
             storage (db.PositionStorageBase, optional): Specify supported storage. Defaults to None, then use SQLite.
             log_storage (db.LogStorageBase, optional): Specify supported log storage. Defaults to None, then use CSV.
             risk_option (RiskOption, optional): risk option to use for smart_order when risk_option is not specified in smart_order. Defaults to None.
+            data_only (bool, optional): When True, skip account and risk manager initialization. Use this when the client is used only for data download, not for trading. Defaults to False.
         """
         self.auto_index = None
         self._step_index = start_index
@@ -117,22 +122,27 @@ class ClientBase(metaclass=ABCMeta):
                     ohlc_dict[col] = col
             self.ohlc_columns = ohlc_dict
 
-        if storage is None:
-            db_path = os.path.join(os.getcwd(), "finance_client.db")
-            storage = db.PositionSQLiteStorage(db_path, provider, user_name)
-        self.account = account.Manager(
-            account_risk_config=self._default_account_config_path if account_risk_config is None else account_risk_config,
-            free_margin=free_margin,
-            used_margin=used_margin,
-            position_storage=storage,
-            log_storage=log_storage,
-            provider=provider,
-        )
-        self.risk_option = risk_option
-        self.risk_manager = RiskManager(
-            self.account, 
-            self._default_symbol_config_path if symbol_risk_config is None else symbol_risk_config
-        )
+        if data_only:
+            self.account = None
+            self.risk_option = None
+            self.risk_manager = None
+        else:
+            if storage is None:
+                db_path = os.path.join(os.getcwd(), "finance_client.db")
+                storage = db.PositionSQLiteStorage(db_path, provider, user_name)
+            self.account = account.Manager(
+                account_risk_config=self._default_account_config_path if account_risk_config is None else account_risk_config,
+                free_margin=free_margin,
+                used_margin=used_margin,
+                position_storage=storage,
+                log_storage=log_storage,
+                provider=provider,
+            )
+            self.risk_option = risk_option
+            self.risk_manager = RiskManager(
+                self.account,
+                self._default_symbol_config_path if symbol_risk_config is None else symbol_risk_config
+            )
         # update max_daily_loss when date is changed. This is used to consider max daily loss limit in risk management.
         self.__last_date = None
 
@@ -151,6 +161,63 @@ class ClientBase(metaclass=ABCMeta):
             self.eco_keys = economic_keys
 
         self._indices = None
+
+    def reset_state(self):
+        """Clear all stored positions and trade logs for this client's account scope.
+
+        Call before starting a new run when resuming after a long pause, so
+        stale positions/orders from a previous run are not treated as current.
+        No-op when the client was constructed with data_only=True.
+        """
+        if self.account is not None:
+            self.account.reset()
+
+    def _get_quote_to_account_rate(self, symbol: str) -> float:
+        """Return the conversion rate from `symbol`'s quote currency into the
+        account's base currency (e.g. ~153 for a JPY account trading a
+        USD-quoted pair like EURUSD -- 1 USD of stop-loss/profit distance is
+        worth ~153 JPY). Returns 1.0 when they already match -- the common
+        case (USDJPY/EURJPY on a JPY account) -- which preserves prior
+        behavior exactly.
+
+        Assumes a standard 6-character FX symbol (BASEQUOTE, 3 chars each).
+        Falls back to 1.0 (with an error logged) if the account's base
+        currency is unknown or no live conversion pair can be found: silently
+        mis-costing risk is the exact bug this method exists to fix, so a
+        fallback here means risk sizing has reverted to that unconverted
+        (dangerous for non-account-currency pairs) behavior for this trade --
+        treat a logged fallback as this symbol needing attention, not as safe.
+        """
+        risk_config = self.account.risk_config if self.account is not None else None
+        account_currency = risk_config.base_currency if risk_config is not None else None
+        if not account_currency or len(symbol) < 6:
+            return 1.0
+
+        quote_currency = symbol[3:6]
+        if quote_currency == account_currency:
+            return 1.0
+
+        direct = f"{quote_currency}{account_currency}"
+        try:
+            rate = self.get_current_ask(direct)
+            if rate:
+                return float(rate)
+        except Exception:
+            logger.debug(f"No direct rate for {direct}; trying inverse {account_currency}{quote_currency}.")
+
+        inverse = f"{account_currency}{quote_currency}"
+        try:
+            rate = self.get_current_ask(inverse)
+            if rate:
+                return 1.0 / float(rate)
+        except Exception:
+            pass
+
+        logger.error(
+            f"Could not determine {quote_currency}->{account_currency} conversion rate for {symbol}; "
+            f"falling back to 1.0, which mis-sizes risk for any pair not quoted in {account_currency}."
+        )
+        return 1.0
 
     def open_trade(
         self,
@@ -183,6 +250,8 @@ class ClientBase(metaclass=ABCMeta):
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
         """
+        kwargs.pop("ohlc_df", None)
+        expiration = kwargs.pop("expiration", None)
         if volume is None:
             if self.risk_option is None and risk_option is None:
                 raise ValueError("volume must be specified or set risk_option at client init.")
@@ -203,6 +272,7 @@ class ClientBase(metaclass=ABCMeta):
                     stop_loss=sl,
                     take_profit=tp,
                     ohlc_df=ohlc_df,
+                    quote_to_account_rate=self._get_quote_to_account_rate(symbol),
                 )
                 volume = risk_result.volume
                 if sl is None:
@@ -278,8 +348,9 @@ class ClientBase(metaclass=ABCMeta):
             if price is None:
                 logger.error("price must be specified for limit/stop order.")
                 return False, None
-            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1.0
-            leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
+            symbol_risk_config = self.risk_manager.get_symbol_config(symbol)
+            trade_unit = symbol_risk_config.contract_size if symbol_risk_config else 1.0
+            leverage = symbol_risk_config.leverage if symbol_risk_config else 1.0
             p = Position(
                 POSITION_SIDE.long if is_buy is True else POSITION_SIDE.short,
                 price=price,
@@ -318,6 +389,7 @@ class ClientBase(metaclass=ABCMeta):
                         sl=sl,
                         id=ticket_id,
                         magic_number=magic_number,
+                        expiration=expiration,
                     )
                     return suc, p
                 else:
@@ -346,6 +418,7 @@ class ClientBase(metaclass=ABCMeta):
                         sl=sl,
                         id=ticket_id,
                         magic_number=magic_number,
+                        expiration=expiration,
                     )
                     p.id = ticket_id
                     return suc, p
@@ -404,6 +477,7 @@ class ClientBase(metaclass=ABCMeta):
         sl: float = None,
         order_type: int = 0,
         ohlc_df=None,
+        expiration=None,
     ):
         """open or order a position with risk management. volume is calculated by risk_option.
 
@@ -417,6 +491,9 @@ class ClientBase(metaclass=ABCMeta):
             sl (float, optional): specify stop loss price. Default is None
             ohlc_df (pd.DataFrame, optional): Recent OHLC data forwarded to risk_option.calculate()
                 so indicators can be computed inside the risk option.
+            expiration (datetime | float | None): order expiration. A datetime is used as-is;
+                a float is treated as hours from now. None means GTC (no expiry). Only applies
+                to limit/stop orders.
         Returns:
             Success (bool): True if order is completed
             Position (Position): position or id which is required to close the position
@@ -427,7 +504,7 @@ class ClientBase(metaclass=ABCMeta):
         original = self.risk_option
         self.risk_option = effective_risk_option
         try:
-            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type, ohlc_df=ohlc_df)
+            return self.open_trade(is_buy=is_buy, volume=None, symbol=symbol, price=entry_price, tp=tp, sl=sl, order_type=order_type, ohlc_df=ohlc_df, expiration=expiration)
         finally:
             self.risk_option = original
 
@@ -484,8 +561,9 @@ class ClientBase(metaclass=ABCMeta):
                 return default_closed_result
             if volume is None:
                 volume = 1
-            trade_unit = self.symbol_risk_config[symbol].contract_size if symbol in self.symbol_risk_config else 1
-            leverage = self.symbol_risk_config[symbol].leverage if symbol in self.symbol_risk_config else 1.0
+            symbol_risk_config = self.risk_manager.get_symbol_config(symbol)
+            trade_unit = symbol_risk_config.contract_size if symbol_risk_config else 1
+            leverage = symbol_risk_config.leverage if symbol_risk_config else 1.0
             position = Position(
                 position_side=position_side,
                 symbol=symbol,
@@ -658,7 +736,7 @@ class ClientBase(metaclass=ABCMeta):
         if account_risk_config is not None:
             self.account.risk_config = account_risk_config
         if symbol_risk_config is not None:
-            self.symbol_risk_config = symbol_risk_config
+            self.risk_manager.symbol_risk_config = symbol_risk_config
 
     def _sync_positions(self, actual_positions):
         long_positions, short_positions = self.account.storage.get_positions()
@@ -800,6 +878,12 @@ class ClientBase(metaclass=ABCMeta):
                 return
             for id, order in orders.items():
                 logger.debug(f"checking order: {id}")
+                if order.expiration is not None:
+                    now = datetime.datetime.now(tz=datetime.timezone.utc)
+                    if now >= order.expiration:
+                        logger.info(f"order {id} expired at {order.expiration}, cancelling")
+                        closed_orders.append(id)
+                        continue
                 if order.order_type == ORDER_TYPE.limit or order.order_type == ORDER_TYPE.stop:
                     self.ohlc_columns = self.get_ohlc_columns()
                     high_column = self.ohlc_columns["High"]
@@ -837,7 +921,8 @@ class ClientBase(metaclass=ABCMeta):
                         else:
                             logger.info(f"short position is opened by limit/stop order: {open_price}")
                             if self.__open_short_position(
-                                symbol=order.symbol, sold_rate=open_price, volume=order.volume, tp=order.tp, sl=order.sl, result=None
+                                symbol=order.symbol, sold_rate=open_price, volume=order.volume, trade_unit=order.trade_unit, leverage=order.leverage,
+                                tp=order.tp, sl=order.sl, result=None
                             ):
                                 closed_orders.append(id)
             # remove closed orders
@@ -966,8 +1051,9 @@ class ClientBase(metaclass=ABCMeta):
             ohlc_df = ohlc_df.groupby(pd.Grouper(level=0, freq=data_freq)).first()
             ohlc_df.dropna(how="all", inplace=True)
 
-        t = threading.Thread(target=self.__check_pending_positions_completion, args=(ohlc_df, symbols), daemon=True)
-        t.start()
+        if self.simulates_order_fills:
+            t = threading.Thread(target=self.__check_pending_positions_completion, args=(ohlc_df, symbols), daemon=True)
+            t.start()
 
         if do_run_process:
             if isinstance(ohlc_df, pd.DataFrame) and len(ohlc_df) >= required_length:
@@ -1157,6 +1243,10 @@ class ClientBase(metaclass=ABCMeta):
                     do_add_eco_idc=do_add_eco_idc,
                     data_freq=data_freq,
                 )
+            except StopIteration as e:
+                if disable_step:
+                    self.auto_step_index = auto_step_index
+                raise e
             except Exception as e:
                 logger.error(f"Failed to get trading data: {e}")
                 if disable_step:
@@ -1292,6 +1382,14 @@ class ClientBase(metaclass=ABCMeta):
             self._open_orders.pop(ticket_id)
             return True
         return False
+
+    def get_recent_closed_trades(self, hours: float = 24.0) -> list:
+        """Recently closed positions of this client (live brokers only).
+
+        Returns:
+            list[dict]: see MT5Client.get_recent_closed_trades. Empty by default.
+        """
+        return []
 
     def get_orders(self):
         return self._open_orders.values()

@@ -53,7 +53,8 @@ class VantageClient(CSVClient):
         user_name=None,
         risk_option: RiskOption = None,
         account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: str | SymbolRiskConfig = None
+        symbol_risk_config: str | SymbolRiskConfig = None,
+        data_only: bool = False,
     ):
         """Get ohlc rate from alpha vantage api. No online download.
 
@@ -116,7 +117,8 @@ class VantageClient(CSVClient):
             user_name=user_name,
             risk_option=risk_option,
             account_risk_config=account_risk_config,
-            symbol_risk_config=symbol_risk_config
+            symbol_risk_config=symbol_risk_config,
+            data_only=data_only,
         )
 
     def __convert_response_to_df(self, data_json: dict):

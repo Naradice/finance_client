@@ -308,7 +308,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         enable_trade_log=False,
         risk_option: RiskOption = None,
         account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: str | SymbolRiskConfig = None
+        symbol_risk_config: str | SymbolRiskConfig = None,
+        data_only: bool = False,
     ):
         """CSV Client Base
         Need to change codes to use settings file
@@ -339,7 +340,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
             log_storage=log_storage,
             risk_option=risk_option,
             account_risk_config=account_risk_config,
-            symbol_risk_config=symbol_risk_config
+            symbol_risk_config=symbol_risk_config,
+            data_only=data_only,
         )
         random.seed(seed)
         self.data = None
@@ -490,7 +492,8 @@ class CSVClientBase(ClientBase, metaclass=ABCMeta):
         pass
 
     def get_current_datetime(self):
-        index = self.data.index[self._step_index - 1]
+        idx = min(self._step_index - 1, len(self.data) - 1)
+        index = self.data.index[idx]
         try:
             return self._index_to_datetime(index)
         except Exception as e:
@@ -551,13 +554,16 @@ class CSVClient(CSVClientBase):
         slip_type="random",
         free_margin=1000000,
         storage=None,
+        log_storage=None,
         do_render=False,
         seed=1017,
+        provider="csv",
         enable_trade_log=False,
         user_name:str = None,
         risk_option: RiskOption = None,
         account_risk_config: AccountRiskConfig = None,
-        symbol_risk_config: str | SymbolRiskConfig = None
+        symbol_risk_config: str | SymbolRiskConfig = None,
+        data_only: bool = False,
     ):
         """CSV Client for time series data like bitcoin, stock, finance
 
@@ -611,14 +617,16 @@ class CSVClient(CSVClientBase):
             slip_type=slip_type,
             free_margin=free_margin,
             storage=storage,
+            log_storage=log_storage,
             do_render=do_render,
             seed=seed,
             user_name=user_name,
-            provider="csv",
+            provider=provider,
             enable_trade_log=enable_trade_log,
             risk_option=risk_option,
             account_risk_config=account_risk_config,
-            symbol_risk_config=symbol_risk_config
+            symbol_risk_config=symbol_risk_config,
+            data_only=data_only,
         )
         if out_frame is not None:
             if self.frame < out_frame:
@@ -796,9 +804,7 @@ class CSVClient(CSVClientBase):
                         # todo initialize based on parameters
                         self._step_index = random.randint(0, len(self.data))
                     else:
-                        if self.keep_observation_length:
-                            logger.warning(f"current step {self._step_index} over the data length {len(self)}. Fix step index to last index")
-                            self._step_index = self._step_index - 1
+                        raise StopIteration("CSV data exhausted")
                 index = self._step_index
 
         if length is not None:

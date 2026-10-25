@@ -11,6 +11,7 @@ from finance_client.risk_manager.risk_options.risk_option import RiskOption
 from finance_client.yfinance.client import YahooClient
 
 from .sbi_util.sbi_util.rpa import STOCK
+from .sbi_util.sbi_util.env import load_sbi_env
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,11 @@ class SBIClient(ClientBase):
         enable_trade_log=False,
         risk_option: RiskOption = None,
         account_risk_config: str|AccountRiskConfig = None,
-        symbol_risk_config: str|SymbolRiskConfig = None
+        symbol_risk_config: str|SymbolRiskConfig = None,
+        read_recovery=None,
+        read_only=None,
+        operation_recovery=None,
+        phone_auth_handler=None,
     ):
         """_summary_
 
@@ -62,6 +67,10 @@ class SBIClient(ClientBase):
             risk_option (RiskOption, optional): _description_. Defaults to None.
             account_risk_config (str|AccountRiskConfig, optional): _description_. Defaults to None.
             symbol_risk_config (str|SymbolRiskConfig, optional): _description_. Defaults to None.
+            read_recovery: Optional validated, read-only layout recovery adapter.
+            read_only: Disable orders/cancellations. Defaults to True when AI recovery is enabled.
+            operation_recovery: Optional Selenium locator recovery, including authentication and trade forms.
+            phone_auth_handler: Optional callback(remaining_seconds) returning True after the registered-phone call.
 
         Raises:
             Exception: _description_
@@ -69,6 +78,7 @@ class SBIClient(ClientBase):
             Exception: _description_
             Exception: _description_
         """
+        load_sbi_env()
         if id is None:
             if self.ID_KEY in os.environ:
                 id = os.environ[self.ID_KEY]
@@ -79,12 +89,16 @@ class SBIClient(ClientBase):
                 password = os.environ[self.PASS_KEY]
             else:
                 raise Exception("Neither parameters nor os env has id value")
+        effective_read_only = read_only is True or (
+            read_only is None and (read_recovery is not None or os.getenv("SBI_AI_HEALING") == "1")
+        )
         if trade_password is None:
             if self.TRADE_PASS_KEY in os.environ:
                 trade_password = os.environ[self.TRADE_PASS_KEY]
-            else:
+            elif not effective_read_only:
                 raise Exception("Neither parameters nor os env has id value")
-        self.rpa_client = STOCK(id, password, trade_password)
+        self.rpa_client = STOCK(id, password, trade_password, read_recovery=read_recovery, read_only=read_only,
+                                operation_recovery=operation_recovery, phone_auth_handler=phone_auth_handler)
         budget = self.rpa_client.get_available_budget()
         if budget is None:
             raise Exception("Failed to initialize with getting budget.")

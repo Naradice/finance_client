@@ -35,7 +35,10 @@ def apply_partial_config(config_dict, target_loggers: list[str]):
                 extension = path_names[-1]
                 base_name = "".join(path_names[:-1])
             date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{base_name}_{date_str}.{extension}"
+            # PID too: two processes started in the same second shared one file,
+            # and the rotating handler of one could not rename it while the other
+            # held it open (WinError 32 on every rollover).
+            filename = f"{base_name}_{date_str}_{os.getpid()}.{extension}"
             abs_path = os.path.join(PROJECT_DIR, filename)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             handler_conf["filename"] = str(abs_path)

@@ -109,9 +109,10 @@ class ATRRisk(RiskOption):
             stop_loss = context.entry_price + sl_distance
             take_profit = context.entry_price - sl_distance * self.rr_ratio
 
-        # 許容損失
+        # 許容損失（口座通貨換算 — 決済通貨と口座通貨が異なる場合は
+        # quote_to_account_rate を掛けて単位を揃える。詳細はRiskContextの説明を参照）
         allowed_loss = context.account_equity * (self.percent / 100)
-        loss_per_unit = sl_distance * context.symbol_risk_config.contract_size
+        loss_per_unit = sl_distance * context.symbol_risk_config.contract_size * context.quote_to_account_rate
         raw_volume = allowed_loss / loss_per_unit
 
         volume = self._round_volume(raw_volume, context)
