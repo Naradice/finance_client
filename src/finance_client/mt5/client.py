@@ -321,11 +321,18 @@ class MT5Client(ClientBase):
             logger.error(err_txt)
             raise Exception(err_txt)
         logger.info(f"MetaTrader5 package version {mt5.__version__}")
-        authorized = mt5.login(
-            id,
-            password=password,
-            server=server,
-        )
+        # When the terminal is already logged in to this account, reuse that session:
+        # an account with OTP enabled rejects a password-only mt5.login() (-7,
+        # "Unsupported authorization mode") even though the terminal works.
+        current = mt5.account_info()
+        if current is not None and current.login == int(id) and (not server or current.server == server):
+            authorized = True
+        else:
+            authorized = mt5.login(
+                id,
+                password=password,
+                server=server,
+            )
         if not authorized:
             err_txt = "User Authorization Failed"
             logger.error(err_txt)
