@@ -532,7 +532,25 @@ class MT5Client(ClientBase):
                 logger.error(f"order failed due to unkown reason: {result.comment}, retcode={result.retcode}")
                 return enum.TRADE_ERROR
 
+    @staticmethod
+    def _round_prices(request):
+        """Round price/sl/tp to the symbol's digits: MT5 rejects e.g. a USDJPY limit at
+        157.8956 ("Invalid price"), and agents compute such levels from indicators."""
+        symbol = request.get("symbol")
+        if symbol is None and request.get("order") is not None:
+            orders = mt5.orders_get(ticket=int(request["order"]))
+            symbol = orders[0].symbol if orders else None
+        info = mt5.symbol_info(symbol) if symbol else None
+        if info is None:
+            return request
+        for key in ("price", "sl", "tp", "stoplimit"):
+            if request.get(key) is not None:
+                request[key] = round(float(request[key]), info.digits)
+        return request
+
     def __request_order(self, request, _retry=0):
+        if _retry == 0:
+            request = self._round_prices(request)
         result = mt5.order_send(request)
         retcode = self.__check_trade_result(result)
         if retcode in [enum.TRADE_DONE, enum.TRADE_PARTIAL_DONE]:
